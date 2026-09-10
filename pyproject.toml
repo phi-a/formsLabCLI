@@ -23,6 +23,7 @@ dependencies = [
 ]
 
 [project.scripts]
+labcli = "formslab.app:main"
 fconsole = "formslab.app:main"
 
 [project.optional-dependencies]

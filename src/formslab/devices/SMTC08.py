@@ -33,7 +33,8 @@ class SMTC08:
 
         # Resolve port either from 'resource' or from 'port' fragment
         port = self.hubmap.get("resource")
-        if port and port.startswith("/dev/"):
+        if port and (port.startswith("/dev/") or
+                     (port.upper().startswith("COM") and port[3:].isdigit())):
             self.port = port
         else:
             port_fragment = self.hubmap.get("port")
@@ -239,4 +240,3 @@ if __name__ == "__main__":
     for i, t in enumerate(temps, 1):
         print(f"Channel {i}: {t:.1f} °C")
     smtc.close()
-

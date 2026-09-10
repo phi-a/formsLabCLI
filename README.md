@@ -9,6 +9,9 @@ It runs standalone. When [FORMS](https://github.com/phi-a/FORMS) — the
 astrodynamics library — is also installed, three extra commands light up: the
 API-catalog browser, the Book reader, and the external-resource registry.
 
+**New computer? Start with [the setup guide](docs/SETUP.md)** for Python,
+NI-VISA, finding the current COM ports, and editing your bench's hardware map.
+
 ```
 pip install -e .          # a working lab console
 fconsole                  # start it
