@@ -18,17 +18,14 @@ SessionFactory = Callable[[], object]
 def get_default_tab_factories() -> Dict[str, SessionFactory]:
     """Return lazy session factories for all console tabs.
 
-    `book` reads the FORMS Book and so needs the library; the factory stays
-    listed and fails at construction, which the caller already renders as an
-    unavailable tab. The `flatsat` tab is not here: it wrapped `forms.flatsat`,
-    a subsystem that stayed in the FORMS repository.
+    Tabs cover bench hardware and sequence operation. FORMS documentation
+    remains in FORMS.
     """
     return {
         "ctrl": lambda: __import__("formslab.console.sessions.ctrl", fromlist=["CtrlSession"]).CtrlSession(),
         "cast": lambda: __import__("formslab.console.sessions.cast", fromlist=["CastSession"]).CastSession(),
         "log": lambda: __import__("formslab.console.sessions.log", fromlist=["LogSession"]).LogSession(),
         "psu": lambda: __import__("formslab.console.sessions.psu", fromlist=["PSUSession"]).PSUSession(),
-        "book": lambda: __import__("formslab.console.sessions.book", fromlist=["BookSession"]).BookSession(),
     }
 
 

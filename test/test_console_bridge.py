@@ -111,8 +111,7 @@ class ConsoleRunsWithoutForms(unittest.TestCase):
     def test_console_modules_import(self):
         for name in ("formslab.bridge",
                      "formslab.console.cmd_browser",
-                     "formslab.console.resources",
-                     "formslab.console.sessions.book"):
+                     "formslab.console.resources"):
             with self.subTest(module=name):
                 importlib.import_module(name)
 

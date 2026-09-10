@@ -162,6 +162,9 @@ class RTD16:
         return None
 
     def resolve_usb_device(self, port_fragment=None):
+        if (port_fragment and str(port_fragment).upper().startswith("COM")
+                and str(port_fragment)[3:].isdigit()):
+            return str(port_fragment)
         if port_fragment and str(port_fragment).startswith("/dev"):
             return str(port_fragment)
 
@@ -287,4 +290,3 @@ class RTD16:
                 logging.error("Retry failed", exc_info=True)  # full traceback
                 self.close()
                 raise
-

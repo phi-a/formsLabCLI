@@ -35,7 +35,7 @@ def build_command_index(
     lines.append("  --tree --rebuild       Rebuild API catalog")
     lines.append("  /switch astrid         Switch to Astrid")
     lines.append("  /switch console        Return to the forms console")
-    lines.append("  --ctrl --cast --log --psu --book")
+    lines.append("  --ctrl --cast --log --psu")
     lines.append("  --exit")
     lines.append("")
     lines.append("Tab Command Sets:")

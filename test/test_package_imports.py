@@ -97,6 +97,8 @@ class PackageImports(unittest.TestCase):
         """Each tab the REPL offers can actually be built on a base install."""
         from formslab.app import TAB_FACTORIES
 
+        self.assertNotIn("book", TAB_FACTORIES)
+
         for tab, factory in TAB_FACTORIES.items():
             with self.subTest(tab=tab):
                 factory()

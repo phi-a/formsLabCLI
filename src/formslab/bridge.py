@@ -5,7 +5,7 @@ through this module. Nothing else there may name the library directly.
 
 The console is a lab tool first: it drives PSUs, the cryocooler board, RTDs and
 thermocouples, none of which need an astrodynamics library. FORMS is what turns
-it into a *mission* console -- the API catalog browser, the Book reader, the
+it into a *mission* console -- the API catalog browser, the
 external-resource registry, and knowing where the mission library lives. Those
 are read-only reporting APIs, and none of them sit in a hot loop.
 
@@ -37,7 +37,6 @@ from types import ModuleType
 # this table.
 SURFACES = {
     "forms.core.catalog": "API catalog: symbol tree for the `cmd` browser",
-    "forms.core.book": "The Book: the `book` session's reader",
     "forms.bricks.resources": "External-resource registry: inventory and status",
     "forms.bricks.fetch": "External-resource registry: on-demand downloads",
     "forms.ai.manifest": "Live agent capabilities: the `skills` rank",
@@ -92,11 +91,6 @@ def catalog() -> ModuleType:
     """`forms.core.catalog` — `DEFAULT_CATALOG_PATH`, `build_catalog`,
     `find_symbols`."""
     return _load("forms.core.catalog")
-
-
-def book() -> ModuleType:
-    """`forms.core.book` — the `Book` reader."""
-    return _load("forms.core.book")
 
 
 def resources() -> ModuleType:
