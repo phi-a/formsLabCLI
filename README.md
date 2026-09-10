@@ -17,6 +17,37 @@ pip install -e .          # a working lab console
 fconsole                  # start it
 ```
 
+## Updating without losing your settings
+
+Keep each computer's settings and files separate from the shared code:
+
+- Edit the live hardware map at `%USERPROFILE%\.formslab\usbmap.json` on
+  Windows (`~/.formslab/usbmap.json` on Linux). This holds your COM ports and
+  device addresses. Do not edit `src/formslab/defaults/usbmap.json`; it is a
+  shared template. The live map is created only when missing and is not
+  replaced by an update.
+- Keep personal data and custom files in `outputs/` (ignored by Git), or
+  outside the checkout. Do not customize tracked examples or source files
+  unless you intend to maintain code changes.
+- If you set `FORMSLAB_CONFIG_DIR` or `FORMSLAB_OUTPUT_DIR`, use a location
+  outside the checkout or a Git-ignored folder.
+
+Close the console, open PowerShell in the checkout, and run:
+
+```powershell
+git pull --ff-only
+.\.venv\Scripts\python.exe -m pip install -e .
+```
+
+Then restart the console. On Linux, use `.venv/bin/python` for the second
+command. Existing extras remain installed; include the extras you use (for
+example `-e ".[pico]"`) when refreshing their dependencies too.
+
+These commands update the tool while retaining the local map and ignored
+outputs. If Git reports local changes or diverged branches, stop and ask the
+maintainer to reconcile them; do not discard your files to force an update.
+Git does not back up ignored files or the external configuration directory.
+
 ## Tabs
 
 | Tab | What it drives |
