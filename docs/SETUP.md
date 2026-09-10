@@ -17,6 +17,9 @@ PowerShell activation or execution-policy changes.
 
 Install extras only for the equipment/features you use:
 
+The `[forms]` extra requires Git access to `phi-a/FORMS`; authenticate Git
+with an account that has repository access before installing it.
+
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -e ".[pico]"     # cryo Pico bridge
 .\.venv\Scripts\python.exe -m pip install -e ".[forms]"    # missions/catalog
