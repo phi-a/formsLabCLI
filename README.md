@@ -6,8 +6,8 @@ thermocouple readers, TVAC shroud heaters, a Digital Loggers PowerSwitch, and
 the sLTA imaging chain.
 
 It runs standalone. When [FORMS](https://github.com/phi-a/FORMS) — the
-astrodynamics library — is also installed, three extra commands light up: the
-API-catalog browser, the Book reader, and the external-resource registry.
+astrodynamics library — is also installed, two extra commands light up: the
+API-catalog browser and the external-resource registry.
 
 **New computer? Start with [the setup guide](docs/SETUP.md)** for Python,
 NI-VISA, finding the current COM ports, and editing your bench's hardware map.
@@ -25,7 +25,6 @@ fconsole                  # start it
 | `cast` | Live hardware status panel |
 | `psu` | Rigol supplies and PowerSwitch outlets |
 | `log` | Tail the run log |
-| `book` | The FORMS Book — needs the `[forms]` extra |
 
 Switch with `--psu`, `--cast`, … or start on one: `fconsole --psu`.
 
@@ -39,7 +38,7 @@ none of them, and that absence is why this package was split out of FORMS.
 pip install -e .              # console + transports
 pip install -e ".[pico]"      # + mpremote, to talk to the cryo board's Pico bridge
 pip install -e ".[analysis]"  # + matplotlib/PyQt6 plotting
-pip install -e ".[forms]"     # + FORMS, for the catalog/Book/resource commands
+pip install -e ".[forms]"     # + FORMS, for missions/catalog/resource commands
 pip install -e ".[dev]"       # + pytest
 ```
 

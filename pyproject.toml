@@ -27,7 +27,7 @@ labcli = "formslab.app:main"
 fconsole = "formslab.app:main"
 
 [project.optional-dependencies]
-# Mission work: the API-catalog browser, the Book reader and the
+# Mission work: the API-catalog browser and the
 # external-resource registry. Reached only through `formslab/bridge.py`, so
 # without this extra the console still runs and those commands report that
 # FORMS is not installed. FORMS is not on PyPI.

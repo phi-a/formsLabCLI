@@ -19,7 +19,7 @@ Install extras only for the equipment/features you use:
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -e ".[pico]"     # cryo Pico bridge
-.\.venv\Scripts\python.exe -m pip install -e ".[forms]"    # missions/Book/catalog
+.\.venv\Scripts\python.exe -m pip install -e ".[forms]"    # missions/catalog
 .\.venv\Scripts\python.exe -m pip install -e ".[analysis]" # plots
 ```
 
