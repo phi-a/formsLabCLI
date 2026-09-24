@@ -243,9 +243,10 @@ def run_sequence(args=None) -> CLIResult:
         mode = args[1] if len(args) > 1 else "mission"
         return _launch_sequence(mode=mode, config_path=None)
 
-    # TVAC operational mode (special case)
-    if target == "tvac":
-        return _launch_sequence(mode="tvac", config_path=None)
+    # TVAC operational modes (special case): 'tvac' is the Rigol/RTD bench,
+    # 'laco' is the LACO chamber driven through its HVC-3500 controller.
+    if target in ("tvac", "laco"):
+        return _launch_sequence(mode=target, config_path=None)
 
     # Resolve mission by name or index
     mission = _resolve_mission(target, missions)
@@ -323,7 +324,7 @@ def help_panel() -> CLIResult:
     result.append("  missions        ", LABEL)
     result.append("List available missions and modes\n", TEXT)
     result.append("  run <target>    ", LABEL)
-    result.append("Launch mission (name, #, or 'tvac')\n", TEXT)
+    result.append("Launch mission (name, #, 'tvac' or 'laco')\n", TEXT)
 
     # Process control
     result.append("\n")

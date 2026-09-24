@@ -41,6 +41,7 @@ EXTRA_ONLY = {
     "formslab.host.sequence": "forms",
     "formslab.host.stream": "forms",
     "formslab.host.modes.tvac": "forms",
+    "formslab.host.modes.tvac_laco": "forms",
     "formslab.host.modes.darkness": "forms",
     "formslab.host.modes.axionsat": "forms",
 }

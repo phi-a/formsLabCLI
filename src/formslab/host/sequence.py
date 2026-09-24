@@ -30,6 +30,7 @@ from formslab.console.cmd.cmdutils import read_cmd, write_response, reset_cmd_st
 from formslab.host.modes import axionsat
 from formslab.host.modes import darkness
 from formslab.host.modes import tvac as tvacmode
+from formslab.host.modes import tvac_laco as lacomode
 from forms.skills.mission_loader import MissionLoader
 from forms.sequence import compile_sequence, SequenceRunner, JsonlEventSink
 
@@ -639,6 +640,8 @@ def channel(forms=None, mode="mission", config_path=None, relay_func=None):
             forms = loader.initialize()
         elif mode == "tvac":
             forms = tvacmode.initialize()
+        elif mode == "laco":
+            forms = lacomode.initialize()
         else:
             forms = darkness.initialize()
 
@@ -720,9 +723,9 @@ def channel(forms=None, mode="mission", config_path=None, relay_func=None):
                     entered_tvac = True
 
         # --- TVAC mode loop (only if explicitly tvac or transitioned) ---
-        if mode == "tvac" or entered_tvac:
-            forms.log(f'Sequence mode:tvac running.',level="INFO",component='sequence')
-            if mode == "tvac" and not entered_tvac:
+        if mode in ("tvac", "laco") or entered_tvac:
+            forms.log(f'Sequence mode:{mode} running.',level="INFO",component='sequence')
+            if mode in ("tvac", "laco") and not entered_tvac:
                 # Pure-tvac start: no mission Sequence ran, so prime the derive
                 # phase here (a transitioned entry was already primed by the
                 # mission Sequence's setup segment).
@@ -781,7 +784,7 @@ if __name__ == "__main__":
     parser = ArgumentParser(description="Run the FORMS processing loop")
     parser.add_argument(
         "--mode",
-        choices=["tvac", "mission", "zen"],
+        choices=["tvac", "laco", "mission", "zen"],
         default="mission",
         help="tvac = maintenance loop; mission = propagation loop; zen = .zen mission file",
     )

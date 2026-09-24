@@ -1,0 +1,52 @@
+{
+  "_comment": "LACO TVAC (FCT3048ELSSSE-1P35531), HVC-3500 controller. Confirmed on the installed chamber and its HMI 2026-09-17/24. Live copy lives in $FORMSLAB_CONFIG_DIR/tvac_bench.json.",
+  "connection": {
+    "host": "10.1.2.121",
+    "port": 1,
+    "timeout_s": 3.0,
+    "poll_interval_s": 5.0,
+    "_note": "CPU IP; ASCII socket on TCP port 1 (found by scan). Panel IP 10.1.2.120 serves VNC 5900 and FTP 21. PC needs an address on 10.1.2.0/24."
+  },
+  "units": {
+    "pressure": "Torr",
+    "temperature": "C",
+    "time": "s"
+  },
+  "zones": {
+    "platen": 1,
+    "shroud": 2
+  },
+  "sensors": {
+    "platen_ctrl": 2,
+    "shroud_ctrl": 3,
+    "t2": 4,
+    "ot1_ptn": 0,
+    "ot2_shd": 1,
+    "T5": 5,
+    "T6": 6,
+    "T7": 7,
+    "T8": 8,
+    "T9": 9,
+    "T10": 10,
+    "T11": 11,
+    "T12": 12,
+    "T13": 13,
+    "T14": 14,
+    "T15": 15
+  },
+  "limits": {
+    "platen_setpoint_max_c": 200.0,
+    "platen_setpoint_min_c": -180.0,
+    "shroud_setpoint_max_c": 120.0,
+    "shroud_setpoint_min_c": -180.0,
+    "max_vent_temp_c": 60.0,
+    "min_vent_temp_c": 10.0,
+    "max_heater_pressure_torr": 700.0,
+    "high_vac_crossover_torr": 0.01
+  },
+  "hmi": {
+    "enable_ascii_in_recipe": false,
+    "vnc_control": false
+  },
+  "_sensors_note": "Confirmed 2026-09-24 against the HMI Manual screen: Cntrl P=T2, Cntrl S=T3, t2=T4, OT1/OT2=T0/T1. T14/T15 run ~3 C warm. T16-T20 unused."
+}

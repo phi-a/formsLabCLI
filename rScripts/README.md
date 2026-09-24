@@ -17,3 +17,15 @@ console reads. Both need `formslab` installed; running a mission needs the
 `[forms]` extra as well.
 
 `rTemplate` is the starting point for a new routine.
+
+## LACO chamber (HVC-3500)
+
+`rTVAC_LACO.py` drives the LACO thermal-vacuum chamber through its HVC-3500
+controller over Ethernet (`formslab.devices.hvc3500`). Launch with
+`run laco` from the console; it loads only this routine, not the Rigol/RTD
+heater loop in `rTVAC.py`. Bench endpoint, units and zone/sensor numbering
+come from `$FORMSLAB_CONFIG_DIR/tvac_bench.json` (seeded from the packaged
+default). Status is published to the CAST block `hvc`; requests are written to
+the same block, e.g. `{"platen": 25.0}`, `{"platen_control": true}`,
+`{"vacuum": 1e-3}`, `{"start": true}`. Raw valve/pump toggles are deliberately
+not exposed - the PLC sequences those.
