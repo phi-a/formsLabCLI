@@ -167,3 +167,36 @@ the lab tool that used to live in that repository. The dependency points one way
 only — FORMS knows nothing about this package — and is optional in this
 direction. A later release adds an `astrid-mcp` path so the console can reach
 FORMS through the agent as well as directly.
+
+## Rigol DP832A USB support on Raspberry Pi
+
+The Rigol DP832A is connected to the Raspberry Pi through USB. On this Pi, communication uses **PyVISA with the PyVISA-Py backend** (`PYVISA_LIBRARY=@py`), rather than NI-VISA or UltraSigma.
+
+### Problem
+
+The Pi detected the instrument over USB, PyVISA discovered its resource, and `*IDN?` returned a valid DP832A identity. However, a formsLabCLI PSU status query failed with `VI_ERROR_NSUP_OPER (-1073807257)`. The failure occurred when `RigolDriverVISA.query()` called `self.inst.clear()` before sending the query: that clear operation was not supported by the PyVISA-Py USB session on this setup.
+
+### Proposed fix
+
+In `src/formslab/devices/PSUCLI.py`, use the driver's existing non-fatal `clear()` wrapper instead of calling the instrument's `clear()` directly:
+
+```python
+# Before
+self.inst.clear()
+
+# After
+self.clear()
+```
+
+This lets the query proceed when the backend cannot perform the optional clear operation. The change was tested locally on the Raspberry Pi: the DP832A identity and PSU status could be read through USB after the change.
+
+### Pi configuration and verification
+
+```bash
+lsusb -d 1ab1:0e11  # Check that the Pi detects the Rigol USB device (vendor ID:product ID).
+PYVISA_LIBRARY=@py .venv/bin/labcli --psu
+```
+
+The tested instrument reported `RIGOL TECHNOLOGIES,DP832A,DP8B224001812,00.01.16` and was discovered as `USB0::6833::3601::DP8B224001812::0::INSTR`. Its resource is configured as `psu1` in the Pi's **local** `~/.formslab/usbmap.json`; other instruments must use their own discovered serial number. Linux USB device permissions must also allow the operator to access the instrument.
+
+The formsLabCLI commands and SCPI workflow can be shared across Windows and Linux, but the VISA backend, USB permissions, and resource mapping are platform-specific. **Windows regression testing of this driver change is still pending.** See the [PyVISA-Py documentation](https://pyvisa.readthedocs.io/projects/pyvisa-py/en/stable/) for backend details. 
