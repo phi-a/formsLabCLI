@@ -98,14 +98,5 @@
     "recovery_method": "hubpower",
     "hub_location": "1-4.3",
     "hub_port": 1
-  },
-  
-    "SMTC08_B": {
-      "description": "SMTC08 on hub 1-4.3.2",
-      "resource": "/dev/ttyUSB3",
-      "baud": 9600,
-      "recovery_method": "hubpower",
-      "hub_location": "1-4.3",
-      "hub_port": 2
   }
 }

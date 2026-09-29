@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import argparse
 import sys
 import os
 # Ensure project root is on sys.path (if RTD16.py lives elsewhere)
@@ -17,7 +18,14 @@ def typeTmv2C(mv):
     return sum(c[i] * mv**i for i in range(len(c)))
 
 def main():
-    smtc = SMTC08("SMTC08_A", slave=1)  # uses usbmap.json
+    ap = argparse.ArgumentParser(description="Read all 8 SMTC08 thermocouple channels.")
+    ap.add_argument("--label", default="SMTC08_A", help="usbmap.json entry")
+    ap.add_argument("--port", help="override the usbmap port, e.g. COM3 or /dev/ttyUSB2")
+    ap.add_argument("--slave", type=int, default=1, help="MODBUS slave address")
+    args = ap.parse_args()
+
+    smtc = SMTC08(args.label, slave=args.slave, port=args.port)  # uses usbmap.json
+    print(f"{args.label} on {smtc.port} (slave {args.slave})")
     try:
         temps = smtc.read_all()
         mvs   = smtc.read_all_mv()

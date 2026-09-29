@@ -1,12 +1,26 @@
 
 from pymodbus.client import ModbusSerialClient
 from pathlib import Path
+import inspect
+import sys
 
 from formslab.config import usbmap_path
 import subprocess
 import os
 import time
 import json
+
+# pymodbus 3.10 renamed the per-request unit keyword from `slave` to
+# `device_id`; the dependency is unpinned, so ask the installed version.
+_UNIT_KW = ("device_id"
+            if "device_id" in inspect.signature(ModbusSerialClient.read_input_registers).parameters
+            else "slave")
+
+
+def _s16(val):
+    """Registers are unsigned on the wire; temperatures and mV are signed."""
+    return val - 65536 if val > 32767 else val
+
 
 class SMTC08:
     """
@@ -28,11 +42,14 @@ class SMTC08:
         0=B, 1=E, 2=J, 3=K, 4=N, 5=R, 6=S, 7=T (default recommended: 7 for Type T)
     """
 
-    def __init__(self, label="SMTC08", slave=1, config_path=None):
+    def __init__(self, label="SMTC08", slave=1, config_path=None, port=None):
         self.hubmap = self.get_config(label, config_path)
 
-        # Resolve port either from 'resource' or from 'port' fragment
-        port = self.hubmap.get("resource")
+        # Resolve port: explicit override, then 'resource_windows' on Windows,
+        # then 'resource', then the udev 'port' fragment
+        if port is None and sys.platform == "win32":
+            port = self.hubmap.get("resource_windows")
+        port = port or self.hubmap.get("resource")
         if port and (port.startswith("/dev/") or
                      (port.upper().startswith("COM") and port[3:].isdigit())):
             self.port = port
@@ -54,7 +71,7 @@ class SMTC08:
             timeout=1
         )
         if not self.client.connect():
-            raise IOError(f"Could not connect to port {port}")
+            raise IOError(f"Could not connect to port {self.port}")
         
     @staticmethod
     def get_config(name, path=None):
@@ -73,7 +90,11 @@ class SMTC08:
             raise ValueError(f"Device '{name}' not found in USB map.")
         
         return config[name]
-    
+
+    def _read_input(self, address, count):
+        return self.client.read_input_registers(
+            address=address, count=count, **{_UNIT_KW: self.slave})
+
     def read_temp(self, channel):
         """
         Read temperature from a single channel.
@@ -91,10 +112,10 @@ class SMTC08:
         if not 1 <= channel <= 8:
             raise ValueError("Channel must be 1–8")
         reg_addr = channel - 1
-        result = self.client.read_input_registers(address=reg_addr, count=1, slave=self.slave)
+        result = self._read_input(reg_addr, 1)
         if result.isError():
             raise IOError(f"MODBUS error reading channel {channel}: {result}")
-        return result.registers[0] / 10.0
+        return _s16(result.registers[0]) / 10.0
 
     def read_all(self):
         """
@@ -105,16 +126,10 @@ class SMTC08:
         list of float
             List of 8 temperatures in °C
         """
-        result = self.client.read_input_registers(address=0, count=8, slave=self.slave)
+        result = self._read_input(0, 8)
         if result.isError():
             raise IOError(f"MODBUS error reading all channels: {result}")
-   
-        temps = []
-        for val in result.registers:
-            if val > 32767:
-                val -= 65536  # handle signed 16-bit wraparound
-            temps.append(val / 10.0)  # convert from 0.1 °C
-        return temps
+        return [_s16(val) / 10.0 for val in result.registers]  # 0.1 °C
 
     def read_all_mv(self):
         """
@@ -125,15 +140,10 @@ class SMTC08:
         list of float
             List of 8 thermocouple voltages in mV
         """
-        result = self.client.read_input_registers(address=8, count=8, slave=self.slave)
+        result = self._read_input(8, 8)
         if result.isError():
             raise IOError(f"MODBUS error reading millivolt registers: {result}")
-        mvs = []
-        for val in result.registers:
-            if val > 32767:
-                val -= 65536  # signed interpretation
-            mvs.append(val / 1000.0)  # µV → mV
-        return mvs
+        return [_s16(val) / 1000.0 for val in result.registers]  # µV → mV
     
     def read_all_polytemp(self):
         """
@@ -200,7 +210,7 @@ class SMTC08:
 
         # Validate connection with retry loop
         for attempt in range(5):
-            result = self.client.read_input_registers(address=0, count=1, slave=self.slave)
+            result = self._read_input(0, 1)
             if not result.isError():
                 print(f"✅ Reconnected successfully on attempt {attempt+1}")
                 return

@@ -6,6 +6,7 @@ from datetime import datetime
 
 from formslab.devices.DP832A import PSU
 from formslab.devices.RTD16 import RTD16
+from formslab.devices.psu_config import load_usbmap
 from formslab.devices.psu_service import get_psu
 
 
@@ -88,7 +89,11 @@ def _init_sensors(forms, rGlobal):
             forms.log(f"Initialization failed: {e}\n{tb}", level="ERROR", component="SMTC08_A")
     elif rGlobal.smtcA is None and smtc_import_error is not None:
         rGlobal.smtcA = None
-    if rGlobal.smtcB is None and smtc_class is not None:
+    # SMTC08_B (TC09-TC16) is optional: the bench currently has only board A,
+    # so an absent map entry leaves the slot empty instead of logging an error
+    if rGlobal.smtcB is None and smtc_class is not None and "SMTC08_B" not in load_usbmap():
+        forms.log("Not in usbmap; TC09-TC16 disabled", level="INFO", component="SMTC08_B")
+    elif rGlobal.smtcB is None and smtc_class is not None:
         try:
             forms.log(f"Initializing...", level="INFO", component="SMTC08_B") 
             rGlobal.smtcB = smtc_class("SMTC08_B", slave=1)

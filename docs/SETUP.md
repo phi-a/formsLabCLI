@@ -78,7 +78,7 @@ Change only the relevant fields, keeping the rest of each record:
 | `psu1` / `psu2`, native USB | `resource_windows` | Full `USB0::…::INSTR` name from VISA |
 | `psu1` / `psu2`, serial adapter | `resource_windows` | `ASRLCOM12::INSTR` for COM12 (default pyserial driver) |
 | `RTD1` | `resource` | `COM7` |
-| `SMTC08_A` / `SMTC08_B` | `resource` | `COM8` / `COM9` |
+| `SMTC08_A` | `resource_windows` | `COM8` |
 | `cryo_board` | `port_windows` | `COM10` |
 
 Set `enabled` to `false` on unused PSU records. On Linux, PSU addresses use
