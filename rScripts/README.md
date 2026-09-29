@@ -42,10 +42,13 @@ into a FORMS workspace is needed any more.
 ## LACO chamber (HVC-3500)
 
 `rLACO.py` is the default control-and-monitor routine for the UIUC LACO
-thermal-vacuum chamber, through its HVC-3500 controller over Ethernet
-(`formslab.devices.hvc3500`). Launch with `run laco` from the console; it needs
-no FORMS. Bench endpoint, units and zone/sensor numbering come from
-`$FORMSLAB_CONFIG_DIR/tvac_bench.json` (seeded from the packaged default).
+thermal-vacuum chamber. It drives `formslab.devices.laco.LACO`, the chamber
+as one object (`laco.platen.set(25.0)`, `laco.status()`), which wraps the
+vendor driver `formslab.devices.hvc3500`. Launch with `run laco` from the
+console; it needs no FORMS. Bench endpoint, units, zone/sensor numbering and
+setpoint limits come from `$FORMSLAB_CONFIG_DIR/tvac_bench.json` (seeded from
+the packaged default). New LACO routines should go through `LACO`, not the
+client, so the chamber's names and limits are enforced in one place.
 Status is published to the CAST block `hvc`; requests are written to the same
 block, e.g. `{"platen": 25.0}`, `{"platen_control": true}`, `{"vacuum": 1e-3}`,
 `{"start": true}`. Raw valve/pump toggles are deliberately not exposed - the PLC
