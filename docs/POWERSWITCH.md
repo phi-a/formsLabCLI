@@ -1,6 +1,6 @@
 # Lab PowerSwitch
 
-The fconsole PSU tab treats the Digital Loggers PowerSwitch as logical device
+The labcli PSU tab treats the Digital Loggers PowerSwitch as logical device
 `PS`. Its permanent machine and network identity is the `PS` record in
 `lab/usbmap.json`; outlet control and network setup are implemented by
 `lab/powerswitch.py`.
@@ -12,7 +12,7 @@ static address `192.168.0.50/24`. The PowerSwitch is expected at
 `192.168.0.100`. The adapter has no default gateway, so it cannot take over the
 machine's normal Wi-Fi or Tailscale route.
 
-From fconsole:
+From labcli:
 
 ```text
 --psu

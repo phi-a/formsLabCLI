@@ -19,6 +19,17 @@ class CLIResult:
 class ConsoleSession(ABC):
     """Base class for a console tab session."""
 
+    # Whether `banner()` is cheap enough to redraw on every frame.
+    #
+    # The console paints the banner as a persistent status region, so it is
+    # called once per repaint -- i.e. after every command typed on the tab. A
+    # banner that only reads a pid file or a JSON state file opts in; PSU's
+    # opens a VISA session, queries every channel and closes it again, so it
+    # must not, or the supply would be reconnected after each keystroke.
+    # Off by default: a new tab has to say its banner is free before the frame
+    # will poll it.
+    live_status = False
+
     def __init__(self, name: str, handler: Callable[..., CLIResult]):
         self.name = name
         self._cli_handler = handler

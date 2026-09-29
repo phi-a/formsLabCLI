@@ -2,3 +2,8 @@
 
 # Deployed onto the Pico over mpremote; keep it LF regardless of checkout OS.
 src/formslab/devices/pico_board_control.py text eol=lf
+
+# Launchers. A shell script with CRLF fails on Linux at the shebang; a
+# batch file with LF can mis-parse labels on Windows. Pin both.
+*.sh text eol=lf
+*.cmd text eol=crlf

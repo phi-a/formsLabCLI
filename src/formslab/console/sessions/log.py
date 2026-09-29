@@ -14,6 +14,6 @@ class LogSession(ConsoleSession):
         return Text("📜 LOG tab ready. Type --help for commands.", style=style.TEXT)
 
     def prompt(self):
-        from formslab.console.style import ACCENT1, PROMPT_SUFFIX
-        return f"[bold {ACCENT1.color}]log{PROMPT_SUFFIX} [/] "
+        from formslab.console.style import PROMPT_MARKUP, PROMPT_SUFFIX
+        return f"[{PROMPT_MARKUP}]log{PROMPT_SUFFIX} [/] "
 

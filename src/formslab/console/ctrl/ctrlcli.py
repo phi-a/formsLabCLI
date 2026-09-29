@@ -8,10 +8,12 @@ Refactored ctrlcli.py
 
 Next steps:
 - In app/view/console_tab.py, remove the special-case for "--run" and let session.handle(raw) handle it like other commands.
-- Ensure fconsole.py integrates CLIResult.content directly via render_output.
+- Ensure labcli.py integrates CLIResult.content directly via render_output.
 """
 from pathlib import Path
 import os, sys, signal, subprocess
+
+import psutil
 
 from rich.text import Text
 from formslab.console.sessions.base import CLIResult
@@ -278,14 +280,33 @@ def status_panel() -> CLIResult:
 
 
 def list_sequence() -> CLIResult:
-    try:
-        out = subprocess.check_output(["pgrep", "-f", "sequence.py"]).decode().strip()
-        if not out:
-            return CLIResult("No sequence.py processes found.")
-        lines = [f"PID: {pid}" for pid in out.split()] 
-        return CLIResult("sequence.py processes:\n" + "\n".join(lines))
-    except subprocess.CalledProcessError:
-        return CLIResult("No sequence.py processes found.", clear=False)
+    """Every running sequence host.
+
+    Was `pgrep -f sequence.py`, which is Unix-only and, since the extraction,
+    looking for the wrong thing as well: the host is launched as
+    `python -m formslab.host.sequence`, so "sequence.py" is no longer on its
+    command line at all. Both spellings are matched so a host started the old
+    way is still found.
+    """
+    needles = ("formslab.host.sequence", "sequence.py")
+    found = []
+    for proc in psutil.process_iter(["pid", "name", "cmdline"]):
+        try:
+            # The host is always a Python process. Without that check any
+            # command line merely *mentioning* the host -- an editor, a grep --
+            # would be reported as a running sequence.
+            if "python" not in (proc.info["name"] or "").lower():
+                continue
+            cmdline = " ".join(proc.info["cmdline"] or ())
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+        if any(needle in cmdline for needle in needles):
+            found.append(proc.info["pid"])
+
+    if not found:
+        return CLIResult("No sequence host processes found.", clear=False)
+    listed = "\n".join(f"PID: {pid}" for pid in sorted(found))
+    return CLIResult("sequence host processes:\n" + listed)
 
 def end_sequence() -> CLIResult:
     pid_path = _get_pid_path()

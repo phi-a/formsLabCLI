@@ -44,7 +44,7 @@ LABEL   = Style(color=slate)                 # Field labels (CH, Voltage:, etc)
 UNIT    = Style(color=slate, dim=True)       # Units (V, A, K, Hz)
 
 # Interactive elements
-ACCENT1 = Style(color=indigo)                # Active tab, current context
+ACCENT1 = Style(color=indigo)                # Current context (see TAB_ACTIVE)
 ACCENT2 = Style(color=volcanic)              # Confirmations, special states
 PROMPT  = Style(color=blue)                  # Prompt text
 COMMAND = Style(color=cyan)                  # Command echoes
@@ -54,6 +54,20 @@ STATE_ON  = Style(color=green)               # Device ON
 STATE_OFF = Style(color=slate, dim=True)     # Device OFF
 STATE_ERR = Style(color=red)                 # Device ERROR
 
+
+# ─── Tab bar ───────────────────────────────────────────────
+# Selection is carried by brightness, not hue. Two dark chips of different
+# colour are near-indistinguishable at terminal luminance, so the active tab is
+# filled bright with dark text and the rest stay dark with light text.
+TAB_ACTIVE   = Style(color="black", bgcolor=blue, bold=True)
+TAB_INACTIVE = Style(color=offwhite, bgcolor="grey15")
+
+# Prompts are assembled as markup strings, so they need the hex -- NOT a Style.
+# Interpolating `SomeStyle.color` yields the Color object's repr, which is not a
+# parseable colour; Rich drops the whole tag and the text renders unstyled, or
+# in the tab bar's case, in whatever the surrounding style was. That failure is
+# invisible in review, so route markup through this instead.
+PROMPT_MARKUP = f"bold {blue}"
 # ─── Layout ────────────────────────────────────────────────
 PANEL_BORDER  = slate                        # Subtle borders
 PANEL_PADDING = (0, 1)                       # Minimal padding

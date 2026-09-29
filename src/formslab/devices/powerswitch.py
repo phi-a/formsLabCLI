@@ -3,7 +3,7 @@
 The PowerSwitch is a network appliance, not a serial PSU. Its durable lab
 identity lives in ``lab/usbmap.json`` under ``PS``. This module provides both
 the HTTP outlet operations and the platform-specific network setup used by the
-fconsole PSU tab.
+labcli PSU tab.
 """
 from __future__ import annotations
 

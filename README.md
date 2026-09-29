@@ -14,7 +14,7 @@ NI-VISA, finding the current COM ports, and editing your bench's hardware map.
 
 ```
 pip install -e .          # a working lab console
-fconsole                  # start it
+labcli                    # start it
 ```
 
 ## Updating without losing your settings
@@ -48,6 +48,12 @@ outputs. If Git reports local changes or diverged branches, stop and ask the
 maintainer to reconcile them; do not discard your files to force an update.
 Git does not back up ignored files or the external configuration directory.
 
+Two launchers sit in `scripts/`, one per platform, for a desktop shortcut or
+a double-click: `labcli.cmd` on Windows and `labcli.sh` on Linux and macOS.
+Both resolve the venv relative to the checkout and run from the repo root, so
+`outputs/` lands beside the code. The Windows one also switches the console to
+UTF-8, because the default OEM codepage mangles the box-drawing characters.
+
 ## Tabs
 
 | Tab | What it drives |
@@ -57,7 +63,36 @@ Git does not back up ignored files or the external configuration directory.
 | `psu` | Rigol supplies and PowerSwitch outlets |
 | `log` | Tail the run log |
 
-Switch with `--psu`, `--cast`, … or start on one: `fconsole --psu`.
+Switch with `--psu`, `--cast`, … or start on one: `labcli --psu`.
+
+### The screen
+
+The console redraws one fixed frame rather than printing a transcript. A tab
+bar, a status region, a content pane and the prompt sit on the same rows every
+time, so the prompt does not walk down the terminal as output grows and shrinks.
+The regions are drawn as boxes deliberately: a pane that pads to a constant
+height only reads as a window if you can see it holding its shape, and without a
+border a one-line result and a thirty-line one look like the same printed text.
+
+Output taller than the content pane is windowed in place rather than spilled
+into scrollback. `PgUp`/`PgDn` move it by a page and `↑`/`↓` by a line, without
+Enter; the pane's bottom edge carries the position, `1-21 of 28`.
+
+Both that and resizing work because the console reads *keys*, not lines
+(`console/keys.py`). `input()` blocks until Enter, so between keystrokes the old
+console could not notice the window had changed shape or that you wanted to
+scroll — the same limitation behind both. Polling for keys leaves an idle gap on
+every tick, and the resize check and the scroll keys live in that gap.
+
+Where keys cannot be read — a pipe, a capture, a dumb terminal — the console
+falls back to plain `input()` and append-only text, so redirected runs stay
+diffable. The typed `more`, `back` and `top` exist for that path.
+
+The status region is the tab's `banner()`, drawn only where a tab sets
+`live_status`: it is polled once per repaint. CTRL (reads `sequence.pid`) and
+CAST (reads `castfile.json`) opt in. PSU's banner opens a VISA session per
+supply and queries every channel, so it stays a command rather than a region —
+a new tab has to declare its banner free before the frame will poll it.
 
 ## Install
 
@@ -77,7 +112,7 @@ pip install -e ".[dev]"       # + pytest
 
 ```
 src/formslab/
-├── app.py       the `fconsole` entry point: the REPL and its tab bar
+├── app.py       the `labcli` entry point: the REPL and its tab bar
 ├── bridge.py    the ONLY module allowed to import `forms` (host/ excepted)
 ├── config.py    config and output directory resolution
 ├── state.py     CTRL command table and CAST device state
@@ -136,7 +171,7 @@ else runs against fakes and passes on a bare install with nothing plugged in.
 mission against the bench:
 
 ```
-fconsole --ctrl
+labcli --ctrl
 ctrl> missions          # the .zen library, as FORMS resolves it
 ctrl> run tvac          # or: run darkness, run 1
 log>  tail 50           # the host's output

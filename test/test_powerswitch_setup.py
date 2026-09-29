@@ -129,7 +129,7 @@ def test_outlet_range_refuses_before_any_http_request(monkeypatch, capsys):
     assert "outside 1-8" in capsys.readouterr().out
 
 
-def test_fconsole_setup_dispatches_the_python_lab_tool(monkeypatch):
+def test_labcli_setup_dispatches_the_python_lab_tool(monkeypatch):
     captured = {}
 
     def run(command, **kwargs):

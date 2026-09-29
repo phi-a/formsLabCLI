@@ -518,10 +518,10 @@ def help_panel():
 
     return CLIResult(result, clear=False)
 
-from formslab.console.style import ACCENT1, PROMPT_SUFFIX, TEXT
+from formslab.console.style import PROMPT_MARKUP, PROMPT_SUFFIX, TEXT
 
 def prompt(active):
-    return f"[bold {ACCENT1.color}]{active}{PROMPT_SUFFIX} [/] "
+    return f"[{PROMPT_MARKUP}]{active}{PROMPT_SUFFIX} [/] "
 
 def status_panel(psu_target):
     targets = (psu_target.values() if isinstance(psu_target, dict) else [psu_target])

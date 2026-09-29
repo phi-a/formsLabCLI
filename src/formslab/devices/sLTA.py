@@ -1,6 +1,8 @@
 import os
 import time
 import subprocess
+
+import psutil
 import select
 from datetime import datetime
 
@@ -142,4 +144,11 @@ class SLTA:
             except subprocess.TimeoutExpired:
                 self.process.kill()
         else:
-            os.system("pkill configure.exe")
+            # Was `os.system("pkill configure.exe")` -- Unix-only, and a
+            # shell spawn for what psutil already does in-process.
+            for proc in psutil.process_iter(["pid", "name"]):
+                try:
+                    if (proc.info["name"] or "").lower() == "configure.exe":
+                        proc.terminate()
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue

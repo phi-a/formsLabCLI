@@ -33,7 +33,7 @@ def test_flatsat_tab_is_not_offered():
 
     assert "flatsat" not in router.tabs
     assert "flatsat" not in app.TAB_FACTORIES
-    assert initial_tab_from_argv(["fconsole", "--flatsat"]) == "ctrl"
+    assert initial_tab_from_argv(["labcli", "--flatsat"]) == "ctrl"
 
 
 def test_analysis_is_not_available_as_console_tab():
@@ -127,7 +127,7 @@ def test_clear_screen_does_nothing_for_redirected_output():
     assert terminal.clear_count == 0
 
 
-def test_fconsole_does_not_echo_an_entered_command_twice(monkeypatch):
+def test_labcli_does_not_echo_an_entered_command_twice(monkeypatch):
     class Session(_StubSession):
         def handle(self, raw, payload=None):
             return CLIResult(f"result: {raw}")
@@ -156,7 +156,7 @@ def test_fconsole_does_not_echo_an_entered_command_twice(monkeypatch):
     assert rendered[-1] == ("result: status",)
 
 
-def test_fconsole_keeps_prompt_alive_after_session_error(monkeypatch):
+def test_labcli_keeps_prompt_alive_after_session_error(monkeypatch):
     class Session(_StubSession):
         def handle(self, raw, payload=None):
             raise RuntimeError("temporary device failure")

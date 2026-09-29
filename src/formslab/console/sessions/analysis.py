@@ -22,5 +22,5 @@ class AnalysisSession(ConsoleSession):
         )
 
     def prompt(self):
-        from formslab.console.style import ACCENT1, PROMPT_SUFFIX
-        return f"[bold {ACCENT1.color}]analysis{PROMPT_SUFFIX} [/] "
+        from formslab.console.style import PROMPT_MARKUP, PROMPT_SUFFIX
+        return f"[{PROMPT_MARKUP}]analysis{PROMPT_SUFFIX} [/] "

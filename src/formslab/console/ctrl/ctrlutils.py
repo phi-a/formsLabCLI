@@ -1,7 +1,7 @@
 import os
 import json
-import platform
-import subprocess
+
+import psutil
 from typing import Dict, Optional
 
 from formslab.console.style import (
@@ -91,19 +91,14 @@ def _write_ctrljson(cmds: Dict):
         f.write("\n".join(lines))
 
 def process_exists(pid: int) -> bool:
-    if platform.system() == "Windows":
-        try:
-            out = subprocess.check_output(
-                f'tasklist /FI "PID eq {pid}"', shell=True
-            ).decode()
-            return str(pid) in out
-        except Exception:
-            return False
-    else:
-        try:
-            os.kill(pid, 0)
-            return True
-        except ProcessLookupError:
-            return False
-        except PermissionError:
-            return True  # exists but inaccessible
+    """Whether a pid is live, the same way on every platform.
+
+    Was a `tasklist` shell-out on Windows and `os.kill(pid, 0)` elsewhere: two
+    code paths, one of them spawning a shell per call. psutil is already a
+    dependency and covers both, including the "exists but not ours" case that
+    `os.kill` reported as PermissionError.
+    """
+    try:
+        return psutil.pid_exists(pid)
+    except Exception:
+        return False

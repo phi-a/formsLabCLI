@@ -13,7 +13,7 @@ Three things live here:
   package is standalone; importing `bridge` is what asks for the optional
   `[forms]` extra.
 
-Run it with `fconsole` (see `formslab.app`).
+Run it with `labcli` (see `formslab.app`).
 """
 
 __version__ = "0.1.0"
