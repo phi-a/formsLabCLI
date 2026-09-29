@@ -21,6 +21,7 @@ from formslab.console.ctrl.ctrlutils import ReadCommand, WriteCommand, LoadComma
 from formslab.console.style import HEADER, DIM, ERROR, INFO, NUMBER, LABEL, TEXT, WARNING, SUCCESS
 from formslab import bridge
 from formslab.config import output_dir
+from formslab.host.modes import LAB_MODES
 from formslab.console.log.logcli import log_path
 
 def missions_dir():
@@ -160,7 +161,8 @@ def _launch_sequence(mode: str, config_path: str | None = None) -> CLIResult:
     is an installed module, and resolving it as a file would put us back to
     guessing where the package lives.
     """
-    if not bridge.available():
+    # Lab modes run on formsLabCLI alone; everything else is a FORMS mission.
+    if mode not in LAB_MODES and not bridge.available():
         return CLIResult(Text(
             "✗ run needs FORMS. Install it with "
             "`pip install \"formslab[forms]\"` to launch missions.", style=ERROR))
