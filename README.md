@@ -203,35 +203,36 @@ only — FORMS knows nothing about this package — and is optional in this
 direction. A later release adds an `astrid-mcp` path so the console can reach
 FORMS through the agent as well as directly.
 
-## Rigol DP832A USB support on Raspberry Pi
+## Windows and Linux (Raspberry Pi)
 
-The Rigol DP832A is connected to the Raspberry Pi through USB. On this Pi, communication uses **PyVISA with the PyVISA-Py backend** (`PYVISA_LIBRARY=@py`), rather than NI-VISA or UltraSigma.
+One checkout runs on both. What differs is below the drivers, and each piece is
+chosen for you:
 
-### Problem
+| | Windows bench | Linux / Pi |
+|---|---|---|
+| VISA backend | NI-VISA | pyvisa-py (installed by `pip install -e .`) |
+| USB transport | NI-VISA's USB driver | pyusb + libusb |
+| PSU resource | `resource_windows` in `usbmap.json` | `resource` in `usbmap.json` |
 
-The Pi detected the instrument over USB, PyVISA discovered its resource, and `*IDN?` returned a valid DP832A identity. However, a formsLabCLI PSU status query failed with `VI_ERROR_NSUP_OPER (-1073807257)`. The failure occurred when `RigolDriverVISA.query()` called `self.inst.clear()` before sending the query: that clear operation was not supported by the PyVISA-Py USB session on this setup.
+`pyvisa` picks the backend itself: NI-VISA when its library is found, pyvisa-py
+otherwise. To force one, set `PYVISA_LIBRARY` (`@ivi` or `@py`). A Rigol on
+RS232 does not go through VISA at all; it uses pyserial on both systems.
 
-### Proposed fix
+All Rigol supply control lives in `devices/DP832A.py`, for the console and the
+routines alike. It treats the pre-query buffer clear as optional. pyvisa-py's USBTMC
+session does not implement it, and before this was made non-fatal every PSU
+query on the Pi failed with `VI_ERROR_NSUP_OPER (-1073807257)` even though
+`*IDN?` answered.
 
-In `src/formslab/devices/PSUCLI.py`, use the driver's existing non-fatal `clear()` wrapper instead of calling the instrument's `clear()` directly:
-
-```python
-# Before
-self.inst.clear()
-
-# After
-self.clear()
-```
-
-This lets the query proceed when the backend cannot perform the optional clear operation. The change was tested locally on the Raspberry Pi: the DP832A identity and PSU status could be read through USB after the change.
-
-### Pi configuration and verification
+Setting up a Pi for a DP832A over USB:
 
 ```bash
-lsusb -d 1ab1:0e11  # Check that the Pi detects the Rigol USB device (vendor ID:product ID).
-PYVISA_LIBRARY=@py .venv/bin/labcli --psu
+sudo apt install libusb-1.0-0
+lsusb -d 1ab1:0e11          # the Rigol shows up (vendor:product)
+.venv/bin/labcli --psu
 ```
 
-The tested instrument reported `RIGOL TECHNOLOGIES,DP832A,DP8B224001812,00.01.16` and was discovered as `USB0::6833::3601::DP8B224001812::0::INSTR`. Its resource is configured as `psu1` in the Pi's **local** `~/.formslab/usbmap.json`; other instruments must use their own discovered serial number. Linux USB device permissions must also allow the operator to access the instrument.
-
-The formsLabCLI commands and SCPI workflow can be shared across Windows and Linux, but the VISA backend, USB permissions, and resource mapping are platform-specific. **Windows regression testing of this driver change is still pending.** See the [PyVISA-Py documentation](https://pyvisa.readthedocs.io/projects/pyvisa-py/en/stable/) for backend details. 
+The operator also needs permission to open the USB device, usually a udev rule
+for `1ab1:0e11`. Each supply's resource string contains its serial number, e.g.
+`USB0::6833::3601::DP8B224001812::0::INSTR`, so map it in that Pi's **local**
+`~/.formslab/usbmap.json` rather than the shipped defaults.

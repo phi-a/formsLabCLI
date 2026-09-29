@@ -5,7 +5,6 @@ from rich.text import Text
 from formslab import config
 from formslab.console.sessions.base import CLIResult
 from formslab.devices import psu_config
-from formslab.devices.PSUCLI import RigolDriverSerial, RigolDriverVISA, driver_for_resource
 
 
 def _write_map():
@@ -49,15 +48,6 @@ def test_disabled_psu_is_not_exposed():
     assert psu_config.enabled_psu_labels() == ("psu1",)
 
 
-def test_serial_driver_accepts_windows_visa_resource():
-    assert RigolDriverSerial._parse_device_path("ASRLCOM3::INSTR") == "COM3"
-
-
-def test_native_usb_resource_selects_visa_driver():
-    resource = "USB0::0x1AB1::0x0E11::DP8B279M00280::INSTR"
-
-    assert driver_for_resource(resource) is RigolDriverVISA
-
 
 def test_psu_help_omits_disabled_psu():
     from formslab.console.psu import psucli
@@ -81,3 +71,4 @@ def test_psu_session_returns_only_command_result(monkeypatch):
     result = PSUSession().handle("--status")
 
     assert result.content.plain == "result for psu1"
+

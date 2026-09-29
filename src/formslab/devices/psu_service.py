@@ -19,5 +19,8 @@ def get_psu(label: str) -> PSU:
         # setup, and the generic PSU.configure() bootstrap can re-emit legacy
         # Rigol protection commands that some instruments reject.
         psu = PSU(label)
+        # Connect now, before caching, so a routine learns at setup that its
+        # supply is missing rather than at its first command.
+        psu.connect()
         _PSU_CACHE[label] = psu
     return psu

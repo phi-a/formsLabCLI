@@ -3,7 +3,7 @@ from pathlib import Path
 from rich.text import Text
 from formslab.console.sessions.base import CLIResult
 from formslab.console.style import console, TEXT, ERROR, INFO, NUMBER, UNIT, LABEL, STATE_ON, STATE_OFF, SUCCESS, DIM
-from formslab.devices.PSUCLI import PSU
+from formslab.devices.DP832A import PSU
 from formslab.config import usbmap_path
 from formslab.devices.psu_config import enabled_psu_labels
 
@@ -124,6 +124,7 @@ def shutdown_handler(args, *, target=None):
     names = psus().keys() if target in ("all", None) else [target]
     for name in names:
         psus()[name].shutdown()
+        psus()[name].disconnect()
 
     result = Text()
     result.append("✔ ", SUCCESS)

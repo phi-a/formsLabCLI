@@ -5,7 +5,7 @@ import signal
 import threading
 from typing import Callable, Optional
 
-from formslab.devices.PSUCLI import PSU
+from formslab.devices.DP832A import PSU
 from formslab.devices.sLTA import SLTA
 from formslab.devices.sLTAv2 import SLTAv2
 
@@ -85,6 +85,7 @@ def capture(
         if psu_created:
             try:
                 psu.shutdown()
+                psu.disconnect()
             except Exception:
                 pass
         print("\U0001F534 SLTA shutdown complete")

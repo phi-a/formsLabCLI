@@ -279,7 +279,7 @@ def rScript(forms):
                 _publish_psu2_variable(forms, rg.psu2)  # emit NaN rows on failure
                 if rg._psu2_keepalive_fails >= 2 and rg.psu2 is not None:
                     try:
-                        rg.psu2._reconnect()
+                        rg.psu2.reconnect()
                         forms.log("PSU2 reconnected", component=name)
                         rg._psu2_keepalive_fails = 0
                         if _publish_status(forms, "psu2", rg.psu2):

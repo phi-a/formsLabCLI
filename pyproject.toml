@@ -10,14 +10,21 @@ requires-python = ">=3.10"
 # The base install is a working lab console and nothing more: terminal
 # rendering plus the transports the drivers actually open. `pyvisa` and
 # `pyserial` are both here because the Rigol PSU driver prefers VISA and falls
-# back to a raw serial line (devices/PSUCLI.py), and a lab box should have both
+# back to a raw serial line (devices/DP832A.py), and a lab box should have both
 # paths available rather than discovering the gap mid-test. Deliberately absent:
 # numpy, matplotlib and any astrodynamics library -- driving a PSU needs none of
 # them. That absence is the reason this package was split out of FORMS.
+#
+# `pyvisa` picks its backend itself: NI-VISA when that library is installed
+# (the Windows benches), otherwise pyvisa-py. Linux and the Pi have no NI-VISA,
+# so they get pyvisa-py, plus pyusb for its USBTMC transport. Windows keeps
+# NI-VISA and does not pull either in.
 dependencies = [
     "rich",
     "pyserial",
     "pyvisa",
+    "pyvisa-py; sys_platform != 'win32'",
+    "pyusb; sys_platform != 'win32'",
     "pymodbus",
     "psutil",
 ]
