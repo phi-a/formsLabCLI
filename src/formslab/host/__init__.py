@@ -1,9 +1,8 @@
-"""The sequence host: running FORMS missions against lab hardware.
+"""The sequence host: running rScripts against lab hardware, with or without
+a FORMS mission around them.
 
-Everything in this subpackage needs the optional `[forms]` extra. Unlike
-`formslab.console` and `formslab.devices` -- which run standalone and reach the
-library only through `formslab.bridge` -- the host exists to drive
-`forms.sequence`, so it imports FORMS directly. Without the extra installed
-these modules simply do not import, and the console's `ctrl` tab reports the
-`run` command as unavailable rather than failing mid-launch.
+Lab modes (`modes.LAB_MODES`) need only formsLabCLI. Every other mode needs
+the optional `[forms]` extra; those imports are made when the mode starts, so
+this package imports on a lab machine without FORMS, and the console's `ctrl`
+tab refuses a FORMS mode up front rather than failing mid-launch.
 """

@@ -61,6 +61,17 @@ class LaunchRefusesWithoutForms(unittest.TestCase):
         popen.assert_not_called()
         self.assertIn("formslab[forms]", result.content.plain)
 
+    def test_a_lab_mode_launches_without_forms(self):
+        """`run laco` is chamber control; it must not wait on the astrodynamics
+        library being installed."""
+        with mock.patch.object(bridge, "available", return_value=False), \
+                mock.patch.object(ctrlcli.subprocess, "Popen",
+                                  return_value=mock.Mock(pid=99)) as popen:
+            ctrlcli._launch_sequence("laco")
+
+        popen.assert_called_once()
+        self.assertEqual(popen.call_args.args[0][-2:], ["--mode", "laco"])
+
 
 class LaunchTargetsTheInstalledHost(unittest.TestCase):
 
@@ -101,21 +112,19 @@ class LaunchTargetsTheInstalledHost(unittest.TestCase):
         self.assertEqual(ctrlcli._get_pid_path().read_text(), "4321")
 
 
-class HostRequiresForms(unittest.TestCase):
+class HostRunsWithoutForms(unittest.TestCase):
+    """FORMS is imported when a FORMS mode starts, never at host import."""
 
-    def test_host_is_importable_only_with_the_extra(self):
+    def test_host_imports_without_the_extra(self):
         import importlib
-        if not bridge.available():
-            with self.assertRaises(ModuleNotFoundError):
-                importlib.import_module("formslab.host.sequence")
-        else:
+        import sys
+        with mock.patch.dict(sys.modules, {"forms": None}):
+            for name in [m for m in sys.modules if m.startswith("formslab.host")]:
+                sys.modules.pop(name)
             importlib.import_module("formslab.host.sequence")
 
     def test_host_runs_as_a_module(self):
-        """What `ctrl` actually invokes. Skipped on a bare lab install."""
-        if not bridge.available():
-            self.skipTest("needs the optional [forms] extra")
-
+        """What `ctrl` actually invokes."""
         import sys
         proc = subprocess.run(
             [sys.executable, "-m", "formslab.host.sequence", "--help"],

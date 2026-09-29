@@ -1,7 +1,10 @@
-# --- rTVAC_LACO: LACO chamber via the HVC-3500 ASCII/TCP link ---
+# --- rLACO: LACO chamber control and monitor, via the HVC-3500 ASCII/TCP link ---
 #
-# Reads the chamber every HOLD_INTERVAL seconds, publishes FORMS scalars and
-# a CAST "hvc" status block, and applies CAST requests written to "hvc":
+# The default rScript for the UIUC LACO chamber. Runs without FORMS.
+#
+# Reads the chamber every POLL_INTERVAL seconds (wall clock), publishes scalars on
+# the forms handle and a CAST "hvc" status block, and applies CAST requests
+# written to "hvc":
 #
 #   {"platen": 25.0}            zone setpoint, degrees C (clamped to profile limits)
 #   {"shroud": -20.0}
@@ -21,12 +24,11 @@
 import os
 from pathlib import Path
 
-from forms.utils.rScripts import RScriptControl
-from forms.bricks.thermal.radiation import C2K
 from formslab.console.cast.castutils import ReadCommand, UpdateStatus
 from formslab.config import output_dir
 from formslab.devices.hvc3500 import HVC3500Client, ProtocolError, load_profile
 from formslab.devices.tvacutils import _update_tvac
+from formslab.rscripts import C2K, RScriptControl
 
 name = os.path.splitext(os.path.basename(__file__))[0]
 LABEL = "hvc"
@@ -34,13 +36,12 @@ LABEL = "hvc"
 
 class rGlobal:
     disable = False
-    useHold = True
-    HOLD_INTERVAL = 5
+    POLL_INTERVAL = 5          # replaced by the profile's poll_interval_s
     LOG_INTERVAL = 30.0
 
     profile = None
     client = None
-    tvaclog = Path(output_dir()) / "TVAC_LACO.json"
+    tvaclog = Path(output_dir()) / "LACO.json"
     _last_log_time = 0.0
     _connected = False
     rI = 0
@@ -77,7 +78,7 @@ def _set(forms, nm, value, unit):
 def _connect(forms):
     if rg.profile is None:
         rg.profile = load_profile()
-        rg.HOLD_INTERVAL = rg.profile.poll_interval_s
+        rg.POLL_INTERVAL = rg.profile.poll_interval_s
         _ensure_variables(forms, rg.profile)
     if rg.client is None:
         rg.client = HVC3500Client(rg.profile.host, rg.profile.port, timeout=rg.profile.timeout_s)
@@ -137,14 +138,7 @@ def rScript(forms):
     if rg.disable:
         return
     rg.rI += 1
-    try:
-        r = RScriptControl(forms, name)
-        if rg.useHold:
-            r.hold(seconds=rg.HOLD_INTERVAL)
-        if r:
-            return
-    except Exception as e:
-        forms.log(f"RScriptControl exception: {e}", level="ERROR", component=name)
+    if RScriptControl(forms, name).tick(seconds=rg.POLL_INTERVAL):
         return
 
     if not _connect(forms):

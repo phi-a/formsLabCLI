@@ -1,17 +1,23 @@
-"""The sequence host: the process that runs a FORMS mission against lab hardware.
+"""The sequence host: the process that runs rScripts against lab hardware,
+optionally inside a FORMS mission.
 
-Launched by the console's `ctrl` tab (`run <mission|tvac>`), or directly:
+Launched by the console's `ctrl` tab (`run <mission|tvac|laco>`), or directly:
 
-    python -m formslab.host.sequence --mode tvac
+    python -m formslab.host.sequence --mode laco
 
-This is the one part of the package that genuinely depends on FORMS rather than
-optionally reaching it -- it exists to drive `forms.sequence` and the `.zen`
-mission library -- so it imports the library directly instead of through
-`formslab.bridge`, and needs the `[forms]` extra installed.
+Two kinds of run, chosen by mode:
 
-It is the bridge in the other direction too: FORMS inverts control here via
-`forms.zen.hosthooks`, so portable routine code can reach the telemetry stream
-and CAST state without importing anything from this package.
+* **Lab** (`laco`) -- no FORMS. A `formslab.rscripts.LabForms` handle and a
+  loop paced in real time at `LAB_LOOP_HZ`. Needs only formsLabCLI.
+* **FORMS** (`mission`, `zen`, `tvac`, a mission file) -- FORMS builds the
+  handle and its `SequenceRunner` drives the steps, with the rScripts as its
+  per-step tick. Needs the `[forms]` extra; every FORMS import is made here, at
+  call time, so a lab machine without FORMS can still import this module.
+
+For FORMS runs the host is also the bridge in the other direction: FORMS
+inverts control via `forms.zen.hosthooks`, so portable routine code can reach
+the telemetry stream and CAST state without importing anything from this
+package.
 """
 
 import os
@@ -22,17 +28,16 @@ import signal
 from pathlib import Path
 import re
 
-from forms.utils.rScripts import rScripts, eScript
+from formslab import rscripts
 from formslab.console.ctrl.ctrlutils import ReadCommand,ResetCtrlState
 from formslab.console.cast.castutils import UpdateStatus, ResetJson, WriteCommand
 from formslab.console.cmd.cmdutils import read_cmd, write_response, reset_cmd_state
 
-from formslab.host.modes import axionsat
-from formslab.host.modes import darkness
-from formslab.host.modes import tvac as tvacmode
-from formslab.host.modes import tvac_laco as lacomode
-from forms.skills.mission_loader import MissionLoader
-from forms.sequence import compile_sequence, SequenceRunner, JsonlEventSink
+from formslab.host.modes import LAB_MODES
+
+# Lab loop rate. Scripts gate their own hardware cadence (rLACO polls every
+# few seconds); this only bounds how quickly ctrl/cmd requests are seen.
+LAB_LOOP_HZ = 10.0
 
 # GUI streaming is an optional host capability provided by the host-runtime
 # module stream.py (it writes data/streamfile.json for the Zenith frontend).
@@ -81,11 +86,10 @@ paused = False
 _zen_runtime = None  # ZenRuntime instance when running .zen files
 
 _ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
-# IPC paths live under the shared output root's ``.run/`` dir (the same
-# ``forms.core.paths.run_dir`` the packaged runner and the console use), so a dev
-# host and an attached Zenith agree on where events/session/lock go instead of
-# hard-coding the source tree's data/ dir.
-from forms.core.paths import run_dir as _run_dir
+# IPC paths live under the shared run dir (FORMS' ``run_dir`` when installed,
+# else ``<output>/.run``), so a dev host and an attached Zenith agree on where
+# events/session/lock go instead of hard-coding the source tree's data/ dir.
+from formslab.host.paths import run_dir as _run_dir
 
 SEQUENCE_LOCK_PATH = _run_dir() / "sequence.lock"
 SEQUENCE_SESSION_PATH = _run_dir() / "sequence.session.json"
@@ -391,16 +395,19 @@ def _bind_repl_namespace(forms, namespace):
     Keep REPL bindings deterministic for GUI/console commands.
 
     We always bind live core objects and API helper aliases so commands do
-    not depend on mutable user namespace state.
+    not depend on mutable user namespace state. A lab handle has no satellite,
+    planet or sun, and a lab machine may have neither numpy nor FORMS; those
+    names are then simply absent.
     """
-    import numpy as _np
-
     namespace["forms"] = forms
-    namespace["satellite"] = forms.satellite
-    namespace["planet"] = forms.planet
-    namespace["sun"] = forms.sun
-    namespace["time"] = forms.time
-    namespace["np"] = _np
+    for attr in ("satellite", "planet", "sun", "time"):
+        if hasattr(forms, attr):
+            namespace[attr] = getattr(forms, attr)
+    try:
+        import numpy as _np
+        namespace["np"] = _np
+    except ImportError:
+        pass
 
     api = getattr(forms, "api", None)
     api_search = getattr(forms, "api_search", None)
@@ -408,7 +415,10 @@ def _bind_repl_namespace(forms, namespace):
     api_rebuild = getattr(forms, "api_rebuild", None)
 
     if not all(callable(fn) for fn in (api, api_search, api_status, api_rebuild)):
-        api, api_search, api_status, api_rebuild = _build_fallback_api_helpers()
+        try:
+            api, api_search, api_status, api_rebuild = _build_fallback_api_helpers()
+        except ImportError:
+            return          # no FORMS: no API catalog to browse
 
         # Best-effort compatibility for commands like forms.api_status().
         try:
@@ -580,6 +590,10 @@ def check_cmd(forms, namespace):
 # --- Mode Transition Handler ---
 def transition(forms, target):
     """Handle a mode transition requested by an rScript."""
+    # The legacy FORMS modes still run their scripts through FORMS' own loader
+    # until those scripts are ported; see modes/tvac.py.
+    from forms.utils.rScripts import rScripts, eScript
+
     forms.log(f"Transitioning to {target} mode...", component="sequence")
 
     if target == "tvac":
@@ -625,44 +639,48 @@ def channel(forms=None, mode="mission", config_path=None, relay_func=None):
     ResetJson()
     reset_cmd_state()
     _reset_events_file()
+    lab = mode in LAB_MODES and not config_path
     if forms is None:
         # Auto-detect .zen files
         if config_path and config_path.endswith('.zen'):
             mode = "zen"
 
-        if mode == "zen" and config_path:
+        if lab:
+            from formslab.host.modes import laco as lacomode
+            forms = lacomode.initialize()
+        elif mode == "zen" and config_path:
             from forms.zen import ZenRuntime
             _zen_runtime = ZenRuntime(config_path)
             forms = _zen_runtime.initialize()
         elif config_path:
             # Load from configuration file (YAML/JSON)
+            from forms.skills.mission_loader import MissionLoader
             loader = MissionLoader(config_path)
             forms = loader.initialize()
         elif mode == "tvac":
+            from formslab.host.modes import tvac as tvacmode
             forms = tvacmode.initialize()
-        elif mode == "laco":
-            forms = lacomode.initialize()
         else:
+            from formslab.host.modes import darkness
             forms = darkness.initialize()
 
-    # Select tick function: zen.tick() for .zen files, eScript for everything else
-    tick_fn = _zen_runtime.tick if _zen_runtime else lambda: eScript(forms)
+    # Select tick function: zen.tick() for .zen files, the formslab rScripts
+    # runtime on a lab handle, FORMS' legacy loader for the other FORMS modes.
+    if _zen_runtime:
+        tick_fn = _zen_runtime.tick
+    elif getattr(forms, "is_lab_handle", False):
+        tick_fn = lambda: rscripts.tick(forms)
+    else:
+        from forms.utils.rScripts import eScript
+        tick_fn = lambda: eScript(forms)
 
     # Build REPL namespace — for zen mode, use the runtime's namespace (has forms, satellite, etc.)
-    # For legacy mode, build a basic namespace with forms and its facades
+    # Otherwise a basic namespace with forms and whatever facades it has.
     if _zen_runtime:
         repl_ns = _zen_runtime._namespace
     else:
-        import numpy as _np
-        repl_ns = {
-            "__builtins__": __builtins__,
-            "forms": forms,
-            "satellite": forms.satellite,
-            "planet": forms.planet,
-            "sun": forms.sun,
-            "time": forms.time,
-            "np": _np,
-        }
+        repl_ns = {"__builtins__": __builtins__}
+        _bind_repl_namespace(forms, repl_ns)
 
     # The first derive (previously here, unconditionally) now lives in the
     # Sequence's `setup` segment for the mission path, and in the tvac branch
@@ -676,8 +694,27 @@ def channel(forms=None, mode="mission", config_path=None, relay_func=None):
     entered_tvac = False
 
     try:
+        # --- Lab mode (no FORMS): realtime loop over the rScripts ---
+        if lab:
+            forms.log(f'Sequence mode:{mode} running (lab, {LAB_LOOP_HZ:g} Hz).',
+                      level="INFO", component='sequence')
+            period = 1.0 / LAB_LOOP_HZ
+            while True:
+                started = time.monotonic()
+                check_ctrl_commands(forms)
+                check_cmd(forms, repl_ns)
+                while paused:
+                    time.sleep(0.1)
+                    check_ctrl_commands(forms)
+                    check_cmd(forms, repl_ns)
+                tick_fn()
+                write(forms)
+                forms.record()
+                time.sleep(max(0.0, period - (time.monotonic() - started)))
+
         # --- Mission mode (runs as a Sequence) ---
         if mode != "tvac":
+            from forms.sequence import compile_sequence, SequenceRunner, JsonlEventSink
             forms.log(f'Sequence mode:{mode} running.',level="INFO",component='sequence')
 
             _poll_state = {"last_poll": 0.0}
@@ -723,9 +760,9 @@ def channel(forms=None, mode="mission", config_path=None, relay_func=None):
                     entered_tvac = True
 
         # --- TVAC mode loop (only if explicitly tvac or transitioned) ---
-        if mode in ("tvac", "laco") or entered_tvac:
+        if mode == "tvac" or entered_tvac:
             forms.log(f'Sequence mode:{mode} running.',level="INFO",component='sequence')
-            if mode in ("tvac", "laco") and not entered_tvac:
+            if mode == "tvac" and not entered_tvac:
                 # Pure-tvac start: no mission Sequence ran, so prime the derive
                 # phase here (a transitioned entry was already primed by the
                 # mission Sequence's setup segment).
@@ -786,7 +823,8 @@ if __name__ == "__main__":
         "--mode",
         choices=["tvac", "laco", "mission", "zen"],
         default="mission",
-        help="tvac = maintenance loop; mission = propagation loop; zen = .zen mission file",
+        help="laco = LACO chamber, no FORMS; tvac = legacy Rigol bench; "
+             "mission = propagation loop; zen = .zen mission file",
     )
     parser.add_argument(
         "--config", "-c",

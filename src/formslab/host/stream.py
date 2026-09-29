@@ -26,8 +26,8 @@ def set_stream_hz(hz: float) -> None:
 
 # The live-telemetry file lives under the run's output root (shared with the
 # console and the packaged runner), resolved fresh so dev and installed runs
-# agree via FORMS_OUTPUT_DIR — never anchored to the source tree.
-from forms.core.paths import run_dir
+# agree -- never anchored to the source tree. FORMS' run dir when installed.
+from formslab.host.paths import run_dir
 
 
 def _json_path() -> Path:
