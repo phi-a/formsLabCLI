@@ -7,7 +7,7 @@ Default behavior:
 - Hold TC11 near 170 K by nudging CCVOUT / CCVRES within bounds
 - Raise shrouds by 10 K every 4 hours until 280 K
 
-Example .zen usage:
+Historical .zen usage (the .forms path refuses routines.load):
     routines.load = [
         {"name": "rEX_CryoRamp"}
     ]
@@ -22,7 +22,7 @@ from time import time
 from typing import Callable
 
 from formslab.console.cast.castutils import ReadStatus, WriteCommand
-from forms.zen.routine import routine
+from forms.runtime.routine import routine
 from formslab.devices.cryoboard_utils import queue_cryo_request
 from formslab.devices.cryo_config import ccvres_code_from_ohms, ccvres_ohms_from_code
 from formslab.devices.psu_command_utils import build_psu_channel_request, queue_psu_request

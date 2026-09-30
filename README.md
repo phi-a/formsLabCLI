@@ -172,7 +172,7 @@ mission against the bench:
 
 ```
 labcli --ctrl
-ctrl> missions          # the .zen library, as FORMS resolves it
+ctrl> missions          # the .forms library, as FORMS resolves it
 ctrl> run tvac          # or: run darkness, run 1
 log>  tail 50           # the host's output
 ```

@@ -36,6 +36,10 @@ def _load_catalog() -> Tuple[Dict[str, Any], Path]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
+        payload = None
+    # A catalog written before FORMS #753 carries `zen_namespace`; rebuild it
+    # rather than browse with no alias hints.
+    if not isinstance(payload, dict) or "mission_namespace" not in payload:
         build_catalog(project_root=root, output_path=path)
         payload = json.loads(path.read_text(encoding="utf-8"))
 
@@ -43,7 +47,7 @@ def _load_catalog() -> Tuple[Dict[str, Any], Path]:
 
 
 def _catalog_hints(payload: Dict[str, Any]) -> Dict[str, str]:
-    hints = payload.get("zen_namespace", {}).get("symbol_hints", []) or []
+    hints = payload.get("mission_namespace", {}).get("symbol_hints", []) or []
     out: Dict[str, str] = {}
     for item in hints:
         alias = str(item.get("alias", "") or "").strip()
@@ -54,11 +58,9 @@ def _catalog_hints(payload: Dict[str, Any]) -> Dict[str, str]:
 
 
 # The dependency ranks, in canonical order, used to group package roots in
-# the overview. `flatsat` is the top-level hardware/ops subsystem (the `objects`
-# tier was drained and deleted in brick-collapse Stage 4.8). The top rank
-# `skills` holds the live agent capabilities (not persisted to the catalog
+# the overview. The top rank `skills` holds the live agent capabilities (not persisted to the catalog
 # file) -- see `_render_skills`.
-_LAYER_ORDER = ["bricks", "flatsat", "infrastructure", "skills"]
+_LAYER_ORDER = ["bricks", "infrastructure", "skills"]
 
 _SKILLS_TOKENS = {"skills", "ai", "capabilities", "caps"}
 
@@ -68,7 +70,7 @@ def _packages_by_layer(payload: Dict[str, Any]) -> Dict[str, Dict[str, int]]:
 
     The rank is each node's own legacy-named `layer` field; the
     package is the first import segment (e.g. the `infrastructure` rank holds
-    the `core` and `zen` packages). Mirrors how FORMS is organized."""
+    the `core` and `runtime` packages). Mirrors how FORMS is organized."""
     by_layer: Dict[str, Dict[str, int]] = {}
     for node in payload.get("nodes", []) or []:
         symbol = str(node.get("symbol") or "")

@@ -8,7 +8,7 @@ Config parameters:
     TmS: float = 240            -Shroud wall temperature (K)
     tR: int = 60                Record cadence (s)
 
-Example .zen usage:
+Historical .zen usage (the .forms path refuses routines.load):
     routines.load = [
         {
             "name": "rTVAC_EQCTRL",
@@ -29,7 +29,7 @@ from typing import Callable, Dict, List, Optional
 
 from formslab.console.cast.castutils import WriteCommand
 from forms.utils.rScripts import RScriptControl
-from forms.zen.routine import routine
+from forms.runtime.routine import routine
 
 
 name = os.path.splitext(os.path.basename(__file__))[0]

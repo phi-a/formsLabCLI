@@ -9,13 +9,13 @@ Two kinds of run, chosen by mode:
 
 * **Lab** (`laco`) -- no FORMS. A `formslab.rscripts.LabForms` handle and a
   loop paced in real time at `LAB_LOOP_HZ`. Needs only formsLabCLI.
-* **FORMS** (`mission`, `zen`, `tvac`, a mission file) -- FORMS builds the
+* **FORMS** (`mission`, `forms`, `tvac`, a mission file) -- FORMS builds the
   handle and its `SequenceRunner` drives the steps, with the rScripts as its
   per-step tick. Needs the `[forms]` extra; every FORMS import is made here, at
   call time, so a lab machine without FORMS can still import this module.
 
 For FORMS runs the host is also the bridge in the other direction: FORMS
-inverts control via `forms.zen.hosthooks`, so portable routine code can reach
+inverts control via `forms.runtime.hosthooks`, so portable routine code can reach
 the telemetry stream and CAST state without importing anything from this
 package.
 """
@@ -58,8 +58,8 @@ except ImportError:
     def set_stream_hz(*_args, **_kwargs):
         pass
 
-# Register host capabilities with the .zen runtime. The routines layer
-# (forms.zen) never imports app/ or cli/ directly (the forms-handle
+# Register host capabilities with the Forms runtime. The runtime layer
+# (forms.runtime) never imports app/ or cli/ directly (the forms-handle
 # contract); the host injects GUI streaming + CAST device I/O here.
 try:
     from types import SimpleNamespace as _HostNS
@@ -70,7 +70,7 @@ try:
         UpdateStatus as _cast_status,
         ReadStatus as _cast_read_status,
     )
-    from forms.zen.hosthooks import register_stream_hook, register_cast_provider
+    from forms.runtime.hosthooks import register_stream_hook, register_cast_provider
     register_stream_hook(_set_stream_hz)
     register_cast_provider(_HostNS(
         read_command=_cast_read,
@@ -83,7 +83,7 @@ except Exception:
 
 forms = None
 paused = False
-_zen_runtime = None  # ZenRuntime instance when running .zen files
+_runtime = None  # FormsRuntime instance when running .forms files
 
 _ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
 # IPC paths live under the shared run dir (FORMS' ``run_dir`` when installed,
@@ -618,7 +618,7 @@ def transition(forms, target):
 
 # --- Main execution loop ---
 def channel(forms=None, mode="mission", config_path=None, relay_func=None):
-    global paused, _zen_runtime
+    global paused, _runtime
 
     def emit(msg: str) -> None:
         if relay_func:
@@ -641,17 +641,17 @@ def channel(forms=None, mode="mission", config_path=None, relay_func=None):
     _reset_events_file()
     lab = mode in LAB_MODES and not config_path
     if forms is None:
-        # Auto-detect .zen files
-        if config_path and config_path.endswith('.zen'):
-            mode = "zen"
+        # Auto-detect .forms files
+        if config_path and config_path.endswith('.forms'):
+            mode = "forms"
 
         if lab:
             from formslab.host.modes import laco as lacomode
             forms = lacomode.initialize()
-        elif mode == "zen" and config_path:
-            from forms.zen import ZenRuntime
-            _zen_runtime = ZenRuntime(config_path)
-            forms = _zen_runtime.initialize()
+        elif mode == "forms" and config_path:
+            from forms.runtime import FormsRuntime
+            _runtime = FormsRuntime(config_path)
+            forms = _runtime.initialize()
         elif config_path:
             # Load from configuration file (YAML/JSON)
             from forms.skills.mission_loader import MissionLoader
@@ -664,20 +664,21 @@ def channel(forms=None, mode="mission", config_path=None, relay_func=None):
             from formslab.host.modes import darkness
             forms = darkness.initialize()
 
-    # Select tick function: zen.tick() for .zen files, the formslab rScripts
-    # runtime on a lab handle, FORMS' legacy loader for the other FORMS modes.
-    if _zen_runtime:
-        tick_fn = _zen_runtime.tick
+    # Select tick function. FormsRuntime has no per-step tick: explicit
+    # Sequence operations own every procedure call. A lab handle runs the
+    # formslab rScripts runtime; the other FORMS modes run FORMS' legacy loader.
+    if _runtime:
+        tick_fn = lambda: None
     elif getattr(forms, "is_lab_handle", False):
         tick_fn = lambda: rscripts.tick(forms)
     else:
         from forms.utils.rScripts import eScript
         tick_fn = lambda: eScript(forms)
 
-    # Build REPL namespace — for zen mode, use the runtime's namespace (has forms, satellite, etc.)
+    # Build REPL namespace — for forms mode, use the runtime's namespace (has forms, satellite, etc.)
     # Otherwise a basic namespace with forms and whatever facades it has.
-    if _zen_runtime:
-        repl_ns = _zen_runtime._namespace
+    if _runtime:
+        repl_ns = _runtime._namespace
     else:
         repl_ns = {"__builtins__": __builtins__}
         _bind_repl_namespace(forms, repl_ns)
@@ -742,7 +743,7 @@ def channel(forms=None, mode="mission", config_path=None, relay_func=None):
                         break
                     time.sleep(0.1)
 
-            seq = compile_sequence(_zen_runtime if _zen_runtime else forms)
+            seq = compile_sequence(_runtime if _runtime else forms)
             runner = SequenceRunner(
                 forms, seq,
                 sink=JsonlEventSink(SEQUENCE_EVENTS_PATH),
@@ -798,8 +799,8 @@ def channel(forms=None, mode="mission", config_path=None, relay_func=None):
         raise
 
     finally:
-        if _zen_runtime:
-            _zen_runtime.teardown()
+        if _runtime:
+            _runtime.teardown()
         if forms is not None:
             forms.log("FINAL CLEANUP RUNNING", level="INFO", component="sequence")
             # Flush the final state to streamfile.json (bypasses rate limiter)
@@ -821,10 +822,10 @@ if __name__ == "__main__":
     parser = ArgumentParser(description="Run the FORMS processing loop")
     parser.add_argument(
         "--mode",
-        choices=["tvac", "laco", "mission", "zen"],
+        choices=["tvac", "laco", "mission", "forms"],
         default="mission",
         help="laco = LACO chamber, no FORMS; tvac = legacy Rigol bench; "
-             "mission = propagation loop; zen = .zen mission file",
+             "mission = propagation loop; forms = .forms mission file",
     )
     parser.add_argument(
         "--config", "-c",
