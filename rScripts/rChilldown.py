@@ -21,7 +21,7 @@ Config parameters:
     next_routine: str = ""      Optional routine to start after completion
     next_tR: int = 60           Record cadence for rTVAC_EQCTRL handoff
 
-Example .zen usage:
+Historical .zen usage (the .forms path refuses routines.load):
     routines.load = [
         {
             "name": "rChilldown",
@@ -50,7 +50,7 @@ from time import time
 from dataclasses import dataclass, field
 from typing import Callable, Dict
 
-from forms.zen.routine import routine
+from forms.runtime.routine import routine
 from formslab.console.cast.castutils import WriteCommand
 from formslab.devices.cryoboard_utils import queue_cryo_request
 from formslab.devices.psu_command_utils import build_psu_channel_request, queue_psu_request

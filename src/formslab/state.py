@@ -37,7 +37,7 @@ def build_default_ctrl_commands() -> dict:
         "missions": {
             "key": None,
             "processed": True,
-            "desc": "List available .zen missions and operational modes",
+            "desc": "List available .forms missions and operational modes",
         },
         "run": {
             "key": None,

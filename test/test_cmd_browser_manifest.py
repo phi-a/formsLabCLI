@@ -57,19 +57,19 @@ def test_browser_resolves_a_known_alias_path():
 
 def test_tree_groups_packages_by_layer():
     # The overview groups packages by their dependency rank.
-    # The infrastructure rank holds both `core` and `zen`; bricks holds `bricks`;
-    # flatsat is the top-level hardware/ops subsystem (the `objects` tier was
-    # drained and deleted in brick-collapse Stage 4.8).
-    assert _LAYER_ORDER == ["bricks", "flatsat", "infrastructure", "skills"]
+    # The infrastructure rank holds both `core` and `runtime` (FORMS #753 renamed
+    # `zen`); bricks holds `bricks`. FORMS #752 removed the flatsat subsystem.
+    assert _LAYER_ORDER == ["bricks", "infrastructure", "skills"]
     payload = build_base_manifest_payload(project_root=ROOT)
     by_layer = _packages_by_layer(payload)
     assert "bricks" in by_layer["bricks"]
-    assert {"core", "zen"} <= set(by_layer["infrastructure"])
+    assert {"core", "runtime"} <= set(by_layer["infrastructure"])
     assert "routines" not in by_layer
-    assert by_layer["infrastructure"]["core"] == 100
-    assert by_layer["infrastructure"]["zen"] == 9
-    assert sum(by_layer["infrastructure"].values()) == 109
-    assert "flatsat" in by_layer["flatsat"]
+    assert by_layer["infrastructure"]["core"] == 105
+    assert by_layer["infrastructure"]["runtime"] == 9
+    assert "zen" not in by_layer["infrastructure"]
+    assert sum(by_layer["infrastructure"].values()) == 114
+    assert "flatsat" not in by_layer
 
 
 def test_bare_package_is_a_navigable_root():

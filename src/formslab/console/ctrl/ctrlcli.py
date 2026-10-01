@@ -25,7 +25,7 @@ from formslab.host.modes import LAB_MODES
 from formslab.console.log.logcli import log_path
 
 def missions_dir():
-    """The `.zen` mission library, as FORMS resolves it.
+    """The `.forms` mission library, as FORMS resolves it.
 
     Asked of the library rather than computed here: FORMS already resolves a
     workspace ($FORMS_MISSIONS_DIR, then a walk up for `missions/`, then a
@@ -39,45 +39,35 @@ def missions_dir():
         return None
 
 
-def _parse_zen_header(path: Path) -> dict:
-    """Extract mission metadata from .zen file comments and config."""
+def _parse_mission_header(path: Path) -> dict:
+    """Extract mission metadata from a .forms file's config assignments."""
     meta = {}
     try:
         content = path.read_text()
         for line in content.split('\n')[:50]:
             line = line.strip()
-            if line.startswith('#'):
-                lower = line.lower()
-                if 'mission:' in lower:
-                    meta['mission'] = line.split(':', 1)[1].strip()
-                elif 'author:' in lower:
-                    meta['author'] = line.split(':', 1)[1].strip()
+            if line.startswith('mission.name'):
+                meta['mission'] = line.split('=', 1)[1].strip().strip('"\'')
             elif line.startswith('satellite.name'):
-                val = line.split('=', 1)[1].strip().strip('"\'')
-                meta['satellite'] = val
-            elif line.startswith('time.duration'):
-                meta['duration'] = line.split('=', 1)[1].strip()
-            elif line.startswith('time.units'):
-                meta['units'] = line.split('=', 1)[1].strip().strip('"\'')
+                meta['satellite'] = line.split('=', 1)[1].strip().strip('"\'')
     except Exception:
         pass
     return meta
 
 
 def discover_missions() -> list[dict]:
-    """Discover .zen mission files with metadata."""
+    """Discover .forms mission files with metadata."""
     missions = []
     root = missions_dir()
     if root is None or not root.exists():
         return missions
-    for zen_path in sorted(root.glob("*.zen")):
-        meta = _parse_zen_header(zen_path)
+    for mission_path in sorted(root.glob("*.forms")):
+        meta = _parse_mission_header(mission_path)
         missions.append({
-            "name": zen_path.stem,
-            "path": str(zen_path),
+            "name": mission_path.stem,
+            "path": str(mission_path),
+            "mission": meta.get("mission"),
             "satellite": meta.get("satellite"),
-            "duration": meta.get("duration"),
-            "units": meta.get("units"),
         })
     return missions
 
@@ -114,13 +104,13 @@ def missions_command() -> CLIResult:
     missions = discover_missions()
 
     if not missions:
-        result.append("  No .zen files found in missions/\n", DIM)
+        result.append("  No .forms files found in missions/\n", DIM)
     else:
         # Header row
         result.append("  #   ", LABEL)
         result.append("Name".ljust(14), LABEL)
         result.append("Satellite".ljust(14), LABEL)
-        result.append("Duration\n", LABEL)
+        result.append("Mission\n", LABEL)
         result.append("  " + "─" * 50 + "\n", DIM)
 
         for i, m in enumerate(missions, 1):
@@ -128,9 +118,7 @@ def missions_command() -> CLIResult:
             result.append(f"{m['name'][:12].ljust(14)}", INFO)
             sat = m.get('satellite') or '—'
             result.append(f"{sat[:12].ljust(14)}", TEXT)
-            dur = m.get('duration') or '—'
-            units = m.get('units') or ''
-            result.append(f"{dur} {units}\n", TEXT)
+            result.append(f"{m.get('mission') or '—'}\n", TEXT)
 
     result.append("\n")
     result.append("OPERATIONAL MODES\n", HEADER)
@@ -228,7 +216,7 @@ def run_sequence(args=None) -> CLIResult:
     Enhanced run command supporting:
       - run               -> default mission (first available)
       - run tvac          -> TVAC operational mode
-      - run darkness      -> missions/darkness.zen
+      - run darkness      -> missions/darkness.forms
       - run 2             -> second mission by index
       - run sequence tvac -> legacy compatibility
     """
@@ -237,7 +225,7 @@ def run_sequence(args=None) -> CLIResult:
     if not args:
         # Default: first available mission or darkness fallback
         if missions:
-            return _launch_sequence(mode="zen", config_path=missions[0]['path'])
+            return _launch_sequence(mode="forms", config_path=missions[0]['path'])
         return _launch_sequence(mode="mission", config_path=None)
 
     target = args[0].lower()
@@ -263,7 +251,7 @@ def run_sequence(args=None) -> CLIResult:
             return CLIResult(f"✗ Ambiguous: '{target}' matches [{names}]")
         return CLIResult(f"✗ Unknown mission: '{target}'. Use 'missions' to list available.")
 
-    return _launch_sequence(mode="zen", config_path=mission['path'])
+    return _launch_sequence(mode="forms", config_path=mission['path'])
 
 def status_panel() -> CLIResult:
     pid_path = _get_pid_path()

@@ -27,8 +27,7 @@ def initialize():
     print("End Time   (JD):", forms.time.epoch1)
 
     # --- Routine Scripts ---
-    # Note: Experiment routines moved to .zen files with parameterized configs
-    # Use: routines.load = [{"name": "rShroudRamp", "config": {...}}]
+    # Note: Experiment routines moved to .forms mission files.
     # Legacy rScripts are loaded from the top-level rScripts/ folder.
     rScripts(forms,[
         "rVARIABLES.py",

@@ -37,18 +37,29 @@ class MissionDiscovery(unittest.TestCase):
         with mock.patch.object(ctrlcli, "missions_dir", return_value=None):
             self.assertEqual(ctrlcli.discover_missions(), [])
 
-    def test_discovery_reads_zen_files(self, ):
+    def test_discovery_reads_forms_files(self):
+        """FORMS #753 retired `.zen`; a leftover one is not offered as runnable."""
         root = config.config_dir() / "missions"
         root.mkdir(parents=True, exist_ok=True)
-        (root / "demo.zen").write_text(
-            '# mission: Demo\nsatellite.name = "SAT-1"\ntime.duration = 90\n',
+        (root / "demo.forms").write_text(
+            'mission.name = "Demo"\nsatellite.name = "SAT-1"\n',
             encoding="utf-8")
+        (root / "old.zen").write_text('satellite.name = "OLD"\n', encoding="utf-8")
 
         with mock.patch.object(ctrlcli, "missions_dir", return_value=root):
             found = ctrlcli.discover_missions()
 
         self.assertEqual([m["name"] for m in found], ["demo"])
+        self.assertEqual(found[0]["mission"], "Demo")
         self.assertEqual(found[0]["satellite"], "SAT-1")
+
+    def test_run_launches_a_mission_in_forms_mode(self):
+        missions = [{"name": "demo", "path": "/m/demo.forms"}]
+        with mock.patch.object(ctrlcli, "discover_missions", return_value=missions), \
+                mock.patch.object(ctrlcli, "_launch_sequence") as launch:
+            ctrlcli.run_sequence(["demo"])
+
+        launch.assert_called_once_with(mode="forms", config_path="/m/demo.forms")
 
 
 class LaunchRefusesWithoutForms(unittest.TestCase):
@@ -132,6 +143,8 @@ class HostRunsWithoutForms(unittest.TestCase):
 
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn("--mode", proc.stdout)
+        self.assertIn("forms", proc.stdout)
+        self.assertNotIn("zen", proc.stdout)
 
 
 if __name__ == "__main__":
