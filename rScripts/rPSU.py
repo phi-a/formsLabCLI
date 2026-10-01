@@ -1,16 +1,32 @@
+# --- rPSU: the Rigol DP832A supplies (psu1, psu2) ---
+#
+# Owns the supplies: applies CAST requests written to "psu1" / "psu2" and
+# publishes their status there. The request grammar, per channel "1".."3":
+#
+#   {"1": {"voltage": 5.0, "current": 0.1}}    setpoints (both required)
+#   {"1": {"on": true}}                         output on / off
+#   {"1": {"ovp": 6.0, "ocp": 0.2, "protect": true}}
+#   {"update": true}                            refresh the status now
+#
+# PSU1 is read every PSU1_POLL_INTERVAL s and published as scalars
+# PSU1_CH<n>_V / _I / _ON, so a run's CSV has the supply beside everything else.
+# On host stop, rShutdown turns off every channel this run switched on.
+# Supplies disabled in usbmap.json are not opened.
 import math
 import os
 import time
 
 from formslab.console.cast.castutils import ReadCommand, UpdateStatus
-from forms.utils.rScripts import RScriptControl
+from formslab.devices.psu_config import enabled_psu_labels
 from formslab.devices.psu_service import get_psu
+from formslab.rscripts import RScriptControl
 
 
 name = os.path.splitext(os.path.basename(__file__))[0]
 
 PSU2_KEEPALIVE_INTERVAL = 10.0   # seconds between keep-alive queries when idle
 PSU2_KEEPALIVE_BACKOFF  = 60.0   # max interval when PSU2 is persistently unreachable
+PSU1_POLL_INTERVAL      = 5.0    # seconds between PSU1 readbacks published as scalars
 
 
 class rGlobal:
@@ -27,6 +43,8 @@ class rGlobal:
     _psu2_keepalive_time      = 0.0
     _psu2_keepalive_fails     = 0      # consecutive all-null results
     _psu2_var_missing_reported = False
+    _psu1_poll_time = 0.0
+    _switched_on = set()                # (label, channel) turned on by this run
 
 
 rg = rGlobal
@@ -37,14 +55,20 @@ def _init(forms, r_global):
         return r_global
 
     try:
-        r_global.psu1 = get_psu("psu1")
+        enabled = enabled_psu_labels()
     except Exception as exc:
-        forms.log(f"PSU1 init failed: {exc}", level="ERROR", component=name)
+        forms.log(f"usbmap unreadable, no PSU opened: {exc}", level="ERROR", component=name)
+        enabled = ()
 
-    try:
-        r_global.psu2 = get_psu("psu2")
-    except Exception as exc:
-        forms.log(f"PSU2 init failed: {exc}", level="ERROR", component=name)
+    for label in ("psu1", "psu2"):
+        if label not in enabled:
+            forms.log(f"{label.upper()} disabled in usbmap; not opened", component=name)
+            continue
+        try:
+            setattr(r_global, label, get_psu(label))
+            forms.log(f"{label.upper()} connected", component=name)
+        except Exception as exc:
+            forms.log(f"{label.upper()} init failed: {exc}", level="ERROR", component=name)
 
     r_global._vars_initialized = True
     return r_global
@@ -74,6 +98,8 @@ def _publish_status(forms, label, psu):
             )
             return False
         UpdateStatus(label, state)
+        if label == "psu1":
+            _publish_psu1_scalars(forms, state)
         return True
     except Exception as exc:
         forms.log(
@@ -82,6 +108,25 @@ def _publish_status(forms, label, psu):
             component=name,
         )
         return False
+
+
+def _scalar(forms, var_name, value, unit):
+    var = forms.get_variable(var_name)
+    if var is None:
+        var = forms.types.scalar(var_name, unit=unit, overwrite=False)
+    var.set(value=value, unit=unit)
+
+
+def _publish_psu1_scalars(forms, state):
+    """PSU1 measured volts/amps and output state per channel; NaN when a
+    channel's query failed, so the CSV shows the gap."""
+    for ch, s in state.items():
+        s = s if isinstance(s, dict) else {}
+        for suffix, key, unit in (("V", "vmeas", "V"), ("I", "cmeas", "A")):
+            value = s.get(key)
+            _scalar(forms, f"PSU1_CH{ch}_{suffix}", math.nan if value is None else float(value), unit)
+        on = s.get("on")
+        _scalar(forms, f"PSU1_CH{ch}_ON", math.nan if on is None else float(bool(on)), None)
 
 
 def _publish_psu2_variable(forms, psu):
@@ -170,9 +215,11 @@ def _handle_channel_request(forms, label, psu, channel_text, channel_request):
         if "on" in channel_request:
             if channel_request["on"]:
                 psu.on(channel)
+                rg._switched_on.add((label, channel))
                 forms.log(f"{label.upper()} CH{channel} turned ON", component=name)
             else:
                 psu.off(channel)
+                rg._switched_on.discard((label, channel))
                 forms.log(f"{label.upper()} CH{channel} turned OFF", component=name)
             changed = True
     except Exception as exc:
@@ -249,8 +296,15 @@ def rScript(forms):
         _publish_status(forms, "psu2", rg.psu2)
         rg._status_initialized = True
 
-    _handle_psu_request(forms, "psu1", rg.psu1, ReadCommand("psu1"))
+    psu1_refreshed = _handle_psu_request(forms, "psu1", rg.psu1, ReadCommand("psu1"))
     psu2_refreshed = _handle_psu_request(forms, "psu2", rg.psu2, ReadCommand("psu2"))
+
+    now = time.time()
+    if psu1_refreshed:
+        rg._psu1_poll_time = now
+    elif rg.psu1 is not None and now - rg._psu1_poll_time >= PSU1_POLL_INTERVAL:
+        _publish_status(forms, "psu1", rg.psu1)
+        rg._psu1_poll_time = now
 
     if psu2_refreshed:
         _publish_psu2_variable(forms, rg.psu2)
@@ -259,7 +313,6 @@ def rScript(forms):
     # go stale (PSU1 stays alive via TVAC commands; PSU2 can go quiet for hours).
     # Back off exponentially when PSU2 is persistently unreachable so a dead
     # unit doesn't hammer the serial bus every 10 s.
-    now = time.time()
     if psu2_refreshed:
         rg._psu2_keepalive_time  = now
         rg._psu2_keepalive_fails = 0
@@ -291,3 +344,28 @@ def rScript(forms):
                             level="ERROR",
                             component=name,
                         )
+
+
+def rShutdown(forms):
+    """Turn off every channel this run switched on, then hand the front panels
+    back. Channels the run found on, or that an operator switched on from the
+    console, are left as they are."""
+    for label, channel in sorted(rg._switched_on):
+        psu = getattr(rg, label, None)
+        if psu is None:
+            continue
+        try:
+            psu.off(channel)
+            forms.log(f"{label.upper()} CH{channel} turned OFF at shutdown", component=name)
+        except Exception as exc:
+            forms.log(f"{label.upper()} CH{channel} OFF at shutdown FAILED: {exc}",
+                      level="ERROR", component=name)
+    rg._switched_on.clear()
+    for label in ("psu1", "psu2"):
+        psu = getattr(rg, label, None)
+        if psu is not None:
+            try:
+                _publish_status(forms, label, psu)
+                psu.disconnect()
+            except Exception as exc:
+                forms.log(f"{label.upper()} release failed: {exc}", level="WARNING", component=name)

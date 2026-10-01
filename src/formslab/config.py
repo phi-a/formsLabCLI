@@ -63,6 +63,13 @@ def output_dir() -> Path:
     return path
 
 
+def run_dir() -> Path:
+    """Where the running host keeps its lock and event log: ``<output>/.run``."""
+    path = output_dir() / ".run"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def state_path(name: str) -> Path:
     """A mutable state file in the config directory.
 

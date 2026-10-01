@@ -12,7 +12,7 @@ The cryocooler control board carries two I2C devices, documented in
 
 The FlatSat PC has no I2C bus, and there is **no USB-I2C dongle on this
 bench**. The bridge is a Raspberry Pi Pico (USB `2e8a:0005`, `cryo_board` in
-`lab/usbmap.json`) running MicroPython: the PC drives it over USB CDC with
+the live `usbmap.json` (`~/.formslab/usbmap.json`)) running MicroPython: the PC drives it over USB CDC with
 `mpremote`, and the Pico bit-bangs the bus. The board's own bring-up notes
 describe exactly this arrangement.
 
@@ -21,7 +21,7 @@ FlatSat PC ──USB CDC (mpremote)──▶ Pico ──SoftI2C──┬── 0
                                                     └── 0x18 digipot
 ```
 
-`lab/pico_i2c.py` is the seam. It exposes only `scan()`, `read_register()` and
+`src/formslab/devices/pico_i2c.py` is the seam. It exposes only `scan()`, `read_register()` and
 `write_register()`, so swapping in a native USB-I2C adapter later means writing
 one class with those three methods — nothing above it changes.
 
@@ -29,12 +29,12 @@ one class with those three methods — nothing above it changes.
 
 | File | Responsibility |
 |---|---|
-| `lab/pico_board_control.py` | MicroPython firmware. A bare I2C bridge: scan/read/write. No calibration, no state, no board knowledge. |
-| `lab/pico_i2c.py` | PC-side transport. Serial link, firmware deploy, framed calls. `mpremote` imported lazily. |
-| `lab/cryo_registers.py` | Register map and every encoding. Pure, no imports, fully testable. |
-| `lab/CryoBoard.py` | Board behaviour and state. |
-| `lab/cryo_config.py` | Operating policy: PSU channel, supply setpoints, the 12–20 V band. |
-| `lab/cryoboard_utils.py` | Queue requests onto the CAST `cryo` channel. |
+| `src/formslab/devices/pico_board_control.py` | MicroPython firmware. A bare I2C bridge: scan/read/write. No calibration, no state, no board knowledge. |
+| `src/formslab/devices/pico_i2c.py` | PC-side transport. Serial link, firmware deploy, framed calls. `mpremote` imported lazily. |
+| `src/formslab/devices/cryo_registers.py` | Register map and every encoding. Pure, no imports, fully testable. |
+| `src/formslab/devices/CryoBoard.py` | Board behaviour and state. |
+| `src/formslab/devices/cryo_config.py` | Operating policy: PSU channel, supply setpoints, the 12–20 V band. |
+| `src/formslab/devices/cryoboard_utils.py` | Queue requests onto the CAST `cryo` channel. |
 | `rScripts/rCryoBoard.py` | The only owner of a live `CryoBoard`. |
 
 Other routines never touch `CryoBoard` — they call
@@ -47,7 +47,7 @@ bench 2026-08-29 and set in `cryo_config.py`. `CRYO_PSU_COMPONENT` is derived
 from the label so log lines cannot drift from it.
 
 > **Conflict — psu1 CH1 has two claimants.**
-> `lab/tvacutils.py::_init_psu` also configures psu1 CH1 and CH2 for the TVAC
+> `src/formslab/devices/tvacutils.py::_init_psu` also configures psu1 CH1 and CH2 for the TVAC
 > shroud heaters (`channel_map={"PYsT": 2, "MYsT": 1}`), setting `OVP 28.5 V /
 > OCP 2.1 A` and driving them from the shroud controller. The cryocooler wants
 > the same CH1 at 24 V / 2.0 A with `OVP 24.5 V`.
@@ -162,10 +162,10 @@ here.
 - `62.06 + 16.81·D` — datasheet ideal, used by the original bench script.
 - `75.30 + 17.43·D` — measured on this board, printed in the board docs.
 
-FORMS uses the **measured** fit. Two consequences are unresolved and left
+formsLabCLI uses the **measured** fit. Two consequences are unresolved and left
 alone deliberately:
 
-1. The docs derive the code with `floor()`, FORMS with `round()`. `round()` is
+1. The docs derive the code with `floor()`, formsLabCLI with `round()`. `round()` is
    kept — it lands nearest the request — so a request is met to within half a
    step (~8.7 Ω) either side, not always from below.
 2. The declared 62–1120 Ω band matches the *datasheet* fit exactly

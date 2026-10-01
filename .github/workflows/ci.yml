@@ -15,18 +15,7 @@ jobs:
         # the two differ where it matters most: the key reader, the process
         # lookups and the path handling all take a different branch.
         os: [ubuntu-latest, windows-latest]
-        # Both legs matter and they fail differently. `bare` is the lab machine:
-        # the console plus transports, no astrodynamics library. `forms` is the
-        # mission bench. A module that quietly starts importing `forms` at
-        # module scope passes `forms` and fails `bare`.
-        install: [bare, forms]
-        exclude:
-          # FORMS is a git dependency and the mission bench is Linux; running
-          # that leg twice buys nothing. Windows covers the bare lab install,
-          # which is what actually ships to a bench box.
-          - os: windows-latest
-            install: forms
-    name: test (${{ matrix.os }}, ${{ matrix.install }})
+    name: test (${{ matrix.os }})
     steps:
       - uses: actions/checkout@v4
 
@@ -34,13 +23,8 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install (bare)
-        if: matrix.install == 'bare'
+      - name: Install
         run: pip install -e ".[dev]"
-
-      - name: Install (with FORMS)
-        if: matrix.install == 'forms'
-        run: pip install -e ".[dev,forms]"
 
       - name: Test
         run: pytest -q

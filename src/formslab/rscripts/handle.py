@@ -1,20 +1,17 @@
-"""`LabForms`: the `forms` handle for a run without FORMS.
+"""`LabForms`: the `forms` handle every rScript receives.
 
-An rScript receives one object, ``forms``, and touches only what it offers.
-When a test has an orbit, that object is a real FORMS instance. When it does
-not -- a chamber soak, a PSU sweep -- it is this: the subset of the FORMS handle
-that hardware scripts actually use, built on the standard library.
+An rScript receives one object, ``forms``, and touches only what it offers. The
+name and the call shapes come from FORMS, where these scripts started; it is
+built on the standard library and FORMS is not involved.
 
     log(message, level, component)       one line on stdout (the host's log)
     types.scalar(name, value, unit)      a named value; `get_variable(name)`
     record(value=30, unit="seconds")     set the CSV cadence; `record()` emits
     time.clock() / time.timestamp        wall-clock, realtime only
-    transition.request(mode)             ask the host to change mode
 
-A script that needs more than this (satellite state, frames) declares
-``requires = ("forms",)`` and the loader skips it on this handle. Anything an
-orbit script publishes through `types.scalar` is an ordinary variable here, so
-a homemade orbit rScript works without FORMS as well.
+Orbit-driven inputs (in umbra or not, a sun angle) arrive as ordinary variables,
+published from a profile FORMS computed offline; scripts read them with
+`get_variable` like any other.
 """
 from __future__ import annotations
 
@@ -100,28 +97,6 @@ class _Clock:
         return _utc_now()
 
 
-class TransitionMode:
-    """A pending host mode change, same contract as FORMS ``forms.transition``."""
-
-    def __init__(self) -> None:
-        self.target = None
-        self.pending = False
-        self.source = None
-
-    def request(self, mode, source=None) -> None:
-        self.target, self.pending, self.source = mode, True, source
-
-    def consume(self):
-        if not self.pending:
-            return None
-        mode = self.target
-        self.target, self.pending, self.source = None, False, None
-        return mode
-
-    def __bool__(self) -> bool:
-        return self.pending
-
-
 class _Recorder:
     """Every variable to CSV at a wall-clock cadence.
 
@@ -196,7 +171,6 @@ class LabForms:
         self._variables: dict[str, object] = {}
         self.types = _Types(self)
         self.time = _Clock()
-        self.transition = TransitionMode()
         self.recording = True
         self.record = _Recorder(self, record_dir)
 

@@ -1,7 +1,7 @@
 import os
 
 from formslab.console.cast.castutils import ReadCommand, UpdateStatus
-from forms.utils.rScripts import RScriptControl
+from formslab.rscripts import RScriptControl
 from formslab.devices.cryoutils import _init_cryo_board, _init_psu2, _shutdown_cryo_subsystem
 from formslab.devices.cryo_config import (
     CRYO_PSU_LABEL,
@@ -253,21 +253,10 @@ def rScript(forms):
         rg._pending_request = None
 
 
-def routine_shutdown(forms, config=None):
-    """Release CryoBoard hardware at routine stop or mission teardown."""
+def rShutdown(forms):
+    """Release CryoBoard hardware when the host stops."""
     global rg
     _shutdown_cryo_subsystem(forms, rg, close_transport=True, release_handles=True)
     rg._pending_request = None
     _refresh_status(forms, rg)
 
-
-def routine_reset(forms, config=None):
-    """Reset module globals so the routine can be started cleanly again."""
-    global rg
-    rg.cryo = None
-    rg._init_attempted = False
-    rg._psu2_ready = False
-    rg._psu2_request_pending = False
-    rg._psu2_status_unknown_reported = False
-    rg._pending_request = None
-    rg._shutdown_latch = False

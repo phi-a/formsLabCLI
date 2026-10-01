@@ -11,9 +11,7 @@ class CLIResult:
     content: Any  # Any Rich renderable (Text, Panel, Group, Table, Columns, ...)
     clear: bool = False
     suppress_prompt: bool = False
-    # Optional structured channel carried alongside the rendered content. Used
-    # by the apply gate to round-trip a serialized changeset through the
-    # stateless GUI bridge (and, later, to render panels structurally in Zenith).
+    # Optional structured data carried alongside the rendered content.
     data: Optional[dict] = None
 
 class ConsoleSession(ABC):

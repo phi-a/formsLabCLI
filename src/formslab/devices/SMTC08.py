@@ -190,16 +190,15 @@ class SMTC08:
         """
         Reset the USB device using the method in usbmap.json and re-establish MODBUS connection.
         """
-        method = self.hubmap.get("recovery_method", "usbreset")
+        # Linux only: both methods need root tools (uhubctl, the ftdi_sio sysfs).
+        method = self.hubmap.get("recovery_method", "hubpower")
 
-        if method == "usbreset":
-            self._reset_by_usbreset()
-        elif method == "hubpower":
+        if method == "hubpower":
             self._reset_by_hub()
         elif method == "rebind":
             self._reset_by_rebind()
         else:
-            raise RuntimeError(f"✗ Unknown recovery method '{method}'")
+            raise RuntimeError(f"✗ Unknown recovery method '{method}' (hubpower or rebind)")
 
         # Post-reset recovery
         print("⏳ Waiting for device to reinitialize...")
@@ -245,7 +244,7 @@ class SMTC08:
         time.sleep(2)
 
 if __name__ == "__main__":
-    smtc = SMTC08("SMTC08")
+    smtc = SMTC08("SMTC08_A")
     temps = smtc.read_all()
     for i, t in enumerate(temps, 1):
         print(f"Channel {i}: {t:.1f} °C")

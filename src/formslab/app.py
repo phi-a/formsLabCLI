@@ -33,8 +33,6 @@ from formslab.console import frame
 from formslab.console import keys
 from formslab.state import ensure_runtime_files
 from formslab.console.sessions.base import CLIResult
-from formslab.console.resources import handle_resources_command
-from formslab.console.cmd_browser import handle_cmd_command
 from formslab.console.console_help import build_command_index
 
 
@@ -374,19 +372,6 @@ def main():
         cmd = parts[0].lower()
 
         # ─── Exit ──────────────────────────────────────────
-        if cmd in ("--resources", "resources"):
-            res = handle_resources_command(raw)
-            render_output(res.content)
-            continue
-
-        if cmd in ("--cmd", "cmd", "--tree", "tree"):
-            mapped = raw
-            if cmd in ("--tree", "tree"):
-                mapped = ("cmd " + " ".join(parts[1:])).strip()
-            res = handle_cmd_command(mapped)
-            render_output(res.content)
-            continue
-
         if cmd in ("--exit", "exit", "quit"):
             break
 

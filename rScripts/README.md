@@ -1,12 +1,10 @@
-# rScripts — lab routines
+# rScripts — the routines that own the instruments
 
 An rScript is a file `<name>.py` with a module-level `def rScript(forms):`. The
-formsLabCLI host (`formslab.host.sequence`) loads a list of them by name and
-calls each one every loop. They reach the bench through `formslab.devices.*`
-and talk to the console through the CAST channel
-(`formslab.console.cast.castutils`).
-
-The runtime is formsLabCLI's own, `formslab.rscripts`, and needs no FORMS:
+host loads the ones a mode or plan names and calls each once per loop (10 Hz).
+A routine owns its instruments for the run: it applies CAST requests for them,
+publishes readings as variables on `forms`, and leaves them safe in
+`rShutdown(forms)`, which the host calls however the run ends.
 
     from formslab.rscripts import RScriptControl
 
@@ -17,46 +15,35 @@ The runtime is formsLabCLI's own, `formslab.rscripts`, and needs no FORMS:
             return
         forms.log("five seconds passed", component=name)
 
-Gates count **wall-clock** seconds: `tick(seconds=N)` runs now and then every
-N s, `hold(seconds=N)` waits N s, runs once, and re-arms. Hardware is never paced
-by simulated time.
+    def rShutdown(forms):
+        ...                                               # outputs off, ports closed
 
-## The `forms` handle
+Gates count wall-clock seconds: `tick(seconds=N)` runs now and every N s,
+`hold(seconds=N)` waits N s, runs once, and re-arms. `forms` offers `log`,
+`types.scalar` / `get_variable`, `record` and `time` (see
+`src/formslab/rscripts/handle.py`). `enable = False` at module level keeps a
+script from loading.
 
-On a lab run (`run laco`) `forms` is a `LabForms`: `log`, `types.scalar` /
-`get_variable`, `record` (CSV of every variable to `outputs/<run>_<UTC>.csv`),
-`time.clock()`, `transition.request()`. On a FORMS mission it is the real FORMS
-instance, which offers all of that and more. Stay within that list and a
-script runs under both.
+Found by name in `$FORMSLAB_RSCRIPTS_DIR`, then `<cwd>/rScripts`, then here.
 
-A script that needs FORMS itself (satellite state, frames) sets
-`requires = ("forms",)`; lab runs skip it with a log line. `enable = False` at
-module level keeps a script from loading at all.
+## The routines
 
-## Where scripts are found
+| rScript | Owns | CAST label | Publishes |
+|---|---|---|---|
+| `rPSU` | Rigol DP832A supplies psu1/psu2 (enabled ones only) | `psu1`, `psu2` | `PSU1_CH<n>_V/_I/_ON` |
+| `rSMTC08` | SMTC08 thermocouple boards A (TC01-08), B (TC09-16) | — | `TC01`..`TC16` (K) |
+| `rTVAC` | Rigol/RTD bench: RTD16, SMTC08, PI shroud heaters on PSU1 CH1 (MY) / CH2 (PY) | `tvac` | `PYsT`, `MYsT`, `target_*`, `TCnn` (K) |
+| `rLACO` | LACO chamber via `devices.laco.LACO` (HVC-3500) | `hvc` | `chamberP`, zone temps and setpoints (K), `HVC_*` |
+| `rCryoBoard` | cryocooler control board (Pico I2C) and its PSU1 CH1 supply | `cryo` | status on CAST |
+| `rSLTA` | sLTA camera, powered from PSU2 CH1 | `slta` | status on CAST |
 
-First match wins: `$FORMSLAB_RSCRIPTS_DIR` (`os.pathsep`-separated), then
-`<cwd>/rScripts`, then this directory in a formsLabCLI checkout. No symlink
-into a FORMS workspace is needed any more.
+Do not load two routines that own the same instrument: rPSU and rTVAC share
+PSU1 by design in the `tvac` mode (rPSU for console requests, rTVAC's heater
+loop on CH1/CH2), but rCryoBoard and rTVAC both claim PSU1 CH1.
 
-## LACO chamber (HVC-3500)
+rSLTA's automatic capture follows `InUmbra`, `UmbraDuration` and
+`UmbraTimeRemaining` variables. A FORMS-computed eclipse profile will publish
+them; until then only forced captures (`{"image": true}`) run.
 
-`rLACO.py` is the default control-and-monitor routine for the UIUC LACO
-thermal-vacuum chamber. It drives `formslab.devices.laco.LACO`, the chamber
-as one object (`laco.platen.set(25.0)`, `laco.status()`), which wraps the
-vendor driver `formslab.devices.hvc3500`. Launch with `run laco` from the
-console; it needs no FORMS. Bench endpoint, units, zone/sensor numbering and
-setpoint limits come from `$FORMSLAB_CONFIG_DIR/tvac_bench.json` (seeded from
-the packaged default). New LACO routines should go through `LACO`, not the
-client, so the chamber's names and limits are enforced in one place.
-Status is published to the CAST block `hvc`; requests are written to the same
-block, e.g. `{"platen": 25.0}`, `{"platen_control": true}`, `{"vacuum": 1e-3}`,
-`{"start": true}`. Raw valve/pump toggles are deliberately not exposed - the PLC
-sequences those.
-
-## Legacy scripts
-
-The Rigol/RTD bench scripts (`rTVAC`, `rTVAC_EQCTRL`, `rPSU`, `rFSS`, ...) and
-`rTemplate` still import FORMS' old runtime (`forms.utils.rScripts`) and run only
-in the FORMS modes (`run tvac`, missions). They are due to be replaced by LACO
-routines (`rLACO_EQCTRL`, ...) on the runtime above.
+Test timelines (chilldowns, shroud ramps) are lab plans now (`plans/`, see
+docs/SEQUENCE.md), not rScripts.

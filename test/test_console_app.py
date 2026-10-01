@@ -1,15 +1,7 @@
-"""The console shell: tab routing, screen clearing, and the REPL loop.
-
-Was `test_flatsat_console.py` in the FORMS repository. The name was always a
-misnomer -- only two of its cases were about the flatsat tab and the rest cover
-the router and `main()`. Those two are replaced by
-`test_flatsat_tab_is_not_offered`, which fences the extraction decision: the
-flatsat tab wrapped `forms.flatsat`, a subsystem that stayed in FORMS.
-"""
+"""The console shell: tab table, screen clearing, and the REPL loop."""
 
 from formslab import app
 from formslab.app import clear_screen, initial_tab_from_argv
-from formslab.console.console_router import ConsoleRouter
 from formslab.console.sessions.base import CLIResult
 
 
@@ -27,42 +19,11 @@ class _StubSession:
         return f"{self.name}> "
 
 
-def test_flatsat_tab_is_not_offered():
-    """It wrapped `forms.flatsat`, which stayed in the FORMS repository."""
-    router = ConsoleRouter()
-
-    assert "flatsat" not in router.tabs
-    assert "flatsat" not in app.TAB_FACTORIES
+def test_the_hardware_tabs_are_the_tabs():
+    """ctrl, cast, log, psu -- and nothing that needed FORMS or Qt."""
+    assert set(app.TAB_FACTORIES) == {"ctrl", "cast", "log", "psu"}
     assert initial_tab_from_argv(["labcli", "--flatsat"]) == "ctrl"
-
-
-def test_analysis_is_not_available_as_console_tab():
-    router = ConsoleRouter()
-
-    assert "analysis" not in router.tabs
-
-
-def test_hardware_tabs_are_offered():
-    """The four tabs a bare lab install must be able to reach."""
-    router = ConsoleRouter()
-
-    for tab in ("ctrl", "cast", "log", "psu"):
-        assert tab in router.tabs
-
-
-def test_psu_remains_manual_console_tab():
-    router = ConsoleRouter(
-        tab_factories={
-            "ctrl": lambda: _StubSession("ctrl"),
-            "psu": lambda: _StubSession("psu"),
-        },
-        initial_tab="ctrl",
-    )
-
-    result = router.route("--psu")
-
-    assert result.tab_changed is True
-    assert router.current_tab == "psu"
+    assert initial_tab_from_argv(["labcli", "--psu"]) == "psu"
 
 
 class _Output:

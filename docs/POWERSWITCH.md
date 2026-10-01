@@ -2,8 +2,8 @@
 
 The labcli PSU tab treats the Digital Loggers PowerSwitch as logical device
 `PS`. Its permanent machine and network identity is the `PS` record in
-`lab/usbmap.json`; outlet control and network setup are implemented by
-`lab/powerswitch.py`.
+the live `usbmap.json` (`~/.formslab/usbmap.json`); outlet control and network setup are implemented by
+`src/formslab/devices/powerswitch.py`.
 
 ## Windows lab configuration
 
@@ -22,7 +22,7 @@ From labcli:
 --status
 ```
 
-Windows network changes require an elevated terminal. Right-click the FORMS
+Windows network changes require an elevated terminal. Right-click the labcli
 CLI launcher and choose **Run as administrator** before `--setup`. The setup is
 persistent across reboots. A disconnected adapter can retain the configured
 address while reporting no usable link; connect and power the switch before
@@ -48,7 +48,7 @@ outlet count. Set `FORMS_POWERSWITCH_PASSWORD` in the launcher environment to
 override the legacy device password without putting a new credential in Git.
 
 If the dedicated NIC changes, update only these fields under `PS` in
-`lab/usbmap.json`:
+the live `usbmap.json` (`~/.formslab/usbmap.json`):
 
 ```json
 {

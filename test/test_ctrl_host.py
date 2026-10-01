@@ -1,137 +1,93 @@
-"""The console-to-host seam: mission discovery, launch, and the log.
-
-Three things were reconnected when the sequence host moved over, and all three
-were previously computed independently in two places -- which is how the console
-came to tail a log nothing was writing.
-"""
+"""The console-to-host seam: what `run` launches, where its output goes, and
+how `end` stops it."""
 
 import subprocess
+import sys
 import unittest
 from pathlib import Path
 from unittest import mock
 
-from formslab import bridge, config
+from formslab import config
 from formslab.console.ctrl import ctrlcli
 from formslab.console.log import logcli
 
 
-class MissionDiscovery(unittest.TestCase):
-    """`ctrl` asks FORMS where the missions are; it does not guess."""
+class Launch(unittest.TestCase):
 
-    def test_missions_dir_comes_from_the_library(self):
-        fake = mock.Mock()
-        fake.missions_root.return_value = Path("/somewhere/missions")
-        with mock.patch.object(bridge, "paths", return_value=fake):
-            self.assertEqual(ctrlcli.missions_dir(),
-                             Path("/somewhere/missions"))
-
-    def test_missions_dir_is_none_without_forms(self):
-        """There is no mission library without FORMS. Say so, do not invent one."""
-        def unavailable():
-            raise bridge.FormsUnavailable("forms.core.paths")
-
-        with mock.patch.object(bridge, "paths", side_effect=unavailable):
-            self.assertIsNone(ctrlcli.missions_dir())
-
-    def test_discovery_is_empty_rather_than_raising(self):
-        with mock.patch.object(ctrlcli, "missions_dir", return_value=None):
-            self.assertEqual(ctrlcli.discover_missions(), [])
-
-    def test_discovery_reads_zen_files(self, ):
-        root = config.config_dir() / "missions"
-        root.mkdir(parents=True, exist_ok=True)
-        (root / "demo.zen").write_text(
-            '# mission: Demo\nsatellite.name = "SAT-1"\ntime.duration = 90\n',
-            encoding="utf-8")
-
-        with mock.patch.object(ctrlcli, "missions_dir", return_value=root):
-            found = ctrlcli.discover_missions()
-
-        self.assertEqual([m["name"] for m in found], ["demo"])
-        self.assertEqual(found[0]["satellite"], "SAT-1")
-
-
-class LaunchRefusesWithoutForms(unittest.TestCase):
-
-    def test_run_reports_the_missing_extra_instead_of_launching(self):
-        with mock.patch.object(bridge, "available", return_value=False), \
-                mock.patch.object(ctrlcli.subprocess, "Popen") as popen:
-            result = ctrlcli._launch_sequence("tvac")
-
-        popen.assert_not_called()
-        self.assertIn("formslab[forms]", result.content.plain)
-
-    def test_a_lab_mode_launches_without_forms(self):
-        """`run laco` is chamber control; it must not wait on the astrodynamics
-        library being installed."""
-        with mock.patch.object(bridge, "available", return_value=False), \
-                mock.patch.object(ctrlcli.subprocess, "Popen",
-                                  return_value=mock.Mock(pid=99)) as popen:
-            ctrlcli._launch_sequence("laco")
-
-        popen.assert_called_once()
-        self.assertEqual(popen.call_args.args[0][-2:], ["--mode", "laco"])
-
-
-class LaunchTargetsTheInstalledHost(unittest.TestCase):
-
-    def _launch(self):
+    def _launch(self, *args):
         proc = mock.Mock(pid=4321)
-        with mock.patch.object(bridge, "available", return_value=True), \
-                mock.patch.object(ctrlcli.subprocess, "Popen",
-                                  return_value=proc) as popen:
-            result = ctrlcli._launch_sequence("tvac")
-        return popen.call_args, result
+        with mock.patch.object(ctrlcli, "_running_pid", return_value=None), \
+                mock.patch.object(ctrlcli.subprocess, "Popen", return_value=proc) as popen:
+            result = ctrlcli.run_sequence(list(args))
+        return popen, result
 
-    def test_host_is_started_as_a_module_not_a_file_path(self):
+    def test_a_mode_starts_the_host_module(self):
         """`-m` is what stops us guessing where the package lives on disk."""
-        call, _ = self._launch()
-        cmd = call.args[0]
+        popen, _ = self._launch("laco")
+        self.assertEqual(popen.call_args.args[0][1:], ["-m", "formslab.host.sequence",
+                                                       "--mode", "laco"])
 
-        self.assertEqual(cmd[1:4], ["-m", "formslab.host.sequence", "--mode"])
-        self.assertEqual(cmd[4], "tvac")
+    def test_a_plan_is_found_by_name_and_passed_by_path(self):
+        popen, result = self._launch("psu1_smtc08_first")
+        cmd = popen.call_args.args[0]
+        self.assertEqual(cmd[3], "--plan")
+        self.assertTrue(Path(cmd[4]).is_file() and cmd[4].endswith("psu1_smtc08_first.forms"))
+        self.assertIn("plan=psu1_smtc08_first", result.content)
 
-    def test_pid_log_and_session_share_one_directory(self):
-        """They used to resolve against three different roots."""
-        self._launch()
-        out = config.output_dir()
-
-        self.assertEqual(ctrlcli._get_pid_path().parent, out)
-        self.assertEqual(logcli.log_path().parent, out)
-        self.assertTrue((out / "sequence.session.json").exists())
+    def test_an_unknown_target_launches_nothing(self):
+        popen, result = self._launch("darkness")
+        popen.assert_not_called()
+        self.assertIn("No plan or mode", result.content)
 
     def test_the_log_ctrl_writes_is_the_log_the_tab_reads(self):
-        """The regression this phase exists to close."""
-        call, _ = self._launch()
-        written_to = call.kwargs["stdout"].name
+        popen, _ = self._launch("laco")
+        self.assertEqual(Path(popen.call_args.kwargs["stdout"].name), logcli.log_path())
 
-        self.assertEqual(Path(written_to), logcli.log_path())
-
-    def test_the_pid_is_recorded_so_a_second_run_is_refused(self):
-        self._launch()
+    def test_the_pid_is_recorded_beside_the_log(self):
+        self._launch("laco")
+        self.assertEqual(ctrlcli._get_pid_path().parent, config.output_dir())
         self.assertEqual(ctrlcli._get_pid_path().read_text(), "4321")
 
+    def test_a_second_run_is_refused_while_one_is_alive(self):
+        with mock.patch.object(ctrlcli, "_running_pid", return_value=77), \
+                mock.patch.object(ctrlcli.subprocess, "Popen") as popen:
+            result = ctrlcli.run_sequence(["laco"])
+        popen.assert_not_called()
+        self.assertIn("already running (pid 77)", result.content)
 
-class HostRunsWithoutForms(unittest.TestCase):
-    """FORMS is imported when a FORMS mode starts, never at host import."""
 
-    def test_host_imports_without_the_extra(self):
-        import importlib
-        import sys
-        with mock.patch.dict(sys.modules, {"forms": None}):
-            for name in [m for m in sys.modules if m.startswith("formslab.host")]:
-                sys.modules.pop(name)
-            importlib.import_module("formslab.host.sequence")
+class End(unittest.TestCase):
+    """`end` asks through ctrl so rShutdown runs; a signal is the fallback."""
+
+    def test_end_asks_the_host_and_waits_for_it(self):
+        alive = iter([True, True, False])
+        with mock.patch.object(ctrlcli, "_running_pid", return_value=55), \
+                mock.patch.object(ctrlcli, "process_exists", side_effect=lambda pid: next(alive)), \
+                mock.patch.object(ctrlcli, "WriteCommand") as write, \
+                mock.patch.object(ctrlcli.os, "kill") as kill:
+            result = ctrlcli.end_sequence(grace_s=5)
+        write.assert_called_once_with("end")
+        kill.assert_not_called()
+        self.assertIn("stopped cleanly", result.content)
+
+    def test_end_kills_a_host_that_does_not_stop_and_says_so(self):
+        with mock.patch.object(ctrlcli, "_running_pid", return_value=55), \
+                mock.patch.object(ctrlcli, "process_exists", return_value=True), \
+                mock.patch.object(ctrlcli, "WriteCommand"), \
+                mock.patch.object(ctrlcli.os, "kill") as kill:
+            result = ctrlcli.end_sequence(grace_s=0.3)
+        kill.assert_called_once()
+        self.assertIn("rShutdown did not run", result.content.plain)
+
+
+class HostModule(unittest.TestCase):
 
     def test_host_runs_as_a_module(self):
         """What `ctrl` actually invokes."""
-        import sys
-        proc = subprocess.run(
-            [sys.executable, "-m", "formslab.host.sequence", "--help"],
-            capture_output=True, text=True, timeout=180)
-
+        proc = subprocess.run([sys.executable, "-m", "formslab.host.sequence", "--help"],
+                              capture_output=True, text=True, timeout=180)
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn("--mode", proc.stdout)
+        self.assertIn("--plan", proc.stdout)
 
 
 if __name__ == "__main__":

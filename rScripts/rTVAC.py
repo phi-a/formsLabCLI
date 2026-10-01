@@ -1,19 +1,27 @@
-# --- Imports ---
+# --- rTVAC: the Rigol/RTD bench chamber ---
+#
+# Reads the shroud RTDs (RTD16: PY = mean of ch0-2, MY = mean of ch14-15) and the
+# SMTC08 thermocouples (TC01..TC16, kelvin), and holds each shroud at its target
+# with a PI heater loop on PSU1 (MY on CH1, PY on CH2). CAST "tvac" requests:
+#
+#   {"PY": 240.0}, {"MY": 240.0}       shroud targets, kelvin
+#   {"startup": true}                  re-initialise PSU1 (both channels on at 0 V)
+#   {"shutdown": true}                 both heater channels off, 0 V / 0 A
+#
+# On host stop, rShutdown does the same as "shutdown": an uncontrolled heater
+# must not be left on.
 import os
-from pathlib import Path
-from numpy import mean
-from forms.utils.rScripts import (
-    rTaskRegister, rTaskStart, rTaskRunning, rTaskStop, RScriptControl
-)
+from statistics import mean
+
+from formslab.config import output_dir
 from formslab.console.cast.castutils import ReadCommand, UpdateStatus
-from formslab.devices.tvacutils import _init, _update_tvac, _init_psu
 from formslab.devices.shroud import HeaterController
-from forms.bricks.thermal.radiation import C2K
-from formslab.state import CAST_STATE_PATH
+from formslab.devices.tvacutils import _init, _init_psu, _update_tvac
+from formslab.rscripts import C2K, RScriptControl
+
 # --- Constants ---
 name = os.path.splitext(os.path.basename(__file__))[0]
-CASTPATH = CAST_STATE_PATH
-TVACLOG = Path(__file__).resolve().parent.parent / "lab" / "TVAC.json"
+TVACLOG = output_dir() / "TVAC.json"
 # --- Encapsulated State ---
 class rGlobal:
     disable = False
@@ -230,3 +238,18 @@ def rScript(forms):
         tvac_status["PYlist"] = [Ys["ch0"], Ys["ch1"], Ys["ch2"]]
         tvac_status["MYlist"] = [Ys["ch14"], Ys["ch15"]]
     UpdateStatus("tvac", tvac_status)
+
+
+def rShutdown(forms):
+    """Heater channels off at 0 V / 0 A, whatever ended the run."""
+    if rg.psu1 is None:
+        return
+    if rg.psu1.shutdown():
+        forms.log("PSU1 heater channels off at shutdown", component=name)
+    else:
+        forms.log("PSU1 heater shutdown FAILED -- check the supply", level="ERROR", component=name)
+    if rg.rtd1:
+        try:
+            rg.rtd1.close()
+        except Exception:
+            pass

@@ -34,28 +34,20 @@ def ctrl_state_path() -> Path:
 
 def build_default_ctrl_commands() -> dict:
     return {
-        "missions": {
+        "plans": {
             "key": None,
             "processed": True,
-            "desc": "List available .zen missions and operational modes",
+            "desc": "List lab plans and modes",
         },
         "run": {
             "key": None,
             "processed": True,
-            "desc": (
-                "Launch a mission by name, index, or 'tvac'. "
-                "Usage: run <name|#|tvac> (e.g. 'run darkness', 'run 1', 'run tvac')"
-            ),
+            "desc": "Run a lab plan or a mode. Usage: run <plan|laco|tvac>",
         },
         "pause": {"key": None, "processed": True, "desc": "Pause the running sequence"},
         "resume": {"key": None, "processed": True, "desc": "Resume a paused sequence"},
         "reset": {"key": None, "processed": True, "desc": "Reset control state"},
-        "end": {"key": None, "processed": True, "desc": "Terminate the running sequence"},
-        "stream": {
-            "key": None,
-            "processed": True,
-            "desc": "Set the GUI telemetry rate in Hz (0 = off when no window is open)",
-        },
+        "end": {"key": None, "processed": True, "desc": "Stop the running sequence"},
         "status": {
             "key": None,
             "processed": True,
@@ -74,7 +66,7 @@ def build_default_ctrl_commands() -> dict:
         "exit": {
             "key": None,
             "processed": True,
-            "desc": "Exit the forms console",
+            "desc": "Exit the lab console",
         },
     }
 

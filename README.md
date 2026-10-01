@@ -1,13 +1,15 @@
 # FormsLabCLI
 
-A terminal console for benchtop lab hardware: Rigol programmable supplies, a
-cryocooler control board reached over a Raspberry Pi Pico I2C bridge, RTD and
-thermocouple readers, TVAC shroud heaters, a Digital Loggers PowerSwitch, and
-the sLTA imaging chain.
+A terminal console for thermal-vacuum testing: control chamber temperatures,
+supplies and readouts from the terminal, and run hardware test sequences (lab
+plans) against them. It drives Rigol programmable supplies, SMTC08 thermocouple
+and RTD readers, TVAC shroud heaters, the LACO chamber's HVC-3500 controller, a
+cryocooler control board behind a Raspberry Pi Pico I2C bridge, a Digital
+Loggers PowerSwitch, and the sLTA imaging chain.
 
-It runs standalone. When [FORMS](https://github.com/phi-a/FORMS) — the
-astrodynamics library — is also installed, two extra commands light up: the
-API-catalog browser and the external-resource registry.
+[FORMS](https://github.com/phi-a/FORMS), the astrodynamics engine, is not a
+dependency. Its part is offline: it computes orbit-driven profiles (eclipse
+timing, temperatures), and formsLabCLI runs them on the bench.
 
 **New computer? Start with [the setup guide](docs/SETUP.md)** for Python,
 NI-VISA, finding the current COM ports, and editing your bench's hardware map.
@@ -58,7 +60,7 @@ UTF-8, because the default OEM codepage mangles the box-drawing characters.
 
 | Tab | What it drives |
 |---|---|
-| `ctrl` | Sequence control: launch, pause, resume, end |
+| `ctrl` | Runs: `plans`, `run <plan|laco|tvac>`, pause, resume, end |
 | `cast` | Live hardware status panel |
 | `psu` | Rigol supplies and PowerSwitch outlets |
 | `log` | Tail the run log |
@@ -103,8 +105,7 @@ none of them, and that absence is why this package was split out of FORMS.
 ```
 pip install -e .              # console + transports
 pip install -e ".[pico]"      # + mpremote, to talk to the cryo board's Pico bridge
-pip install -e ".[analysis]"  # + matplotlib/PyQt6 plotting
-pip install -e ".[forms]"     # + FORMS, for missions/catalog/resource commands
+pip install -e ".[analysis]"  # + matplotlib, for the scripts/ plots
 pip install -e ".[dev]"       # + pytest
 ```
 
@@ -113,25 +114,20 @@ pip install -e ".[dev]"       # + pytest
 ```
 src/formslab/
 ├── app.py       the `labcli` entry point: the REPL and its tab bar
-├── bridge.py    the ONLY module allowed to import `forms` (host/ excepted)
-├── config.py    config and output directory resolution
+├── config.py    config, output and run directory resolution
 ├── state.py     CTRL command table and CAST device state
 ├── console/     the tabs, sessions, and command tables
 ├── devices/     one module per instrument
-├── defaults/    shipped usbmap.json
-└── host/        the sequence host — needs [forms]
-rScripts/        hardware routines, workspace content (see its README)
-scripts/         standalone bench tools: plotting, image conversion, GUI bridge
+├── defaults/    shipped usbmap.json and tvac_bench.json
+├── rscripts/    the rScripts runtime: loader, gates, the `forms` handle
+├── sequence/    lab plans: test sequences, read and run
+└── host/        the process that runs a mode or a plan
+rScripts/        the routines that own the instruments during a run
+plans/           lab plans, e.g. psu1_smtc08_first.forms
+scripts/         launchers and standalone analysis tools
 ```
 
-### The FORMS seam
-
-`formslab/bridge.py` is the single place this package names `forms`. Accessors
-import at call time and raise `FormsUnavailable` when the library is absent, so
-the console loads and runs on a machine that has only the transports installed;
-a library-backed command reports that FORMS is missing instead of raising
-through the REPL. `bridge.SURFACES` is the whole dependency — five read-only
-reporting modules. `test/test_console_bridge.py` enforces both properties.
+How the pieces fit is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ### Configuration and state
 
@@ -165,43 +161,24 @@ Instrument tests are quarantined in `conftest.py` — they need hardware on the
 bench and are run by naming the file (`pytest test/test_DP832A.py`). Everything
 else runs against fakes and passes on a bare install with nothing plugged in.
 
-## Running a mission
+## Running a test
 
-`ctrl`'s `run` starts the sequence host — the process that drives a FORMS
-mission against the bench:
+A lab plan is a hardware test sequence: which rScripts own the instruments,
+and an ordered list of steps (`command`, `hold`, `until`, `log`). The grammar
+is in [docs/SEQUENCE.md](docs/SEQUENCE.md).
 
 ```
+python -m formslab.sequence psu1_smtc08_first     # check a plan; touches no hardware
 labcli --ctrl
-ctrl> missions          # the .zen library, as FORMS resolves it
-ctrl> run tvac          # or: run darkness, run 1
-log>  tail 50           # the host's output
+ctrl> plans                                        # lab plans and modes
+ctrl> run psu1_smtc08_first                        # or: run laco, run tvac
+ctrl> pause / resume / end
+log>  tail 50                                      # the host's output
 ```
 
-This needs the `[forms]` extra. Without it `run` says so rather than failing
-part-way. The host can also be started directly:
-
-```
-python -m formslab.host.sequence --mode tvac
-```
-
-`missions` asks FORMS where the library is (`$FORMS_MISSIONS_DIR`, then a walk
-up for `missions/`, then a remembered workspace) rather than keeping its own
-idea of it, so the console and the host always agree about which missions exist.
-
-## Status
-
-Extracted from the FORMS repository, where this was `python/cli/` +
-`python/lab/` plus the host scripts at `python/`. Everything is reconnected; the
-remaining work is on the FORMS side, where the original copies still need
-deleting.
-
-## Relationship to FORMS
-
-FORMS is the astrodynamics library and Astrid is the agent built on it; this is
-the lab tool that used to live in that repository. The dependency points one way
-only — FORMS knows nothing about this package — and is optional in this
-direction. A later release adds an `astrid-mcp` path so the console can reach
-FORMS through the agent as well as directly.
+`end` asks the host to stop, so every rScript's `rShutdown` runs (a plan's PSU
+outputs go off) before it exits. A mode (`laco`, `tvac`) runs until `end`; a
+plan ends by itself. Every run writes a CSV of its variables to `outputs/`.
 
 ## Windows and Linux (Raspberry Pi)
 

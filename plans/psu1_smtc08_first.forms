@@ -1,0 +1,39 @@
+# ============================================================
+# plan: psu1_smtc08_first -- first formsLabCLI sequence on the bench
+# ============================================================
+# PSU1 (Rigol DP832A) CH1 to 1.0 V with a 0.10 A limit, output on for one
+# minute, then off, while rSMTC08 records every thermocouple on SMTC08_A
+# (TC01..TC08, kelvin) and rPSU records PSU1's measured V / I / output state.
+# Every 2 s a CSV row lands in outputs/psu1_smtc08_first_<UTC>.csv.
+#
+# CHECK BEFORE RUNNING: what is wired to PSU1 CH1, and that 1.0 V / 0.10 A is
+# safe for it. On the TVAC bench CH1 and CH2 feed the shroud heaters.
+#
+# If the run stops early (ctrl `end`, a timeout, a crash), rPSU's rShutdown
+# turns CH1 back off.
+#
+# Check without hardware:  python -m formslab.sequence psu1_smtc08_first
+# Run from the console:    ctrl tab -> run psu1_smtc08_first
+
+mission.name = "psu1_smtc08_first"
+rscripts.load = ["rPSU", "rSMTC08"]
+recording.interval = 2
+recording.unit = "seconds"
+
+sequence.operations = [
+    {"log": "baseline: PSU1 CH1 off, thermocouples settling"},
+    {"command": "psu1", "request": {"1": {"on": False}}},
+    {"command": "psu1", "request": {"1": {"voltage": 1.0, "current": 0.1}}},
+    {"hold": 20, "units": "seconds"},
+
+    {"log": "PSU1 CH1 on at 1.0 V / 0.10 A"},
+    {"command": "psu1", "request": {"1": {"on": True}}},
+    {"hold": 60, "units": "seconds"},
+
+    {"log": "PSU1 CH1 off"},
+    {"command": "psu1", "request": {"1": {"on": False}}},
+    {"hold": 20, "units": "seconds"},
+]
+
+# A heating step waits on a temperature, with a limit, like this:
+#   {"until": "TC01", "above": 30.0, "unit": "C", "timeout_s": 600},

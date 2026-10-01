@@ -1,392 +1,194 @@
-"""
-Refactored ctrlcli.py
-- Unified execute_command to dynamically dispatch based on a command map.
-- Removed use of rich.Panel in help to simplify plain-text output (avoiding "panels").
-- Uses CLIResult exclusively for all responses.
-- No direct printing in handlers; __main__ prints rendered content.
-- Prepared for easy addition of new commands by extending COMMANDS dict.
+"""The ctrl tab: start, watch and stop the sequence host.
 
-Next steps:
-- In app/view/console_tab.py, remove the special-case for "--run" and let session.handle(raw) handle it like other commands.
-- Ensure labcli.py integrates CLIResult.content directly via render_output.
+    run <plan>        a lab plan from plans/ (or a path to a .forms plan)
+    run laco | tvac   a mode: its rScripts run until `end`
+    plans             list lab plans and modes
+    status, ps        is a host running
+    pause, resume     hold / continue the running plan or mode
+    end               stop it; rScripts' rShutdown runs before it exits
+
+Every handler returns a CLIResult; nothing prints.
 """
+import os
+import signal
+import subprocess
+import sys
+import time
 from pathlib import Path
-import os, sys, signal, subprocess
 
 import psutil
-
 from rich.text import Text
-from formslab.console.sessions.base import CLIResult
-from formslab.console.ctrl.ctrlutils import ReadCommand, WriteCommand, LoadCommands, process_exists
-from formslab.console.style import HEADER, DIM, ERROR, INFO, NUMBER, LABEL, TEXT, WARNING, SUCCESS
-from formslab import bridge
+
 from formslab.config import output_dir
-from formslab.host.modes import LAB_MODES
+from formslab.console.ctrl.ctrlutils import WriteCommand, process_exists
 from formslab.console.log.logcli import log_path
+from formslab.console.sessions.base import CLIResult
+from formslab.console.style import DIM, ERROR, HEADER, INFO, LABEL, SUCCESS, TEXT, WARNING
+from formslab.host.modes import MODES
+from formslab.sequence import discover as discover_plans, find_plan, is_lab_plan
 
-def missions_dir():
-    """The `.zen` mission library, as FORMS resolves it.
-
-    Asked of the library rather than computed here: FORMS already resolves a
-    workspace ($FORMS_MISSIONS_DIR, then a walk up for `missions/`, then a
-    remembered choice), and only by asking do the console and the host agree on
-    which missions exist. Returns None when FORMS is absent -- there is no
-    mission library without it, and `missions` says so rather than guessing.
-    """
-    try:
-        return bridge.paths().missions_root()
-    except bridge.FormsUnavailable:
-        return None
+# How long `end` waits for the host to stop on its own (running rShutdown)
+# before it is killed.
+END_GRACE_S = 15.0
 
 
-def _parse_zen_header(path: Path) -> dict:
-    """Extract mission metadata from .zen file comments and config."""
-    meta = {}
-    try:
-        content = path.read_text()
-        for line in content.split('\n')[:50]:
-            line = line.strip()
-            if line.startswith('#'):
-                lower = line.lower()
-                if 'mission:' in lower:
-                    meta['mission'] = line.split(':', 1)[1].strip()
-                elif 'author:' in lower:
-                    meta['author'] = line.split(':', 1)[1].strip()
-            elif line.startswith('satellite.name'):
-                val = line.split('=', 1)[1].strip().strip('"\'')
-                meta['satellite'] = val
-            elif line.startswith('time.duration'):
-                meta['duration'] = line.split('=', 1)[1].strip()
-            elif line.startswith('time.units'):
-                meta['units'] = line.split('=', 1)[1].strip().strip('"\'')
-    except Exception:
-        pass
-    return meta
-
-
-def discover_missions() -> list[dict]:
-    """Discover .zen mission files with metadata."""
-    missions = []
-    root = missions_dir()
-    if root is None or not root.exists():
-        return missions
-    for zen_path in sorted(root.glob("*.zen")):
-        meta = _parse_zen_header(zen_path)
-        missions.append({
-            "name": zen_path.stem,
-            "path": str(zen_path),
-            "satellite": meta.get("satellite"),
-            "duration": meta.get("duration"),
-            "units": meta.get("units"),
-        })
-    return missions
-
-
-def _resolve_mission(target: str, missions: list[dict]) -> dict | None:
-    """Resolve mission by name or index."""
-    # Try numeric index first
-    if target.isdigit():
-        idx = int(target) - 1
-        if 0 <= idx < len(missions):
-            return missions[idx]
-        return None
-
-    # Try exact name match
-    for m in missions:
-        if m['name'].lower() == target.lower():
-            return m
-
-    # Try partial match
-    matches = [m for m in missions if target.lower() in m['name'].lower()]
-    if len(matches) == 1:
-        return matches[0]
-
-    return None
-
-
-def missions_command() -> CLIResult:
-    """List available mission files and operational modes."""
-    result = Text()
-
-    result.append("MISSIONS\n", HEADER)
-    result.append("═" * 60 + "\n\n", DIM)
-
-    missions = discover_missions()
-
-    if not missions:
-        result.append("  No .zen files found in missions/\n", DIM)
-    else:
-        # Header row
-        result.append("  #   ", LABEL)
-        result.append("Name".ljust(14), LABEL)
-        result.append("Satellite".ljust(14), LABEL)
-        result.append("Duration\n", LABEL)
-        result.append("  " + "─" * 50 + "\n", DIM)
-
-        for i, m in enumerate(missions, 1):
-            result.append(f"  {i}   ", NUMBER)
-            result.append(f"{m['name'][:12].ljust(14)}", INFO)
-            sat = m.get('satellite') or '—'
-            result.append(f"{sat[:12].ljust(14)}", TEXT)
-            dur = m.get('duration') or '—'
-            units = m.get('units') or ''
-            result.append(f"{dur} {units}\n", TEXT)
-
-    result.append("\n")
-    result.append("OPERATIONAL MODES\n", HEADER)
-    result.append("═" * 60 + "\n", DIM)
-    result.append("  ●   ", WARNING)
-    result.append("tvac".ljust(14), WARNING)
-    result.append("TVAC maintenance mode (no propagation)\n", DIM)
-
-    result.append("\n")
-    result.append("Usage: ", DIM)
-    result.append("run <name|#|tvac>\n", INFO)
-
-    return CLIResult(result, clear=True)
-
-
-# The pid file, the log and the session record used to resolve against three
-# *different* "data" directories (parents[3], parents[2], and parents[2].parent),
-# so the console could report a mission as not running while its own log sat
-# somewhere else. They share the output directory now.
 def _get_pid_path():
     return output_dir() / "sequence.pid"
 
 
-def _launch_sequence(mode: str, config_path: str | None = None) -> CLIResult:
-    """Launch the sequence host with a mode and optional mission config.
+def _running_pid():
+    try:
+        pid = int(_get_pid_path().read_text().strip())
+    except (OSError, ValueError):
+        return None
+    return pid if process_exists(pid) else None
 
-    Started as `python -m formslab.host.sequence` rather than by path: the host
-    is an installed module, and resolving it as a file would put us back to
-    guessing where the package lives.
-    """
-    # Lab modes run on formsLabCLI alone; everything else is a FORMS mission.
-    if mode not in LAB_MODES and not bridge.available():
-        return CLIResult(Text(
-            "✗ run needs FORMS. Install it with "
-            "`pip install \"formslab[forms]\"` to launch missions.", style=ERROR))
 
-    pid_path = _get_pid_path()
-    messages = []
+def _launch_sequence(mode: str = None, plan_path: str = None) -> CLIResult:
+    """Start `python -m formslab.host.sequence` for a mode or a plan. Its output
+    goes to the log tab's file; it inherits this working directory."""
+    pid = _running_pid()
+    if pid is not None:
+        return CLIResult(f"✔ sequence host already running (pid {pid})")
 
-    # Check for existing process
-    if pid_path.exists():
-        try:
-            pid = int(pid_path.read_text())
-            os.kill(pid, 0)
-            return CLIResult(f"✔ sequence host already running (pid {pid})")
-        except (ProcessLookupError, ValueError):
-            messages.append("⚠ stale PID file, restarting")
-        except PermissionError:
-            return CLIResult(f"✗ permission denied when checking pid {pid}")
-
-    # Build command
-    cmd = [sys.executable, "-m", "formslab.host.sequence", "--mode", mode]
-    if config_path:
-        cmd.extend(["--config", config_path])
-
-    # Launch. The host inherits this working directory, so a mission's outputs
-    # land beside the session that started it.
-    log_file = log_path()
-
+    cmd = [sys.executable, "-m", "formslab.host.sequence"]
+    cmd += ["--plan", plan_path] if plan_path else ["--mode", mode]
     proc = subprocess.Popen(
         cmd,
-        stdout=log_file.open("w"),
+        stdout=log_path().open("w"),
         stderr=subprocess.STDOUT,
-        start_new_session=True
+        start_new_session=True,
     )
-    pid_path.write_text(str(proc.pid))
-
-    # Write shared session file for GUI attachment
-    import json, time as _time
-    session_path = output_dir() / "sequence.session.json"
-    session = {
-        "pid": proc.pid,
-        "mode": mode,
-        "config_path": str(Path(config_path).resolve()) if config_path else None,
-        "started_at": _time.time(),
-        "source": "cli",
-    }
-    try:
-        session_path.write_text(json.dumps(session, indent=2), encoding="utf-8")
-    except Exception:
-        pass
-
-    # Format response
-    if config_path:
-        mission_name = Path(config_path).stem
-        messages.append(f"🟢 sequence host started (pid {proc.pid}, mission={mission_name})")
-    else:
-        messages.append(f"🟢 sequence host started (pid {proc.pid}, mode={mode})")
-
-    return CLIResult("\n".join(messages), clear=False)
+    _get_pid_path().write_text(str(proc.pid))
+    what = f"plan={Path(plan_path).stem}" if plan_path else f"mode={mode}"
+    return CLIResult(f"🟢 sequence host started (pid {proc.pid}, {what})", clear=False)
 
 
 def run_sequence(args=None) -> CLIResult:
-    """
-    Enhanced run command supporting:
-      - run               -> default mission (first available)
-      - run tvac          -> TVAC operational mode
-      - run darkness      -> missions/darkness.zen
-      - run 2             -> second mission by index
-      - run sequence tvac -> legacy compatibility
-    """
-    missions = discover_missions()
-
     if not args:
-        # Default: first available mission or darkness fallback
-        if missions:
-            return _launch_sequence(mode="zen", config_path=missions[0]['path'])
-        return _launch_sequence(mode="mission", config_path=None)
+        return CLIResult("✗ run what? A plan name (see `plans`), or a mode: "
+                         + ", ".join(MODES), clear=False)
+    target = args[0]
+    if target.lower() in MODES:
+        return _launch_sequence(mode=target.lower())
+    plan = find_plan(target)
+    if plan is None or not is_lab_plan(plan):
+        return CLIResult(f"✗ No plan or mode '{target}'. Use 'plans' to list them.", clear=False)
+    return _launch_sequence(plan_path=str(plan.resolve()))
 
-    target = args[0].lower()
 
-    # Legacy compatibility: "run sequence tvac" or "run sequence mission"
-    if target == "sequence":
-        mode = args[1] if len(args) > 1 else "mission"
-        return _launch_sequence(mode=mode, config_path=None)
+def plans_command() -> CLIResult:
+    result = Text()
+    result.append("LAB PLANS\n", HEADER)
+    result.append("═" * 60 + "\n", DIM)
+    plans = discover_plans()
+    if not plans:
+        result.append("  No lab plans found in plans/\n", DIM)
+    for path in plans:
+        result.append("  ▶   ", SUCCESS)
+        result.append(path.stem.ljust(28), INFO)
+        result.append(f"{path.parent}\n", DIM)
+    result.append("\nMODES (run until `end`)\n", HEADER)
+    result.append("═" * 60 + "\n", DIM)
+    for mode, spec in MODES.items():
+        result.append("  ●   ", WARNING)
+        result.append(mode.ljust(28), WARNING)
+        result.append(", ".join(spec["rscripts"]) + "\n", DIM)
+    result.append("\nUsage: ", DIM)
+    result.append("run <plan|mode>\n", INFO)
+    return CLIResult(result, clear=True)
 
-    # TVAC operational modes (special case): 'tvac' is the Rigol/RTD bench,
-    # 'laco' is the LACO chamber driven through its HVC-3500 controller.
-    if target in ("tvac", "laco"):
-        return _launch_sequence(mode=target, config_path=None)
-
-    # Resolve mission by name or index
-    mission = _resolve_mission(target, missions)
-
-    if not mission:
-        # Check for ambiguous partial match
-        matches = [m for m in missions if target in m['name'].lower()]
-        if len(matches) > 1:
-            names = ', '.join(m['name'] for m in matches)
-            return CLIResult(f"✗ Ambiguous: '{target}' matches [{names}]")
-        return CLIResult(f"✗ Unknown mission: '{target}'. Use 'missions' to list available.")
-
-    return _launch_sequence(mode="zen", config_path=mission['path'])
 
 def status_panel() -> CLIResult:
-    pid_path = _get_pid_path()
-    try:
-        pid = int(Path(pid_path).read_text().strip())
-    except Exception:
-        return CLIResult("✗ No valid sequence.pid found.")
-    if process_exists(pid):
-        return CLIResult(f"● sequence.py running (pid {pid})")
-    else:
-        try:
-            Path(pid_path).unlink()
-        except FileNotFoundError:
-            pass
-        return CLIResult(f"✗ sequence.py not running. Cleaned pid file.", clear=False)
+    pid = _running_pid()
+    if pid is not None:
+        return CLIResult(f"● sequence host running (pid {pid})")
+    _get_pid_path().unlink(missing_ok=True)
+    return CLIResult("✗ sequence host not running.", clear=False)
 
 
 def list_sequence() -> CLIResult:
-    """Every running sequence host.
-
-    Was `pgrep -f sequence.py`, which is Unix-only and, since the extraction,
-    looking for the wrong thing as well: the host is launched as
-    `python -m formslab.host.sequence`, so "sequence.py" is no longer on its
-    command line at all. Both spellings are matched so a host started the old
-    way is still found.
-    """
-    needles = ("formslab.host.sequence", "sequence.py")
+    """Every running sequence host, found by its module name on a Python
+    process's command line."""
     found = []
     for proc in psutil.process_iter(["pid", "name", "cmdline"]):
         try:
-            # The host is always a Python process. Without that check any
-            # command line merely *mentioning* the host -- an editor, a grep --
-            # would be reported as a running sequence.
             if "python" not in (proc.info["name"] or "").lower():
                 continue
             cmdline = " ".join(proc.info["cmdline"] or ())
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
-        if any(needle in cmdline for needle in needles):
+        if "formslab.host.sequence" in cmdline:
             found.append(proc.info["pid"])
-
     if not found:
         return CLIResult("No sequence host processes found.", clear=False)
-    listed = "\n".join(f"PID: {pid}" for pid in sorted(found))
-    return CLIResult("sequence host processes:\n" + listed)
+    return CLIResult("sequence host processes:\n" + "\n".join(f"PID: {p}" for p in sorted(found)))
 
-def end_sequence() -> CLIResult:
-    pid_path = _get_pid_path()
+
+def end_sequence(grace_s: float = END_GRACE_S) -> CLIResult:
+    """Ask the host to stop through ctrl, so its rScripts' rShutdown runs (a
+    plan's PSU outputs go off). Kill it only if it has not stopped in time: on
+    Windows a signal is a hard kill that skips that cleanup."""
+    pid = _running_pid()
+    if pid is None:
+        _get_pid_path().unlink(missing_ok=True)
+        return CLIResult("✗ sequence host not running.", clear=False)
+    WriteCommand("end")
+    deadline = time.monotonic() + grace_s
+    while time.monotonic() < deadline:
+        if not process_exists(pid):
+            _get_pid_path().unlink(missing_ok=True)
+            return CLIResult(f"✖ sequence host (pid {pid}) stopped cleanly.")
+        time.sleep(0.2)
     try:
-        pid = int(Path(pid_path).read_text().strip())
         os.kill(pid, signal.SIGTERM)
-        Path(pid_path).unlink()
-        return CLIResult(f"✖ sequence.py (pid {pid}) terminated and pid file removed.")
-    except Exception as e:
-        return CLIResult(f"✗ Error terminating sequence.py: {e}", clear=False)
+    except OSError as e:
+        return CLIResult(f"✗ Could not stop pid {pid}: {e}", clear=False)
+    _get_pid_path().unlink(missing_ok=True)
+    return CLIResult(Text(f"⚠ sequence host (pid {pid}) did not stop in {grace_s:g} s and "
+                          "was killed; rShutdown did not run. Check the instruments.",
+                          style=ERROR))
+
 
 def help_panel() -> CLIResult:
-    """Generate structured help panel with mission and control commands."""
     result = Text()
-
-    # Navigation
     result.append("═" * 60 + "\n", DIM)
     result.append("NAVIGATION\n", HEADER)
-    result.append("  /switch astrid  ", LABEL)
-    result.append("Switch to Astrid\n", TEXT)
-    result.append("  /switch console ", LABEL)
-    result.append("Return to the forms console\n", TEXT)
-    result.append("  --cast          ", LABEL)
-    result.append("Hardware status panel\n", TEXT)
-    result.append("  --psu           ", LABEL)
-    result.append("PSU controls\n", TEXT)
-    result.append("  --ctrl          ", LABEL)
-    result.append("Return here\n", TEXT)
-    result.append("  --exit          ", LABEL)
-    result.append("Quit\n", TEXT)
+    for cmd, desc in (("--cast", "Hardware status and commands"), ("--psu", "PSU controls"),
+                      ("--log", "Host output"), ("--ctrl", "Return here"), ("--exit", "Quit")):
+        result.append(f"  {cmd:<16}", LABEL)
+        result.append(desc + "\n", TEXT)
 
-    # Missions
-    result.append("\n")
-    result.append("═" * 60 + "\n", DIM)
-    result.append("MISSIONS\n", HEADER)
-    result.append("  missions        ", LABEL)
-    result.append("List available missions and modes\n", TEXT)
-    result.append("  run <target>    ", LABEL)
-    result.append("Launch mission (name, #, 'tvac' or 'laco')\n", TEXT)
+    result.append("\n" + "═" * 60 + "\n", DIM)
+    result.append("RUNS\n", HEADER)
+    for cmd, desc in (("plans", "List lab plans and modes"),
+                      ("run <plan>", "Run a lab plan, e.g. run psu1_smtc08_first"),
+                      ("run laco | tvac", "Run a mode until `end`")):
+        result.append(f"  {cmd:<16}", LABEL)
+        result.append(desc + "\n", TEXT)
 
-    # Process control
-    result.append("\n")
-    result.append("═" * 60 + "\n", DIM)
+    result.append("\n" + "═" * 60 + "\n", DIM)
     result.append("PROCESS CONTROL\n", HEADER)
-    result.append("  status          ", LABEL)
-    result.append("Check if sequence.py is running\n", TEXT)
-    result.append("  ps              ", LABEL)
-    result.append("List all sequence.py processes\n", TEXT)
-    result.append("  pause           ", LABEL)
-    result.append("Pause the running sequence\n", TEXT)
-    result.append("  resume          ", LABEL)
-    result.append("Resume a paused sequence\n", TEXT)
-    result.append("  end             ", LABEL)
-    result.append("Terminate the running sequence\n", TEXT)
-
-    # Examples
-    result.append("\n")
-    result.append("═" * 60 + "\n", DIM)
-    result.append("EXAMPLES\n", HEADER)
-    result.append("  run darkness    ", INFO)
-    result.append("Launch the darkness mission\n", DIM)
-    result.append("  run 1           ", INFO)
-    result.append("Launch first listed mission\n", DIM)
-    result.append("  run tvac        ", INFO)
-    result.append("Enter TVAC maintenance mode\n", DIM)
-
+    for cmd, desc in (("status", "Is the sequence host running"),
+                      ("ps", "List all sequence host processes"),
+                      ("pause", "Pause the running plan or mode"),
+                      ("resume", "Resume it"),
+                      ("end", "Stop it; rShutdown leaves the hardware safe")):
+        result.append(f"  {cmd:<16}", LABEL)
+        result.append(desc + "\n", TEXT)
     return CLIResult(result)
 
-# Command registry
+
 COMMANDS = {
-    "run": run_sequence,
-    "missions": missions_command,
-    "list": missions_command,  # Alias
+    "plans": plans_command,
+    "missions": plans_command,   # the old name
+    "list": plans_command,
     "status": status_panel,
     "ps": list_sequence,
     "end": end_sequence,
     "help": help_panel,
 }
+
 
 def execute_command(args: list[str]) -> CLIResult:
     if not args:
@@ -397,16 +199,12 @@ def execute_command(args: list[str]) -> CLIResult:
     handler = COMMANDS.get(cmd)
     if handler:
         return handler()
-    # Fallback for other commands
+    # pause, resume, reset: straight to the host through ctrl
     WriteCommand(cmd, args[1] if len(args) > 1 else None)
     return CLIResult(f"✔ dispatched '{cmd}'", clear=False)
 
-# CLI entrypoint
+
 if __name__ == "__main__":
     res = execute_command(sys.argv[1:])
-    # Render result
     content = res.content
-    if hasattr(content, 'render'):
-        print(content.render())
-    else:
-        print(content)
+    print(content.render() if hasattr(content, "render") else content)

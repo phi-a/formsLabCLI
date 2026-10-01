@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "formslab"
 version = "0.1.0"
-description = "FORMS lab console - a hardware CLI for benchtop instruments, with optional FORMS integration"
+description = "Lab console for thermal-vacuum testing: bench instruments and hardware test sequences from the terminal"
 requires-python = ">=3.10"
 # The base install is a working lab console and nothing more: terminal
 # rendering plus the transports the drivers actually open. `pyvisa` and
@@ -31,21 +31,15 @@ dependencies = [
 
 [project.scripts]
 labcli = "formslab.app:main"
-fconsole = "formslab.app:main"
 
 [project.optional-dependencies]
-# Mission work: the API-catalog browser and the
-# external-resource registry. Reached only through `formslab/bridge.py`, so
-# without this extra the console still runs and those commands report that
-# FORMS is not installed. FORMS is not on PyPI.
-forms = ["forms @ git+https://github.com/phi-a/FORMS.git#subdirectory=python"]
 # The Raspberry Pi Pico that bridges USB to the cryocooler board's I2C bus.
 # `mpremote` is imported lazily inside devices/pico_i2c.py, so the cryo modules
 # import and test without it -- only talking to real hardware needs it.
 pico = ["mpremote"]
-# Plotting and the Qt tab. Separate because a headless lab box should not pull
-# Qt in to drive a PSU.
-analysis = ["PyQt6", "matplotlib", "numpy"]
+# Plotting for the scripts/ analysis tools. Separate because a headless lab
+# box should not pull matplotlib in to drive a PSU.
+analysis = ["matplotlib", "numpy"]
 dev = ["pytest", "pytest-xdist"]
 
 [tool.setuptools]

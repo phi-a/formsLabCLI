@@ -231,22 +231,29 @@ def test_rlaco_applies_a_cast_setpoint_request(forms, chamber):
     assert forms.get_variable("target_platen").value == pytest.approx(25.0 + 273.15)
 
 
-def test_lab_mode_host_loop_runs_rlaco(chamber, monkeypatch):
+def test_lab_mode_host_loop_runs_rlaco(chamber):
     """`run laco` end to end, minus the subprocess: the host builds a lab
-    handle, ticks rLACO in real time, and exits on the ctrl `end` path."""
+    handle, ticks rLACO in real time, records, and releases its lock."""
     from formslab.host import sequence
 
-    calls = []
+    sequence.channel(mode="laco", loops=3)
 
-    def stop_after_three(forms):
-        calls.append(forms)
-        if len(calls) == 3:
-            raise sequence.GracefulExit()
-
-    monkeypatch.setattr(sequence, "write", stop_after_three)
-    sequence.channel(mode="laco")
-
-    forms = calls[0]
-    assert getattr(forms, "is_lab_handle", False)
     assert ReadStatus("hvc")["connected"] is True
-    assert forms.record.path is not None and forms.record.path.name.startswith("LACO_")
+    assert list(config.output_dir().glob("LACO_*.csv"))
+    assert not sequence.lock_path().exists()
+
+
+def test_ctrl_end_stops_a_mode_and_runs_rshutdown(script_dir):
+    """`end` from the console reaches the host through ctrl, and the run's
+    rShutdown still happens."""
+    from formslab.host import modes, sequence
+
+    write(script_dir, "rStop", "from formslab.console.ctrl.ctrlutils import WriteCommand\n"
+                               "def rScript(forms):\n    WriteCommand('end')\n"
+                               "def rShutdown(forms):\n    open(__file__ + '.done', 'w').close()\n")
+    modes.MODES["stoptest"] = {"rscripts": ["rStop"], "record_s": 30}
+    try:
+        sequence.channel(mode="stoptest")          # would run forever without `end`
+    finally:
+        del modes.MODES["stoptest"]
+    assert (script_dir / "rStop.py.done").exists()

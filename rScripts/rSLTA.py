@@ -1,13 +1,18 @@
-# --- Imports ---
+# --- rSLTA: the sLTA camera ---
+#
+# Captures on a forced request ({"image": true} on CAST "slta"), or, with
+# SLTARUN on, whenever the run says the spacecraft is in umbra. Umbra comes from
+# three variables on the handle -- InUmbra (0/1), UmbraDuration and
+# UmbraTimeRemaining (s) -- which an eclipse profile computed by FORMS provides.
+# Until something publishes them, SLTARUN captures nothing.
 import os,time,math
 import traceback
 from pathlib import Path
-from forms.utils.rScripts import (
-    rTaskRegister, rTaskStart, rTaskRunning, rTaskStop, RScriptControl
+from formslab.rscripts import (
+    RScriptControl, rTaskRegister, rTaskRunning, rTaskStart, rTaskStop, set_logger,
 )
-from forms.utils import rTask
 from formslab.devices.image import capture
-from formslab.console.cast.castutils import ResetJson,UpdateStatus, ReadCommand, ReadStatus
+from formslab.console.cast.castutils import UpdateStatus, ReadCommand, ReadStatus
 from formslab.devices.sltautils import _init, _init_psu
 from formslab.devices.exposureutils import ExposureManager
 from formslab.devices.psu_command_utils import (
@@ -15,11 +20,8 @@ from formslab.devices.psu_command_utils import (
     queue_psu_request,
     wait_for_psu_channel,
 )
-from formslab.state import CAST_STATE_PATH
 # --- Constants ---
 name = os.path.splitext(os.path.basename(__file__))[0]
-CASTPATH = CAST_STATE_PATH
-ResetJson()
 # --- Encapsulated State ---
 class rGlobal:
     disable = False
@@ -86,6 +88,22 @@ def _task(stop_event, cmd: dict) -> None:
             rg.exposureMgr.release()
         UpdateStatus(label="slta", status={"running": False, "token": None})
 
+def _value(forms, var_name):
+    var = forms.get_variable(var_name)
+    try:
+        return None if var is None else float(var.value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _umbra(forms):
+    """(in umbra, umbra duration s, time remaining s) from the handle's
+    variables; (None, None, None) while nothing publishes them."""
+    flag = _value(forms, "InUmbra")
+    return (None if flag is None else bool(flag),
+            _value(forms, "UmbraDuration"), _value(forms, "UmbraTimeRemaining"))
+
+
 # --- rScript Entry Point ---
 def rScript(forms):
     global rg
@@ -107,7 +125,7 @@ def rScript(forms):
     _init_psu(forms, rg)
     
     # === Initialize Tasks
-    rTask.set_logger(lambda msg: forms.log(msg, component="TASK"))
+    set_logger(lambda msg: forms.log(msg, component="TASK"))
     # === Register capture cycle callback once ===
     if not rg.register:
             rTaskRegister("slta", _task)
@@ -229,10 +247,7 @@ def rScript(forms):
         token = rg.ImageToken.force()
         rg.cmd['mode'] = "F"
     elif rg.SLTARUN:
-        # Update umbra tracking via satellite
-        forms.satellite.UpdateUmbra()
-        rg.umbra = forms.satellite.InUmbra
-        rg.umbraDuration = forms.satellite.UmbraDuration
+        rg.umbra, rg.umbraDuration, _ = _umbra(forms)
         if rg.exposureMgr:
             rg.exposureMgr.update(rg.umbraDuration)
         token = rg.ImageToken.update(rg.umbra)
@@ -292,7 +307,7 @@ def rScript(forms):
 
     # === SLTA Status Update ===
     expStatus = rg.exposureMgr.status() if rg.exposureMgr else {}
-    timeRemaining = forms.satellite.UmbraTimeRemaining if rg.SLTARUN else None
+    timeRemaining = _umbra(forms)[2] if rg.SLTARUN else None
     UpdateStatus(
         label="slta",
         status = {

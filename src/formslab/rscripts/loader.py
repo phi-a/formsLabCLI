@@ -17,6 +17,12 @@ Two module-level flags a script may set:
 
     enable = False            never loaded (checked before import)
     requires = ("forms",)     needs a real FORMS handle; skipped on LabForms
+
+and one optional hook:
+
+    def rShutdown(forms):     called once when the host stops, however it stops
+                              (end of plan, `end`, a crash), last loaded first.
+                              Where a script leaves its hardware safe.
 """
 from __future__ import annotations
 
@@ -33,6 +39,7 @@ ENV = "FORMSLAB_RSCRIPTS_DIR"
 _STATIC_DISABLE = re.compile(r"(?mi)^enable\s*=\s*false\b")
 
 _loaded: list[tuple[str, object]] = []   # (name, rScript function), run order
+_shutdown: list[tuple[str, object]] = []  # (name, rShutdown function), load order
 disabled: set[str] = set()               # disabled at runtime, by name
 _last_error: dict[str, str] = {}
 
@@ -74,6 +81,7 @@ def load(forms, names) -> list[str]:
     """Load the named rScripts, replacing any loaded before. Returns the names
     that loaded. Nothing runs until `tick`."""
     _loaded.clear()
+    _shutdown.clear()
     _last_error.clear()
     lab = getattr(forms, "is_lab_handle", False)
 
@@ -113,6 +121,8 @@ def load(forms, names) -> list[str]:
             _log(forms, f"{name}: no rScript(forms) function; skipped", "WARNING")
             continue
         _loaded.append((name, func))
+        if callable(hook := getattr(module, "rShutdown", None)):
+            _shutdown.append((name, hook))
         _log(forms, f"{name}: loaded from {path}")
 
     return [n for n, _ in _loaded]
@@ -141,3 +151,16 @@ def tick(forms) -> None:
         else:
             if _last_error.pop(name, None) is not None:
                 _log(forms, f"{name}: recovered")
+
+
+def shutdown(forms) -> None:
+    """Run every loaded script's ``rShutdown(forms)``, last loaded first, once.
+    A failing hook is logged and the rest still run."""
+    hooks = list(reversed(_shutdown))
+    _shutdown.clear()
+    for name, hook in hooks:
+        try:
+            hook(forms)
+        except Exception as exc:
+            _log(forms, f"{name}: rShutdown failed: {type(exc).__name__}: {exc}\n"
+                        f"{traceback.format_exc()}", "ERROR")

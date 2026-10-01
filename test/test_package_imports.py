@@ -27,22 +27,9 @@ import formslab
 FIRMWARE = {"formslab.devices.pico_board_control"}
 
 # Modules that legitimately need an extra, and the distribution that provides
-# it. The Qt analysis tab imports at module scope on purpose: it is simply
-# unavailable without its extra, and the console already renders an unbuildable
-# tab as unavailable. The map is asserted in both directions below, so a module
-# that becomes lazy has to be removed from here.
-#
-# The two plotting scripts that used to be listed here are not modules at all
-# and now live in `scripts/` -- see `scripts/README.md`.
-EXTRA_ONLY = {
-    "formslab.console.analysis.analysiscli": "matplotlib",
-    "formslab.console.sessions.analysis": "matplotlib",
-    # The FORMS host modes build a FORMS instance at module scope. The host
-    # itself (sequence, stream) and the lab modes import without FORMS.
-    "formslab.host.modes.tvac": "forms",
-    "formslab.host.modes.darkness": "forms",
-    "formslab.host.modes.axionsat": "forms",
-}
+# it. None today: everything imports on a base install. The map is asserted in
+# both directions below, so a module that needs an extra has to be listed here.
+EXTRA_ONLY = {}
 
 
 def _all_modules():

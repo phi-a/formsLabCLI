@@ -180,6 +180,16 @@ def WriteCommand(request: dict, label: str, path: Path = None):
         block['timestamp'] = time.time()
         AtomicJsonWrite(data, path)
 
+def CommandPending(label: str, path: Path = None) -> bool:
+    """True while a request written to ``label`` has not been taken by its
+    reader. Looks without consuming, unlike `ReadCommand`."""
+    if path is None or not path.exists():
+        path = cast_state_path()
+    with _cast_lock:
+        data = _safe_read_json(path)
+        _, block, _ = _get_or_create_block(data, label)
+    return bool(block.get("request")) and not block.get("processed", True)
+
 def ReadStatus(label: str, path: Path = None) -> dict:
     if path is None or not path.exists():
         path = cast_state_path()
