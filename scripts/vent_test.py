@@ -3,6 +3,7 @@
     python scripts/vent_test.py                 # against the built-in simulator
     python scripts/vent_test.py --live          # real chamber, READ-ONLY pre-check
     python scripts/vent_test.py --live --vent   # real chamber, vents after you type VENT
+    python scripts/vent_test.py --live --close  # real chamber, closes the vent valve
 
 Two ways to vent (--method):
 
@@ -26,7 +27,11 @@ Steps:
      fault appears, or --timeout passes. Readings go to
      outputs/vent_test_<UTC>.csv and every raw command/reply to .jsonl beside it.
 
-Exit code 0 = vented, 1 = failed or timed out, 2 = pre-check refused.
+--close closes the vent valve instead (the same !OV toggle, read first and
+verified), sealing the chamber at whatever pressure it is at. The PLC will not
+start a pumpdown with the vent valve open.
+
+Exit code 0 = vented (or closed), 1 = failed or timed out, 2 = pre-check refused.
 Ctrl-C while watching only stops watching; the valve stays as commanded.
 """
 from __future__ import annotations
@@ -78,6 +83,22 @@ def prechecks(st, profile: BenchProfile, method: str) -> list[str]:
     return problems
 
 
+def close_vent(laco) -> int:
+    """Close the vent valve: read first, one !OV toggle if it is open, verify."""
+    if not laco.client.device_state("OV"):
+        print("Vent valve already closed; nothing sent.")
+        return 0
+    try:
+        laco.client.set_device("OV", False, confirm=True)
+    except ProtocolError as exc:
+        print(f"FAILED: {exc}")
+        return 1
+    st = laco.status()
+    print(f"Vent valve verified CLOSED at {_now()}; chamber sealed at {st.pressure} "
+          f"{laco.profile.pressure_unit}.")
+    return 0
+
+
 def simulated_chamber():
     """A simulator pumped down to a few Torr, and a profile pointing at it."""
     sim = Simulator().__enter__()
@@ -92,6 +113,7 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--live", action="store_true", help="the real chamber (default: simulator)")
     ap.add_argument("--vent", action="store_true", help="with --live: actually vent")
+    ap.add_argument("--close", action="store_true", help="close the vent valve and exit")
     ap.add_argument("--method", choices=("valve", "cycle"), default="valve",
                     help="valve = !OV toggle (idle/Manual); cycle = !VA (inside a running cycle)")
     ap.add_argument("--atm", type=float, default=700.0, help="pressure that counts as vented")
@@ -123,6 +145,8 @@ def main(argv=None) -> int:
         st = laco.status()
         print("Before:")
         show(st, unit)
+        if args.close:
+            return close_vent(laco)
         problems = prechecks(st, profile, args.method)
         if problems:
             print("REFUSED:\n  " + "\n  ".join(problems))

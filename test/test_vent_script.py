@@ -49,3 +49,14 @@ def test_refuses_the_valve_while_the_rough_valve_is_open(vent_test, capsys, monk
     _with(vent_test, monkeypatch, devices={"OR": True})
     assert vent_test.main([]) == 2
     assert "rough valve is open" in capsys.readouterr().out
+
+
+def test_close_shuts_an_open_vent_valve(vent_test, capsys, monkeypatch):
+    _with(vent_test, monkeypatch, devices={"OV": True}, pressure=750.0)
+    assert vent_test.main(["--close"]) == 0
+    assert "Vent valve verified CLOSED" in capsys.readouterr().out
+
+
+def test_close_sends_nothing_when_already_closed(vent_test, capsys):
+    assert vent_test.main(["--close"]) == 0
+    assert "already closed; nothing sent" in capsys.readouterr().out
