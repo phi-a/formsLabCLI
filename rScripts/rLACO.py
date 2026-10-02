@@ -28,6 +28,7 @@ from formslab.rscripts.cast import CastUsage, choice, integer, number
 
 name = os.path.splitext(os.path.basename(__file__))[0]
 LABEL = "hvc"
+RETRY_INTERVAL = 30.0      # seconds between connect attempts while unreachable
 
 # --- console commands --------------------------------------------------------------
 
@@ -111,6 +112,8 @@ class rGlobal:
     _last_log_time = 0.0
     readERROR = 0
     started_pumping = False    # this run turned the pump on or opened the rough valve
+    retry_at = 0.0             # next connect attempt while unreachable (time.monotonic)
+    connect_error = None       # last connect failure, logged once
 
 
 rg = rGlobal
@@ -124,17 +127,27 @@ def _set(forms, nm, value, unit):
 
 
 def _chamber(forms):
-    """The one LACO object, connected. None (and a status update) if it cannot connect."""
+    """The one LACO object, connected. None (and a status update) if it cannot
+    connect. While unreachable it retries every RETRY_INTERVAL s, not every
+    poll: each attempt blocks the host loop for the connect timeout."""
     if rg.laco is None:
         rg.laco = LACO()
         rg.POLL_INTERVAL = rg.laco.profile.poll_interval_s
     if not rg.laco.connected:
+        if time.monotonic() < rg.retry_at:
+            return None
         try:
             rg.laco.connect()
             forms.log(f"HVC-3500 connected {rg.laco.endpoint}", component=name)
+            rg.connect_error = None
         except OSError as e:
-            forms.log(f"HVC-3500 connect failed: {e}", level="ERROR", component=name)
-            UpdateStatus(LABEL, {"connected": False})
+            rg.retry_at = time.monotonic() + RETRY_INTERVAL
+            msg = f"HVC-3500 connect to {rg.laco.endpoint} failed: {e}"
+            if msg != rg.connect_error:      # log each new failure once
+                forms.log(f"{msg}; retrying every {RETRY_INTERVAL:g} s",
+                          level="ERROR", component=name)
+                rg.connect_error = msg
+            UpdateStatus(LABEL, {"connected": False, "error": str(e)})
             return None
     return rg.laco
 

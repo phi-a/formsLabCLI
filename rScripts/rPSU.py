@@ -339,11 +339,13 @@ def rScript(forms):
         _publish_status(forms, "psu1", rg.psu1)
         rg._psu1_poll_time = now
 
+    if rg.psu2 is None:
+        return          # PSU2 not opened (disabled in usbmap, or failed): no keep-alive
     if psu2_refreshed:
         _publish_psu2_variable(forms, rg.psu2)
 
     # Keep-alive: poll PSU2 periodically when idle so the serial link doesn't
-    # go stale (PSU1 stays alive via TVAC commands; PSU2 can go quiet for hours).
+    # go stale (PSU2 can go quiet for hours).
     # Back off exponentially when PSU2 is persistently unreachable so a dead
     # unit doesn't hammer the serial bus every 10 s.
     if psu2_refreshed:
