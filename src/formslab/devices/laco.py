@@ -21,7 +21,7 @@ lives here or in the bench profile (`tvac_bench.json`), never in a script.
 `apply(request)` is the whole surface as one dict grammar: what the CAST `hvc`
 block carries from the console (rLACO's cast commands) and from lab plans.
 
-Commissioning rules carried over from the tvac repo:
+Commissioning rules (docs/HVC3500.md):
 - every setpoint write is verified (the client reads back or checks the echo)
 - actions (start, abort, reset, recipe run, vacuum operations, zone on/off)
   change process state and are never retried; read `status()` after one

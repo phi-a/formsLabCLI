@@ -1,6 +1,6 @@
 """HVC-3500 driver tests: protocol parsing and the client against the in-process simulator.
 
-Mirrors tests/ in the tvac repo (C:/Users/darkn/Documents/tvac). No hardware needed.
+The HVC-3500 driver against its simulator. No hardware needed.
 """
 import pytest
 

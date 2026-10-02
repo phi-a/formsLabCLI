@@ -2,14 +2,15 @@
 
 The controller's PLC owns interlocks, valve sequencing, thermal limits and
 recovery. This driver only sends documented ASCII commands and reads state
-back; it never reimplements sequencing. See the notes in the `tvac` repo
-(`Notebook/HVC3500_REMOTE_INTERFACE.md`) for the protocol and its
-installed-firmware quirks.
+back; it never reimplements sequencing. docs/HVC3500.md has the protocol and
+its installed-firmware quirks. `python -m formslab.devices.hvc3500` is the
+commissioning tool (cli.py).
 
     protocol.py   framing, parsing, fault decoding (pure)
     client.py     TCP client with guarded writes and a transaction log
     simulator.py  fake controller for tests and dry runs
     profile.py    per-bench profile (endpoint, units, zone/sensor map)
+    cli.py        probe / snapshot / watch / raw / guarded writes / discover / simulate
 """
 from .client import HVC3500Client, Transaction, WriteRefused
 from .profile import BenchProfile, load_profile

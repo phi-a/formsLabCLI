@@ -1,6 +1,3 @@
-# Vendor driver for the LACO VC/HVC-3500 controller (Unitronics UniStream PLC).
-# Source of truth: C:/Users/darkn/Documents/tvac/hvc3500/protocol.py - keep the two in sync.
-
 """HVC-3500 ASCII protocol: framing, parsing and fault decoding.
 
 Everything here is pure (no sockets) so it can be unit-tested and reused by a

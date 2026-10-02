@@ -1,9 +1,6 @@
-# Vendor driver for the LACO VC/HVC-3500 controller (Unitronics UniStream PLC).
-# Source of truth: C:/Users/darkn/Documents/tvac/hvc3500/client.py - keep the two in sync.
-
 """TCP client for the HVC-3500 ASCII interface.
 
-Design rules (see Notebook/HVC3500_REMOTE_INTERFACE.md):
+Design rules (see docs/HVC3500.md):
 - every transaction is logged with raw bytes and timestamps
 - nothing is retried automatically; a timeout raises and marks the socket dirty
 - setpoint writes are verified by reading back

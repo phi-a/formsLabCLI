@@ -1,6 +1,3 @@
-# Vendor driver for the LACO VC/HVC-3500 controller (Unitronics UniStream PLC).
-# Source of truth: C:/Users/darkn/Documents/tvac/hvc3500/simulator.py - keep the two in sync.
-
 """Fake HVC-3500 for testing the client without a chamber.
 
 Implements the documented command surface from manual appendix 9.1 with a
