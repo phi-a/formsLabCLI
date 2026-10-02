@@ -225,7 +225,7 @@ def test_measure_returns_none_when_the_supply_is_silent(opened):
 def test_status_reports_each_channel(opened):
     _, replies = opened
     replies.update({
-        ":OUTP?": "ON",
+        ":OUTP? CH1": "ON",
         ":APPL?": "12.000,1.500",
         ":MEAS:VOLT?": "11.998",
         ":MEAS:CURR?": "0.250",
@@ -238,7 +238,7 @@ def test_status_reports_each_channel(opened):
 
 def test_status_marks_a_failed_channel_unknown(opened):
     _, replies = opened
-    replies[":OUTP?"] = TimeoutError("no reply")
+    replies[":OUTP? CH2"] = TimeoutError("no reply")
 
     state = PSU(USB).status()
 

@@ -251,12 +251,16 @@ class LACO:
     def faults(self) -> P.ErrorStatus:
         return self.client.error_status()
 
-    def status(self) -> LacoStatus:
+    def status(self, interrupt=None) -> LacoStatus | None:
         """Everything the chamber reports, in one read. Per-item failures are
-        recorded in `errors`; a transport failure on the first read raises."""
+        recorded in `errors`; a transport failure on the first read raises.
+        `interrupt`, checked between reads, abandons the read when it returns
+        True (a command is waiting): the result is then None."""
         sensor_nums = sorted(set(int(n) for n in self.profile.sensors.values()))
         zone_nums = sorted(set(z.number for z in self.zones.values()))
-        snap = self.client.snapshot(temperatures=sensor_nums, zones=zone_nums)
+        snap = self.client.snapshot(temperatures=sensor_nums, zones=zone_nums, stop=interrupt)
+        if snap.get("interrupted"):
+            return None
         if all(snap.get(k) is None for k in ("mode", "test_status", "pressure")):
             self.connected = False
             first = next(iter(snap.get("errors", {}).values()), "no reply")

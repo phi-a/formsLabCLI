@@ -67,17 +67,21 @@ class RigolDriver:
             raise RuntimeError(f"Not a Rigol instrument at {self.resource}: {idn!r}")
 
     def query(self, cmd, retries=2):
+        """Query, retrying once after a failure. The device clear comes only
+        before a retry: on the DP832A a clear sent right after a write (e.g.
+        `:INST:NSEL`) makes it drop the next reply, so clearing before every
+        query cost a full VISA timeout (~6 s) per channel switch."""
         for attempt in range(retries):
             try:
-                self.clear()
                 return self._query(cmd)
             except Exception:
                 if attempt == retries - 1:
                     raise
+                self.clear()          # flush what the failed attempt left behind
                 time.sleep(0.1)
 
     def clear(self):
-        """Flush stale input before a query. Best effort, never raises.
+        """Flush stale input after a failed query. Best effort, never raises.
 
         Optional by design: pyvisa-py's USBTMC session (Linux, the Pi) does not
         implement a device clear, and treating that as fatal failed every
@@ -417,7 +421,9 @@ class PSU:
     def _query_channel(self, ch):
         """One channel's output state, setpoints and measurements."""
         self._select(ch)
-        is_on = self.driver.query(":OUTP?").strip().upper() in {"1", "ON"}
+        # Name the channel: a bare `:OUTP?` gets no reply on this DP832A (firmware
+        # 00.01.19) until the VISA timeout and a retry -- ~6 s per channel.
+        is_on = self.driver.query(f":OUTP? CH{ch}").strip().upper() in {"1", "ON"}
 
         vset = cset = None
         for attempt in range(3):

@@ -208,3 +208,13 @@ def test_quick_status_reads_what_a_command_changes(fast, sim):
     assert q["vent"] is True and q["pressure"] > 3.5          # rising
     assert q["fault_severity"] == "N" and q["faults"] == "none"
     assert set(q) >= {"rough", "fill", "foreline", "gate", "pump", "turbo"}
+
+
+def test_a_waiting_command_interrupts_the_full_read(laco):
+    calls = []
+
+    def waiting():
+        calls.append(1)
+        return len(calls) > 3          # a command shows up after three reads
+    assert laco.status(interrupt=waiting) is None
+    assert laco.status(interrupt=lambda: False) is not None

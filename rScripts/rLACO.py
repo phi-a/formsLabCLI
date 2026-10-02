@@ -23,9 +23,9 @@ import time
 from datetime import datetime, timezone
 
 from formslab.config import output_dir
-from formslab.console.cast.castutils import ReadCommand, UpdateStatus
+from formslab.console.cast.castutils import CommandPending, ReadCommand, UpdateStatus
 from formslab.devices.laco import LACO, OPERATIONS, PUMPS, VALVES
-from formslab.rscripts import C2K, RScriptControl
+from formslab.rscripts import C2K
 from formslab.rscripts.cast import CastUsage, choice, integer, number
 
 name = os.path.splitext(os.path.basename(__file__))[0]
@@ -116,6 +116,7 @@ class rGlobal:
     started_pumping = False    # this run turned the pump on or opened the rough valve
     retry_at = 0.0             # next connect attempt while unreachable (time.monotonic)
     cast = {}                  # the last CAST "hvc" status block published
+    next_full = 0.0            # when the next full read is due (time.monotonic)
     connect_error = None       # last connect failure, logged once
 
 
@@ -184,20 +185,25 @@ def _log(forms, record):
         forms.log(f"LACO log write failed: {e}", level="WARNING", component=name)
 
 
-def _read(forms, laco):
+def _read(forms, laco) -> bool:
+    """The full read. Abandoned (False) as soon as a command is waiting, so
+    the command is applied first; the read is then retried."""
     try:
-        status = laco.status()
+        status = laco.status(interrupt=lambda: CommandPending(LABEL))
     except (OSError, ValueError) as e:
         rg.readERROR += 1
         forms.log(f"HVC-3500 read failed: {e}", level="ERROR", component=name)
         UpdateStatus(LABEL, {"connected": False})
-        return
+        return True
+    if status is None:
+        return False
     if status.errors:
         forms.log(f"HVC-3500 partial read: {status.errors}", level="WARNING", component=name)
     _publish(forms, laco, status)
     rg.cast = status.as_cast()
     UpdateStatus(LABEL, rg.cast)
     _log(forms, status.as_record())
+    return True
 
 
 def _quick(forms, laco):
@@ -218,7 +224,7 @@ def rScript(forms):
     if rg.disable:
         return
     request = ReadCommand(label=LABEL)
-    due = not RScriptControl(forms, name).tick(seconds=rg.POLL_INTERVAL)
+    due = time.monotonic() >= rg.next_full
     if not (request or due):
         return
     laco = _chamber(forms)
@@ -236,8 +242,8 @@ def rScript(forms):
                                     or message.startswith("stop_pumping:")):
                 rg.started_pumping = False
         _quick(forms, laco)
-    if due:
-        _read(forms, laco)
+    if due and _read(forms, laco):
+        rg.next_full = time.monotonic() + rg.POLL_INTERVAL
 
 
 def rShutdown(forms):

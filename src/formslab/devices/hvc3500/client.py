@@ -211,11 +211,19 @@ class HVC3500Client:
             raise ValueError(f"unknown device code {code!r}")
         return P.parse_device_state(self.transact(f"?{code}").value)
 
-    def snapshot(self, temperatures=(), zones=(), devices: bool = True) -> dict:
-        """Read-only status snapshot. Per-item failures are recorded, not raised."""
+    def snapshot(self, temperatures=(), zones=(), devices: bool = True,
+                 stop: Callable[[], bool] | None = None) -> dict:
+        """Read-only status snapshot. Per-item failures are recorded, not raised.
+
+        `stop` is checked before each read; once it returns True the remaining
+        reads are skipped and the result carries ``"interrupted": True`` -- so a
+        waiting command need not sit behind a whole snapshot."""
         out: dict = {"t": time.time()}
 
         def take(name, fn):
+            if out.get("interrupted") or (stop is not None and stop()):
+                out["interrupted"] = True
+                return
             try:
                 out[name] = fn()
             except (OSError, ProtocolError) as exc:
