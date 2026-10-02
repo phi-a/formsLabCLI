@@ -2,8 +2,8 @@
 
 A terminal console for thermal-vacuum testing: control chamber temperatures,
 supplies and readouts from the terminal, and run hardware test sequences (lab
-plans) against them. It drives Rigol programmable supplies, SMTC08 thermocouple
-and RTD readers, TVAC shroud heaters, the LACO chamber's HVC-3500 controller, a
+plans) against them. It drives the LACO chamber's HVC-3500 controller, Rigol
+programmable supplies, SMTC08 thermocouple readers, a
 cryocooler control board behind a Raspberry Pi Pico I2C bridge, a Digital
 Loggers PowerSwitch, and the sLTA imaging chain.
 
@@ -60,8 +60,8 @@ UTF-8, because the default OEM codepage mangles the box-drawing characters.
 
 | Tab | What it drives |
 |---|---|
-| `ctrl` | Runs: `plans`, `run <plan|laco|tvac>`, pause, resume, end |
-| `cast` | Live hardware status panel |
+| `ctrl` | Runs: `plans`, `run <plan|tvac>`, pause, resume, end |
+| `cast` | Instrument status, and commands to them (`hvc vent open`, `psu1 ch1 on`, `help`) |
 | `psu` | Rigol supplies and PowerSwitch outlets |
 | `log` | Tail the run log |
 
@@ -171,14 +171,16 @@ is in [docs/SEQUENCE.md](docs/SEQUENCE.md).
 python -m formslab.sequence psu1_smtc08_first     # check a plan; touches no hardware
 labcli --ctrl
 ctrl> plans                                        # lab plans and modes
-ctrl> run psu1_smtc08_first                        # or: run laco, run tvac
+ctrl> run tvac                                     # manual operation: then the cast tab
+ctrl> run laco_pumpdown                            # or any plan
 ctrl> pause / resume / end
 log>  tail 50                                      # the host's output
 ```
 
 `end` asks the host to stop, so every rScript's `rShutdown` runs (a plan's PSU
-outputs go off) before it exits. A mode (`laco`, `tvac`) runs until `end`; a
-plan ends by itself. Every run writes a CSV of its variables to `outputs/`.
+outputs go off, pumping the run started stops) before it exits. `tvac` runs
+the bench's rScripts until `end` while you operate from the cast tab; a plan
+ends by itself. Every run writes a CSV of its variables to `outputs/`.
 
 ## Windows and Linux (Raspberry Pi)
 

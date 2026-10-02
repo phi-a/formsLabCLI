@@ -14,7 +14,6 @@ collect_ignore = [
     # hardware -- needs instruments on the bench
     "test/test_CCboard.py",
     "test/test_DP832A.py",
-    "test/test_RTD16.py",
     "test/test_SMTC08.py",
     "test/test_image.py",
     "test/test_psu_request_resilience.py",

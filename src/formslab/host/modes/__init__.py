@@ -1,30 +1,44 @@
-"""Host modes: the rScripts a `run <mode>` loads, and its CSV cadence.
+"""Host modes: what `run <mode>` loads.
 
-A mode runs until ctrl `end`. A lab plan (`run <plan>`, see `formslab.sequence`)
-names its own rScripts in the plan and ends when its Sequence does.
+There is one mode, `tvac`: manual chamber operation. It loads the rScripts the
+bench config names and runs them until ctrl `end`; the operator drives the
+chamber and instruments from the console's cast tab. Which scripts is a fact
+about the computer, so it lives in the live bench config
+(`$FORMSLAB_CONFIG_DIR/tvac_bench.json`, seeded from the packaged default):
 
-    laco   the LACO chamber through its HVC-3500 controller (rLACO)
-    tvac   the Rigol/RTD bench: PSU service plus the shroud heater loop
+    "tvac": {"rscripts": ["rLACO", "rSMTC08", "rPSU"], "record_s": 30}
 
-`rCryoBoard` is not in `tvac`: its supply is PSU1 CH1, which rTVAC's heater
-loop also drives (see docs/CRYOCOOLER.md). Run it from a plan that does not
-load rTVAC.
+A lab plan (`run <plan>`, see `formslab.sequence`) names its own rScripts and
+ends when its Sequence does.
 """
+import json
+
 from formslab import rscripts
 
-MODES = {
-    "laco": {"rscripts": ["rLACO"], "record_s": 30},
-    "tvac": {"rscripts": ["rPSU", "rTVAC"], "record_s": 30},
-}
+MODES = ("tvac",)
+DEFAULT = {"rscripts": ["rLACO", "rSMTC08", "rPSU"], "record_s": 30}
 
-# Everything the host can launch: the modes, and `plan` for a lab plan file.
+# Everything the host can launch: the mode, and `plan` for a lab plan file.
 LAB_MODES = (*MODES, "plan")
 
 
-def initialize(mode: str):
+def spec(mode: str = "tvac") -> dict:
+    """The mode's rScripts and CSV cadence, from the bench config."""
+    if mode not in MODES:
+        raise ValueError(f"unknown mode {mode!r} (modes: {', '.join(MODES)})")
+    from formslab.devices.hvc3500.profile import profile_path
+
+    try:
+        block = json.loads(profile_path().read_text(encoding="utf-8")).get(mode) or {}
+    except (OSError, ValueError):
+        block = {}
+    return {**DEFAULT, **block}
+
+
+def initialize(mode: str = "tvac"):
     """A `LabForms` handle with the mode's rScripts loaded and recording set."""
-    spec = MODES[mode]
+    s = spec(mode)
     forms = rscripts.LabForms(name=mode.upper())
-    rscripts.load(forms, spec["rscripts"])
-    forms.record(value=spec["record_s"], unit="seconds")
+    rscripts.load(forms, s["rscripts"])
+    forms.record(value=s["record_s"], unit="seconds")
     return forms

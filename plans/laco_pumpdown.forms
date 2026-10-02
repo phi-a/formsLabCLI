@@ -1,0 +1,27 @@
+# ============================================================
+# plan: laco_pumpdown -- rough pumpdown of the LACO chamber
+# ============================================================
+# The sequence proven on the chamber 2026-09-24, run through rLACO so the host
+# owns the controller: pump on, settle (PLC: pump on >= 10 s before the rough
+# valve may open), rough valve open, wait for the target, then rough valve
+# closed and pump off. Leaves the chamber sealed under rough vacuum.
+#
+# Needs: Manual mode; vent, fill, foreline and gate valves closed (the PLC
+# refuses the rough valve otherwise -- the plan then stops at that step).
+# If the plan stops early, rLACO's rShutdown ends the pumping it started.
+#
+# Typical: 743 -> 3.4 Torr in about 6 min (2026-10-01).
+
+mission.name = "laco_pumpdown"
+rscripts.load = ["rLACO"]
+recording.interval = 5
+recording.unit = "seconds"
+
+sequence.operations = [
+    {"cast": "hvc pump on"},
+    {"hold": 15, "units": "seconds"},
+    {"cast": "hvc rough open"},
+    {"until": "chamberP", "below": 5.0, "timeout_s": 1200},
+    {"cast": "hvc stop"},
+    {"log": "pumpdown done: rough valve closed, pump off"},
+]

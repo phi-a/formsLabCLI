@@ -58,17 +58,6 @@
     "product_id": "2817"
   },
 
-  "RTD1": {
-    "description": "RTD board 1",
-    "hub_location": "1-4",
-    "hub_port": 4,
-    "port": "1-4.4",
-    "interface_id": "1-4.4:1.0",
-    "vendor_id": "2e8a",
-    "product_id": "0005",
-    "board_id": "01"
-  },
-
   "cryo_board": {
     "description": "Cryocooler control board via Pico USB-I2C bridge",
     "hub_location": "1-4.3",

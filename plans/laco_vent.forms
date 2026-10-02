@@ -1,0 +1,25 @@
+# ============================================================
+# plan: laco_vent -- vent the LACO chamber to atmosphere
+# ============================================================
+# Guards first: platen and shroud inside the vent window (10-60 C on the
+# shipped profile); each guard fails the plan if not met within 30 s. Then the
+# vent valve opens (the PLC needs the rough and gate valves closed) and the plan
+# waits for atmosphere. The valve is left open, as the HMI leaves it; close it
+# with `hvc vent close` before the next pumpdown.
+#
+# Typical: 4.4 -> 743 Torr in about 40 s (2026-10-01).
+
+mission.name = "laco_vent"
+rscripts.load = ["rLACO"]
+recording.interval = 2
+recording.unit = "seconds"
+
+sequence.operations = [
+    {"until": "platenT", "above": 10.0, "unit": "C", "timeout_s": 30},
+    {"until": "platenT", "below": 60.0, "unit": "C", "timeout_s": 30},
+    {"until": "shroudT", "above": 10.0, "unit": "C", "timeout_s": 30},
+    {"until": "shroudT", "below": 60.0, "unit": "C", "timeout_s": 30},
+    {"cast": "hvc vent open"},
+    {"until": "chamberP", "above": 700.0, "timeout_s": 600},
+    {"log": "vented; vent valve left open"},
+]

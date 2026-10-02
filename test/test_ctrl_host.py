@@ -23,9 +23,9 @@ class Launch(unittest.TestCase):
 
     def test_a_mode_starts_the_host_module(self):
         """`-m` is what stops us guessing where the package lives on disk."""
-        popen, _ = self._launch("laco")
+        popen, _ = self._launch("tvac")
         self.assertEqual(popen.call_args.args[0][1:], ["-m", "formslab.host.sequence",
-                                                       "--mode", "laco"])
+                                                       "--mode", "tvac"])
 
     def test_a_plan_is_found_by_name_and_passed_by_path(self):
         popen, result = self._launch("psu1_smtc08_first")
@@ -40,18 +40,18 @@ class Launch(unittest.TestCase):
         self.assertIn("No plan or mode", result.content)
 
     def test_the_log_ctrl_writes_is_the_log_the_tab_reads(self):
-        popen, _ = self._launch("laco")
+        popen, _ = self._launch("tvac")
         self.assertEqual(Path(popen.call_args.kwargs["stdout"].name), logcli.log_path())
 
     def test_the_pid_is_recorded_beside_the_log(self):
-        self._launch("laco")
+        self._launch("tvac")
         self.assertEqual(ctrlcli._get_pid_path().parent, config.output_dir())
         self.assertEqual(ctrlcli._get_pid_path().read_text(), "4321")
 
     def test_a_second_run_is_refused_while_one_is_alive(self):
         with mock.patch.object(ctrlcli, "_running_pid", return_value=77), \
                 mock.patch.object(ctrlcli.subprocess, "Popen") as popen:
-            result = ctrlcli.run_sequence(["laco"])
+            result = ctrlcli.run_sequence(["tvac"])
         popen.assert_not_called()
         self.assertIn("already running (pid 77)", result.content)
 

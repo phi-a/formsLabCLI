@@ -1,8 +1,8 @@
 """The sequence host: the process that runs rScripts against the bench.
 
-Started by the console's ctrl tab (`run <plan|laco|tvac>`), or directly:
+Started by the console's ctrl tab (`run <plan|tvac>`), or directly:
 
-    python -m formslab.host.sequence --mode laco
+    python -m formslab.host.sequence --mode tvac
     python -m formslab.host.sequence --plan plans/psu1_smtc08_first.forms
 
 Every run is a `LabForms` handle and one loop paced in real time at `LOOP_HZ`:
@@ -128,7 +128,7 @@ def _build(mode: str, plan_path):
     return modes.initialize(mode), None
 
 
-def channel(mode: str = "laco", plan_path=None, relay_func=None, loops: int | None = None):
+def channel(mode: str = "tvac", plan_path=None, relay_func=None, loops: int | None = None):
     """Run a mode until `end`, or a plan to its end. ``loops`` stops a mode run
     after that many loops (tests)."""
     global paused
@@ -188,7 +188,7 @@ def main(argv=None) -> int:
     ap = ArgumentParser(prog="python -m formslab.host.sequence",
                         description="Run rScripts against the bench: a mode, or a lab plan.")
     group = ap.add_mutually_exclusive_group()
-    group.add_argument("--mode", choices=sorted(modes.MODES), default="laco")
+    group.add_argument("--mode", choices=sorted(modes.MODES), default="tvac")
     group.add_argument("--plan", help="a .forms lab plan: a path, or a name found in plans/")
     args = ap.parse_args(argv)
 

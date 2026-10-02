@@ -24,13 +24,17 @@ sequence.operations = [
 |---|---|---|
 | `hold` | runs the routines for a duration (`units`: seconds, minutes, hours) | — |
 | `command` | writes a CAST request to an instrument label and waits until the routine that owns it has taken it | not taken within `timeout_s` (default 10) |
+| `cast` | the same, as the cast tab's words: `{"cast": "hvc pump on"}` -- checked against the routine's grammar when the plan is read | as `command` |
 | `until` | runs until a variable is `above` / `below` a value; `unit` converts C/K | not met within `timeout_s` (required: a wait on hardware always has a limit) |
 | `log` | one line in the run log | — |
 
-The request grammar of each label is its routine's: `psu1` per channel
-(`voltage`+`current`, `on`, `ovp`/`ocp`/`protect`), `tvac` (`PY`, `MY` in K),
-`hvc` (`platen`, `shroud` in C, `vacuum`, `start`...), `cryo`, `slta`. See the
-header comment of each rScript.
+The request grammar of each label is its routine's; `cast` steps use the cast
+tab's words instead, which is usually easier to read. `help` in the cast tab
+lists them all; `LACO.apply` documents the `hvc` dict grammar.
+
+Shipped plans: `psu1_smtc08_first` (PSU1 + thermocouples), `laco_pumpdown`
+(pump on, rough open, until below 5 Torr, stop) and `laco_vent` (temperature
+guards, vent valve open, until atmosphere).
 
 Orbit content (`orbit.*`, `propagate`, `@procedure`) is refused: that is FORMS'
 part, done offline (see ARCHITECTURE.md).
@@ -55,8 +59,9 @@ up a hold.
 
 However a run ends -- last step, ctrl `end`, a failed step, a crash -- each
 loaded routine's `rShutdown` runs before the host exits. rPSU turns off the
-channels the run switched on; rTVAC turns its heater channels off; rSMTC08 and
-rCryoBoard release their ports.
+channels the run switched on; rLACO ends pumping the run started (rough valve
+closed, pump off) and releases the controller; rSMTC08 and rCryoBoard release
+their ports.
 
 The host writes `outputs/.run/sequence.events.jsonl`: `sequence_started` (with
 the plan's manifest), `segment_started`, `progress`, `segment_finished`,

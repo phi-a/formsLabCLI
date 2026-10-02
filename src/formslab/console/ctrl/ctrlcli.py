@@ -1,7 +1,7 @@
 """The ctrl tab: start, watch and stop the sequence host.
 
     run <plan>        a lab plan from plans/ (or a path to a .forms plan)
-    run laco | tvac   a mode: its rScripts run until `end`
+    run tvac          manual chamber operation: the bench's rScripts until `end`
     plans             list lab plans and modes
     status, ps        is a host running
     pause, resume     hold / continue the running plan or mode
@@ -24,7 +24,7 @@ from formslab.console.ctrl.ctrlutils import WriteCommand, process_exists
 from formslab.console.log.logcli import log_path
 from formslab.console.sessions.base import CLIResult
 from formslab.console.style import DIM, ERROR, HEADER, INFO, LABEL, SUCCESS, TEXT, WARNING
-from formslab.host.modes import MODES
+from formslab.host.modes import MODES, spec
 from formslab.sequence import discover as discover_plans, find_plan, is_lab_plan
 
 # How long `end` waits for the host to stop on its own (running rShutdown)
@@ -90,10 +90,10 @@ def plans_command() -> CLIResult:
         result.append(f"{path.parent}\n", DIM)
     result.append("\nMODES (run until `end`)\n", HEADER)
     result.append("═" * 60 + "\n", DIM)
-    for mode, spec in MODES.items():
+    for mode in MODES:
         result.append("  ●   ", WARNING)
         result.append(mode.ljust(28), WARNING)
-        result.append(", ".join(spec["rscripts"]) + "\n", DIM)
+        result.append(", ".join(spec(mode)["rscripts"]) + "\n", DIM)
     result.append("\nUsage: ", DIM)
     result.append("run <plan|mode>\n", INFO)
     return CLIResult(result, clear=True)
@@ -163,7 +163,7 @@ def help_panel() -> CLIResult:
     result.append("RUNS\n", HEADER)
     for cmd, desc in (("plans", "List lab plans and modes"),
                       ("run <plan>", "Run a lab plan, e.g. run psu1_smtc08_first"),
-                      ("run laco | tvac", "Run a mode until `end`")):
+                      ("run tvac", "Manual chamber operation until `end` (cast tab)")):
         result.append(f"  {cmd:<16}", LABEL)
         result.append(desc + "\n", TEXT)
 

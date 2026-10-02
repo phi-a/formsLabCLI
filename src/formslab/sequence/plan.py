@@ -24,6 +24,8 @@ Operations, one verb each:
               minutes, hours)
     command   write a CAST request to a label and wait (``timeout_s``, default
               10) until the rScript that owns the label takes it
+    cast      the same, written as the cast tab's words: {"cast": "hvc pump on"}
+              (the owning rScript's grammar builds and checks the request)
     until     run until a variable is above/below a value, or fail after
               ``timeout_s`` (required: a wait on hardware always has a limit).
               ``unit`` converts between C and K when it differs from the
@@ -63,6 +65,7 @@ _UNITS = {"seconds": 1.0, "minutes": 60.0, "hours": 3600.0}
 _VERBS = {
     "hold": {"hold", "units"},
     "command": {"command", "request", "timeout_s"},
+    "cast": {"cast", "timeout_s"},
     "until": {"until", "above", "below", "unit", "timeout_s"},
     "log": {"log"},
 }
@@ -232,7 +235,8 @@ def _segment(where: str, op) -> Segment:
     if extra:
         raise PlanError(f"{where}: `{verb}` does not take {sorted(extra)} "
                         f"(it takes {sorted(_VERBS[verb] - {verb})})")
-    return {"hold": _hold, "command": _command, "until": _until, "log": _log}[verb](where, op)
+    return {"hold": _hold, "command": _command, "cast": _cast, "until": _until,
+            "log": _log}[verb](where, op)
 
 
 def _hold(where, op) -> Segment:
@@ -260,6 +264,24 @@ def _command(where, op) -> Segment:
         raise PlanError(f"{where}: timeout_s must be a positive number")
     return Segment("command", {"label": label, "request": request, "timeout_s": float(timeout)},
                    label=f"command {label} {request}")
+
+
+def _cast(where, op) -> Segment:
+    """A cast-tab command, e.g. "hvc pump on": the owning rScript's grammar
+    turns it into the request (checked now, while the plan is read), and it is
+    sent and awaited like `command`."""
+    from formslab.rscripts import cast
+
+    words = op["cast"].split() if isinstance(op["cast"], str) else []
+    if len(words) < 1:
+        raise PlanError(f"{where}: cast takes the words typed in the cast tab, e.g. \"hvc pump on\"")
+    try:
+        request = cast.request(words[0], words[1:])
+    except cast.CastUsage as e:
+        raise PlanError(f"{where}: {e}") from None
+    seg = _command(where, {"command": words[0], "request": request,
+                           **({"timeout_s": op["timeout_s"]} if "timeout_s" in op else {})})
+    return Segment("command", seg.params, label=f"cast {op['cast']}")
 
 
 def _until(where, op) -> Segment:

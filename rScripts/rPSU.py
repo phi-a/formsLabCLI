@@ -20,6 +20,39 @@ from formslab.console.cast.castutils import ReadCommand, UpdateStatus
 from formslab.devices.psu_config import enabled_psu_labels
 from formslab.devices.psu_service import get_psu
 from formslab.rscripts import RScriptControl
+from formslab.rscripts.cast import CastUsage, choice, integer, number
+
+# --- console commands (see formslab.rscripts.cast) ---------------------------------
+
+CAST_LABELS = ("psu1", "psu2")
+CAST_HELP = [
+    ("psu1|psu2 ch<n> set <V> <A>", "Channel setpoints: volts and current limit"),
+    ("psu1|psu2 ch<n> on|off", "Channel output"),
+    ("psu1|psu2 ch<n> protect <OVP V> <OCP A>", "Over-voltage / over-current protection on"),
+    ("psu1|psu2 ch<n> protect off", "Protection off"),
+    ("psu1|psu2 update", "Read the supply now"),
+]
+
+
+def cast_request(label, words):
+    usage = f"{label} ch<1-3> set <V> <A> | on | off | protect <V> <A> | protect off; {label} update"
+    if words == ["update"]:
+        return {"update": True}
+    if len(words) < 2 or not words[0].lower().startswith("ch"):
+        raise CastUsage(usage)
+    ch = str(integer(words[0][2:], "channel", 1, 3))
+    verb, args = words[1].lower(), words[2:]
+    if verb in ("on", "off") and not args:
+        return {ch: {"on": verb == "on"}}
+    if verb == "set" and len(args) == 2:
+        return {ch: {"voltage": number(args[0], "voltage V", 0, 32),
+                     "current": number(args[1], "current A", 0, 3.2)}}
+    if verb == "protect" and args == ["off"]:
+        return {ch: {"protect": False}}
+    if verb == "protect" and len(args) == 2:
+        return {ch: {"ovp": number(args[0], "OVP V", 0.01, 33),
+                     "ocp": number(args[1], "OCP A", 0.001, 3.3), "protect": True}}
+    raise CastUsage(usage)
 
 
 name = os.path.splitext(os.path.basename(__file__))[0]

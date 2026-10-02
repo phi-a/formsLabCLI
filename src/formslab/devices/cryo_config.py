@@ -26,9 +26,8 @@ from formslab.devices.cryo_registers import (  # noqa: F401  (re-exported for ca
 # psu2 CH2 entry referred to the FTDI Chipi-X supply, which is not part of
 # this setup.
 #
-# CONFLICT: lab/tvacutils.py also claims psu1 CH1 and CH2 for the TVAC shroud
-# heaters (channel_map={"PYsT": 2, "MYsT": 1}). rTVAC and rCryoBoard must not
-# run against the same PSU channel -- see docs/CRYOCOOLER.md.
+# rCryoBoard owns this channel while it runs; do not command psu1 CH1 from a
+# plan or the console at the same time.
 CRYO_PSU_LABEL = "psu1"
 CRYO_PSU_CHANNEL = 1
 

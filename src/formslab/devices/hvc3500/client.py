@@ -284,6 +284,10 @@ class HVC3500Client:
         return self._write_setpoint("VR", repr(float(value)), self.vacuum_range,
                                     value, abs(value) * 1e-3 + 1e-9)
 
+    def set_vacuum_rate(self, value: float) -> float:
+        return self._write_setpoint("VD", repr(float(value)), self.vacuum_rate,
+                                    value, abs(value) * 1e-3 + 1e-9)
+
     def set_hold_time(self, value: float) -> float:
         return self._write_setpoint("VH", str(int(value)), self.hold_time, int(value), 0.5)
 

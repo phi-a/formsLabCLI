@@ -1,8 +1,9 @@
 # --- rSMTC08: thermocouples from the Sequent SMTC08 boards ---
 #
 # Reads every board in BOARDS that usbmap.json configures and publishes one
-# kelvin scalar per channel: SMTC08_A -> TC01..TC08, SMTC08_B -> TC09..TC16 (the
-# same names and unit rTVAC uses). A board missing from usbmap is skipped once
+# kelvin scalar per channel: SMTC08_A -> TC01..TC08, SMTC08_B -> TC09..TC16, and
+# the same readings in C on the CAST "tc" block for the console's cast panel
+# (read-only: no commands). A board missing from usbmap is skipped once
 # with a log line; a board that fails to open or read is retried every
 # RETRY_INTERVAL s, and its channels read NaN meanwhile so the CSV shows the gap.
 #
@@ -12,8 +13,10 @@ import math
 import os
 import time
 
+from formslab.console.cast.castutils import UpdateStatus
 from formslab.devices.SMTC08 import SMTC08
 from formslab.rscripts import C2K, RScriptControl
+from formslab.rscripts.cast import CastUsage
 
 name = os.path.splitext(os.path.basename(__file__))[0]
 
@@ -22,6 +25,13 @@ CHANNELS = 8
 POLL_INTERVAL = 2.0
 RETRY_INTERVAL = 30.0
 
+CAST_LABELS = ("tc",)
+CAST_HELP = []
+
+
+def cast_request(label, words):
+    raise CastUsage("tc is read-only: `status tc` shows the thermocouples")
+
 
 class rGlobal:
     disable = False
@@ -29,6 +39,7 @@ class rGlobal:
     absent = set()       # labels not in usbmap: never retried
     retry_at = {}        # label -> time.monotonic() of the next open attempt
     last_error = {}      # label -> last error text, so each is logged once
+    status = {}          # the CAST "tc" block: "TC01 C" -> value or None
 
 
 rg = rGlobal
@@ -41,6 +52,7 @@ def _publish(forms, first, temps_c):
         if var is None:
             var = forms.types.scalar(var_name, unit="K", overwrite=False)
         var.set(value=math.nan if t is None else C2K(t), unit="K")
+        rg.status[f"{var_name} C"] = t
 
 
 def _fail(forms, label, first, exc):
@@ -96,6 +108,8 @@ def rScript(forms):
         if rg.last_error.pop(label, None) is not None:
             forms.log(f"{label} reading again", component=name)
         _publish(forms, first, temps)
+    if rg.status:
+        UpdateStatus("tc", dict(sorted(rg.status.items())))
 
 
 def rShutdown(forms):

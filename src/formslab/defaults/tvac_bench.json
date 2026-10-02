@@ -48,5 +48,14 @@
     "enable_ascii_in_recipe": false,
     "vnc_control": false
   },
-  "_sensors_note": "Confirmed 2026-09-24 against the HMI Manual screen: Cntrl P=T2, Cntrl S=T3, t2=T4, OT1/OT2=T0/T1. T14/T15 run ~3 C warm. T16-T20 unused."
+  "_sensors_note": "Confirmed 2026-09-24 against the HMI Manual screen: Cntrl P=T2, Cntrl S=T3, t2=T4, OT1/OT2=T0/T1. T14/T15 run ~3 C warm. T16-T20 unused.",
+  "tvac": {
+    "_comment": "rScripts `run tvac` loads on this computer, and the CSV cadence in seconds.",
+    "rscripts": [
+      "rLACO",
+      "rSMTC08",
+      "rPSU"
+    ],
+    "record_s": 30
+  }
 }

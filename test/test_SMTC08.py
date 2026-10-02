@@ -2,7 +2,7 @@
 import argparse
 import sys
 import os
-# Ensure project root is on sys.path (if RTD16.py lives elsewhere)
+# Ensure project root is on sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from formslab.devices.SMTC08 import SMTC08
 

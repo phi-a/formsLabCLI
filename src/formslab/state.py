@@ -42,7 +42,7 @@ def build_default_ctrl_commands() -> dict:
         "run": {
             "key": None,
             "processed": True,
-            "desc": "Run a lab plan or a mode. Usage: run <plan|laco|tvac>",
+            "desc": "Run a lab plan or manual chamber operation. Usage: run <plan|tvac>",
         },
         "pause": {"key": None, "processed": True, "desc": "Pause the running sequence"},
         "resume": {"key": None, "processed": True, "desc": "Resume a paused sequence"},
@@ -109,17 +109,11 @@ def build_default_cast_state(now: float | None = None) -> dict:
                 "IMAGEDIR": "default",
             },
         },
-        "tvac": {
+        "tc": {
             "timestamp": timestamp,
             "processed": True,
             "request": {},
-            "status": {
-                "target PY Shroud": 240,
-                "target MY Shroud": 240,
-                "PYsT": 0.0,
-                "MYsT": 0.0,
-                "TC08": [0.0] * 8,
-            },
+            "status": {},
         },
         "hvc": {
             "timestamp": timestamp,

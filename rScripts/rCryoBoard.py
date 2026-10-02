@@ -13,7 +13,37 @@ from formslab.devices.cryo_config import (
 from formslab.devices.psu_command_utils import read_psu_channel_status
 
 
+from formslab.rscripts.cast import CastUsage, choice, integer, number
+
 name = os.path.splitext(os.path.basename(__file__))[0]
+
+# --- console commands (see formslab.rscripts.cast) ---------------------------------
+
+CAST_LABELS = ("cryo",)
+CAST_HELP = [
+    ("cryo ccv <V>", "Cryocooler output voltage, 12-20 V"),
+    ("cryo on|off", "Cryocooler output"),
+    ("cryo ccvres <ohm>", "Variable resistor, 62-1120 ohm (nearest 6-bit code)"),
+    ("cryo code <0-63>", "Variable resistor by code"),
+    ("cryo startup|shutdown|update", "Bring the board up / down, or read it now"),
+]
+
+
+def cast_request(label, words):
+    usage = "cryo ccv <V> | on | off | ccvres <ohm> | code <n> | startup | shutdown | update"
+    if len(words) == 1 and words[0].lower() in ("startup", "shutdown", "update"):
+        return {words[0].lower(): True}
+    if len(words) == 1 and words[0].lower() in ("on", "off"):
+        return {"enabled": choice(words[0], ("on", "off"), "cryo")}
+    if len(words) == 2:
+        verb = words[0].lower()
+        if verb == "ccv":
+            return {"voltage": number(words[1], "cryo voltage V", 12, 20)}
+        if verb == "ccvres":
+            return {"resistance": number(words[1], "CCVRES ohm", 62, 1120)}
+        if verb == "code":
+            return {"code": integer(words[1], "CCVRES code", 0, 63)}
+    raise CastUsage(usage)
 
 
 class rGlobal:

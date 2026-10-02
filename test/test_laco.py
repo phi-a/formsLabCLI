@@ -112,11 +112,72 @@ def test_actions_go_through_without_a_confirm_flag(laco, sim):
     assert sim.state.cycle_running is True
     laco.abort()
     assert sim.state.test_status == "ABORTED"
-    laco.vent()
+    laco.reset()
+    assert sim.state.test_status == "IDLE" and sim.state.severity == "N"
+    laco.operation("vent2atm")
     assert sim.state.devices["OV"] is True
-    # the raw toggles stay behind the client's guard
+    with pytest.raises(KeyError, match="no operation"):
+        laco.operation("evacuate")
+    # the client itself still refuses an unconfirmed toggle
     with pytest.raises(WriteRefused):
         laco.client.set_device("OR", True)
+
+
+@pytest.fixture
+def fast(laco):
+    laco.client.toggle_settle_s = 1.2        # the simulator actuates after 1 s
+    return laco
+
+
+def test_device_opens_and_closes_by_name_and_verifies(fast, sim):
+    assert fast.device("vent", True) is True and sim.state.devices["OV"] is True
+    assert fast.device("vent", False) is False and sim.state.devices["OV"] is False
+    assert fast.device("vent", False) is False          # already closed: nothing sent
+    with pytest.raises(KeyError, match="no valve or pump"):
+        fast.device("door", True)
+
+
+def test_stop_pumping_closes_rough_before_the_pump(fast, sim):
+    sim.interlocks = True
+    sim.state.devices.update(OP=True, OR=True)
+    assert fast.stop_pumping() == ["rough valve closed", "pump off"]
+    assert not sim.state.devices["OR"] and not sim.state.devices["OP"]
+    assert fast.stop_pumping() == []
+
+
+def test_stop_pumping_refuses_while_the_turbo_runs(fast, sim):
+    sim.state.devices.update(OP=True, OT=True, O4=True)
+    with pytest.raises(Exception, match="stop the turbo"):
+        fast.stop_pumping()
+    assert sim.state.devices["OP"] is True
+
+
+def test_apply_covers_setpoints_recipe_and_vacuum_settings(laco, sim):
+    events = laco.apply({"platen_rate": 2.0, "shroud_range": 1.5, "vacuum_range": 0.25,
+                         "vacuum_rate": 0.5, "hold_s": 900, "recipe": 3})
+    assert all(level == "INFO" for level, _ in events), events
+    assert sim.state.zone_rate[1] == pytest.approx(2.0)
+    assert sim.state.zone_range[2] == pytest.approx(1.5)
+    assert sim.state.vacuum_range == pytest.approx(0.25)
+    assert sim.state.vacuum_rate == pytest.approx(0.5)
+    assert sim.state.hold_time == 900 and sim.state.recipe == 3
+
+
+def test_apply_drives_valves_pumps_and_operations(fast, sim):
+    events = fast.apply({"pump": "on", "vent": "open", "recipe_run": "start", "purge": True})
+    assert all(level == "INFO" for level, _ in events), events
+    assert any("pump verified on" in m for _, m in events)
+    assert sim.state.cycle_running is True
+    assert sim.state.devices["OV"] is False             # purge closed it again
+    events = fast.apply({"stop_pumping": True, "recipe_run": False})
+    assert ("INFO", "stop_pumping: pump off") in events
+    assert sim.state.cycle_running is False
+
+
+def test_apply_reports_a_valve_the_plc_kept_closed(fast, sim):
+    sim.interlocks = True                    # gate will not open without the turbo
+    events = fast.apply({"gate": "open"})
+    assert events[0][0] == "ERROR" and "interlock" in events[0][1]
 
 
 def test_apply_handles_a_whole_cast_request(laco, sim):
@@ -133,7 +194,8 @@ def test_apply_handles_a_whole_cast_request(laco, sim):
     assert any("shroud setpoint 500.0 clamped to 120.0" in m for _, m in events)
 
 
-def test_apply_ignores_booleans_as_setpoints(laco, sim):
+def test_apply_warns_on_booleans_as_setpoints_and_writes_nothing(laco, sim):
     before = dict(sim.state.zone_setpoint)
-    assert laco.apply({"platen": True}) == []
+    assert laco.apply({"platen": True}) == [
+        ("WARNING", "platen: expected a number, got True; ignored")]
     assert sim.state.zone_setpoint == before

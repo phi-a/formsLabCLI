@@ -73,7 +73,6 @@ Change only the relevant fields, keeping the rest of each record:
 |---|---|---|
 | `psu1` / `psu2`, native USB | `resource_windows` | Full `USB0::…::INSTR` name from VISA |
 | `psu1` / `psu2`, serial adapter | `resource_windows` | `ASRLCOM12::INSTR` for COM12 (default pyserial driver) |
-| `RTD1` | `resource` | `COM7` |
 | `SMTC08_A` | `resource_windows` | `COM8` |
 | `cryo_board` | `port_windows` | `COM10` |
 
@@ -84,7 +83,6 @@ that map to Linux.
 
 For the cryo bridge, you can instead set its USB `serial_number` and remove
 `port_windows` to discover its current Windows COM number automatically.
-The RTD Pico and cryo Pico can share VID/PID, so identify the correct board.
 The Pico needs MicroPython; the `[pico]` extra supplies mpremote, and the driver
 can deploy its bridge script on connection. Confirm `cryo_board.i2c` matches
 your wiring before using it.

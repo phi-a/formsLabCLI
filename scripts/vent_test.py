@@ -31,6 +31,11 @@ Steps:
 verified), sealing the chamber at whatever pressure it is at. The PLC will not
 start a pumpdown with the vent valve open.
 
+The controller takes one TCP client at a time: do not run this while a host
+(`run tvac`, a plan) is up. With a host running use the cast tab instead --
+`hvc vent open|close`, `hvc pump on`, `hvc rough open`, `hvc stop` -- or the
+plans `laco_vent` / `laco_pumpdown`, which do the same steps through rLACO.
+
 Exit code 0 = vented (or closed), 1 = failed or timed out, 2 = pre-check refused.
 Ctrl-C while watching only stops watching; the valve stays as commanded.
 """

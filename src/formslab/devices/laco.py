@@ -14,12 +14,21 @@ lives here or in the bench profile (`tvac_bench.json`), never in a script.
     laco.platen.on(); laco.shroud.off()
     laco.sensor("T14")                # any mapped thermocouple, degrees C
     laco.status()                     # one LacoStatus: pressure, zones, valves, faults, recipe
+    laco.device("vent", True)         # a valve or pump, read first and verified
+    laco.stop_pumping()               # rough valve closed, then the pump off
+    laco.operation("vent2atm")        # a cycle-level vacuum operation (!VA)
+
+`apply(request)` is the whole surface as one dict grammar: what the CAST `hvc`
+block carries from the console (rLACO's cast commands) and from lab plans.
 
 Commissioning rules carried over from the tvac repo:
 - every setpoint write is verified (the client reads back or checks the echo)
-- start/abort/vent change process state and are never retried; after one, read
-  `status()` before deciding anything
-- raw valve and pump toggles are not exposed; the PLC sequences those
+- actions (start, abort, reset, recipe run, vacuum operations, zone on/off)
+  change process state and are never retried; read `status()` after one
+- valves and pumps go through `device()`: read first, one toggle, verified;
+  the PLC's interlocks decide, and a refusal is reported, never retried
+- the vacuum operations (!VA !FA !PS !NA) act inside a running cycle; on an
+  idle chamber in Manual mode use the valves (`device`) instead
 - temperatures are degrees C throughout, as on the HMI; callers convert
 """
 from __future__ import annotations
@@ -32,6 +41,12 @@ from formslab.devices.hvc3500 import protocol as P
 
 DEVICE_LABELS = {"OR": "rough", "OV": "vent", "OF": "fill", "O4": "foreline",
                  "OG": "gate", "OP": "pump", "OT": "turbo"}
+DEVICE_CODES = {label: code for code, label in DEVICE_LABELS.items()}
+VALVES = ("rough", "vent", "fill", "foreline", "gate")
+PUMPS = ("pump", "turbo")
+
+# Cycle-level vacuum operations (manual appendix 9.1).
+OPERATIONS = {"vent2atm": "VA", "fill2atm": "FA", "purge": "PS", "close_all": "NA"}
 
 
 @dataclass
@@ -91,6 +106,10 @@ class LacoStatus:
             d[f"{z.name} C"] = z.temperature_c
             d[f"{z.name} setpoint C"] = z.effective_setpoint_c
         d.update(self.devices)
+        # the chamber's own thermocouples, by their HMI names
+        for name, t in self.sensors.items():
+            if not name.endswith("_ctrl"):
+                d[f"{name} C"] = t
         return d
 
     def as_record(self) -> dict:
@@ -152,6 +171,14 @@ class Zone:
         got = self._laco.client.set_zone_setpoint(self.number, applied)
         self.target_c = got
         return got
+
+    def set_rate(self, c_per_min: float) -> float:
+        """Rate setpoint, degrees C per minute. Verified by read-back."""
+        return self._laco.client.set_zone_rate(self.number, float(c_per_min))
+
+    def set_range(self, degrees_c: float) -> float:
+        """Control range (deadband), degrees C. Verified by read-back."""
+        return self._laco.client.set_zone_range(self.number, float(degrees_c))
 
     def on(self) -> None:
         """Turn the zone's thermal control on (!ZSn)."""
@@ -274,6 +301,23 @@ class LACO:
         """Vacuum setpoint in `profile.pressure_unit`. Verified by read-back."""
         return self.client.set_vacuum_setpoint(float(setpoint))
 
+    def vacuum_range(self, value: float) -> float:
+        return self.client.set_vacuum_range(float(value))
+
+    def vacuum_rate(self, value: float) -> float:
+        return self.client.set_vacuum_rate(float(value))
+
+    def hold_time(self, seconds: float) -> float:
+        return self.client.set_hold_time(float(seconds))
+
+    def recipe(self, n: int) -> int:
+        """Select recipe n (!TR). Verified by read-back."""
+        return self.client.select_recipe(int(n))
+
+    def recipe_run(self, run: bool) -> None:
+        """!RS starts the selected recipe, !RO stops it. Not retried."""
+        self.client.action("RS" if run else "RO", confirm=True)
+
     def start(self) -> None:
         """!CS: start, or continue a held recipe step. Not retried."""
         self.client.action("CS", confirm=True)
@@ -282,48 +326,153 @@ class LACO:
         """!CA: abort the running cycle. Not retried."""
         self.client.action("CA", confirm=True)
 
-    def vent(self) -> None:
-        """!VA: vent to atmosphere. The PLC checks vent temperatures first."""
-        self.client.action("VA", confirm=True)
+    def reset(self) -> None:
+        """!CR: reset the controller (starts its recovery/home sequence). Not retried."""
+        self.client.action("CR", confirm=True)
+
+    def operation(self, name: str) -> None:
+        """A cycle-level vacuum operation: vent2atm (!VA), fill2atm (!FA),
+        purge (!PS), close_all (!NA). They act inside a running cycle; an idle
+        chamber acknowledges them and does nothing."""
+        try:
+            code = OPERATIONS[name]
+        except KeyError:
+            raise KeyError(f"no operation {name!r}; have {sorted(OPERATIONS)}") from None
+        self.client.action(code, confirm=True)
+
+    def device(self, name: str, on: bool) -> bool:
+        """Open/close a valve or start/stop a pump by name (rough, vent, fill,
+        foreline, gate, pump, turbo): read first, at most one toggle, verified
+        after the actuation delay. Raises ProtocolError if the PLC kept it
+        (an interlock); never retries."""
+        try:
+            code = DEVICE_CODES[name]
+        except KeyError:
+            raise KeyError(f"no valve or pump {name!r}; have {sorted(DEVICE_CODES)}") from None
+        return self.client.set_device(code, bool(on), confirm=True)
+
+    def stop_pumping(self) -> list[str]:
+        """Rough valve closed, then the roughing pump off -- the PLC will not
+        stop the pump while the rough valve is open. Refuses to stop the pump
+        while the turbo runs or the foreline is open (the turbo backs onto it).
+        Returns what it did."""
+        done = []
+        if self.client.device_state("OR"):
+            self.device("rough", False)
+            done.append("rough valve closed")
+        if self.client.device_state("OP"):
+            if self.client.device_state("OT") or self.client.device_state("O4"):
+                raise ProtocolError("turbo on or foreline open: stop the turbo and close the "
+                                    "foreline before stopping the roughing pump")
+            self.device("pump", False)
+            done.append("pump off")
+        return done
 
     # -------------------------------------------------------- CAST requests
     def apply(self, request: dict) -> list[tuple[str, str]]:
-        """Apply a console request block and report what happened.
+        """Apply a request block (the CAST `hvc` grammar) and report what
+        happened as (level, message) pairs. A failing item is reported, not
+        raised, so one bad key cannot stop the rest. Keys, applied in this order:
 
-        The request grammar is what the CAST `hvc` block accepts (see
-        rScripts/rLACO.py). Returns (level, message) pairs for the caller's
-        log; a failing item is reported, not raised, so one bad key cannot
-        stop the rest.
+            <zone>: C   <zone>_rate: C/min   <zone>_range: C      setpoints
+            vacuum: P   vacuum_range: P   vacuum_rate   hold_s: s
+            recipe: n                                            select recipe
+            <zone>_control: bool | "on"/"off"                    thermal control
+            rough|vent|fill|foreline|gate: "open"|"close"|bool   valves
+            pump|turbo: "on"|"off"|bool                          pumps
+            stop_pumping: true                                   rough closed, pump off
+            recipe_run: "start"|"stop"|bool                      !RS / !RO
+            start | abort | reset: true                          !CS !CA !CR
+            vent2atm | fill2atm | purge | close_all: true        !VA !FA !PS !NA
         """
         out: list[tuple[str, str]] = []
-        for zone in self.zones.values():
-            val = request.get(zone.name)
-            if isinstance(val, (int, float)) and not isinstance(val, bool):
-                try:
-                    got = zone.set(val)
-                    if got != float(val):
-                        out.append(("WARNING", f"{zone.name} setpoint {val} clamped to {got} C"))
-                    out.append(("INFO", f"{zone.name} setpoint -> {got} C"))
-                except (OSError, ProtocolError) as e:
-                    out.append(("ERROR", f"{zone.name} setpoint write: {e}"))
-            ctl = request.get(f"{zone.name}_control")
-            if isinstance(ctl, bool):
-                try:
-                    zone.on() if ctl else zone.off()
-                    out.append(("INFO", f"{zone.name} thermal control {'ON' if ctl else 'OFF'}"))
-                except (OSError, ProtocolError) as e:
-                    out.append(("ERROR", f"{zone.name} control {ctl}: {e}"))
-        vac = request.get("vacuum")
-        if isinstance(vac, (int, float)) and not isinstance(vac, bool):
+        unit = self.profile.pressure_unit
+        known = set()
+
+        def attempt(what, fn, done):
             try:
-                out.append(("INFO", f"vacuum setpoint -> {self.vacuum(vac)} {self.profile.pressure_unit}"))
-            except (OSError, ProtocolError) as e:
-                out.append(("ERROR", f"vacuum setpoint write: {e}"))
-        for key, fn in (("start", self.start), ("abort", self.abort), ("vent", self.vent)):
+                out.append(("INFO", done(fn())))
+            except (OSError, ProtocolError, ValueError, KeyError) as e:
+                out.append(("ERROR", f"{what}: {e}"))
+
+        def number(key):
+            known.add(key)
+            v = request.get(key)
+            if v is None:
+                return None
+            if isinstance(v, bool) or not isinstance(v, (int, float)):
+                out.append(("WARNING", f"{key}: expected a number, got {v!r}; ignored"))
+                return None
+            return float(v)
+
+        for zone in self.zones.values():
+            if (v := number(zone.name)) is not None:
+                lo, hi = zone.bounds
+                if not lo <= v <= hi:
+                    out.append(("WARNING",
+                                f"{zone.name} setpoint {v} clamped to {min(max(v, lo), hi)} C"))
+                attempt(f"{zone.name} setpoint", lambda z=zone, v=v: z.set(v),
+                        lambda got, z=zone: f"{z.name} setpoint -> {got} C")
+            if (v := number(f"{zone.name}_rate")) is not None:
+                attempt(f"{zone.name} rate", lambda z=zone, v=v: z.set_rate(v),
+                        lambda got, z=zone: f"{z.name} rate -> {got} C/min")
+            if (v := number(f"{zone.name}_range")) is not None:
+                attempt(f"{zone.name} range", lambda z=zone, v=v: z.set_range(v),
+                        lambda got, z=zone: f"{z.name} range -> {got} C")
+        for key, fn, shown in (("vacuum", self.vacuum, "vacuum setpoint -> {} " + unit),
+                               ("vacuum_range", self.vacuum_range, "vacuum range -> {} " + unit),
+                               ("vacuum_rate", self.vacuum_rate, "vacuum rate -> {}"),
+                               ("hold_s", self.hold_time, "hold time -> {} s"),
+                               ("recipe", self.recipe, "recipe -> {}")):
+            if (v := number(key)) is not None:
+                attempt(key, lambda fn=fn, v=v: fn(v), lambda got, shown=shown: shown.format(got))
+
+        for zone in self.zones.values():
+            key = f"{zone.name}_control"
+            known.add(key)
+            if (v := _flag(request.get(key), ("on", "off"))) is not None:
+                attempt(key, lambda z=zone, v=v: z.on() if v else z.off(),
+                        lambda _, z=zone, v=v: f"{z.name} thermal control {'ON' if v else 'OFF'}")
+
+        for name in (*VALVES, *PUMPS):
+            known.add(name)
+            if name not in request:
+                continue
+            words = ("open", "close") if name in VALVES else ("on", "off")
+            v = _flag(request[name], words)
+            if v is None:
+                out.append(("WARNING", f"{name}: expected {'/'.join(words)}, got {request[name]!r}"))
+                continue
+            attempt(name, lambda n=name, v=v: self.device(n, v),
+                    lambda got, n=name, w=words: f"{n} verified {w[0] if got else w[1]}")
+
+        known.add("stop_pumping")
+        if request.get("stop_pumping") is True:
+            attempt("stop_pumping", self.stop_pumping,
+                    lambda done: "stop_pumping: " + (", ".join(done) or "already stopped"))
+
+        known.add("recipe_run")
+        if (v := _flag(request.get("recipe_run"), ("start", "stop"))) is not None:
+            attempt("recipe_run", lambda v=v: self.recipe_run(v),
+                    lambda _, v=v: f"recipe {'started' if v else 'stopped'}")
+        actions = [("start", self.start), ("abort", self.abort), ("reset", self.reset)]
+        actions += [(op, lambda op=op: self.operation(op)) for op in OPERATIONS]
+        for key, fn in actions:
+            known.add(key)
             if request.get(key) is True:
-                try:
-                    fn()
-                    out.append(("INFO", f"{key} sent"))
-                except (OSError, ProtocolError) as e:
-                    out.append(("ERROR", f"{key}: {e}"))
+                attempt(key, fn, lambda _, key=key: f"{key} sent")
+
+        for key in request:
+            if key not in known:
+                out.append(("WARNING", f"unknown request key {key!r}; ignored"))
         return out
+
+
+def _flag(value, words: tuple[str, str]):
+    """True/False from a bool or one of two words (e.g. "open"/"close");
+    None when absent or not understood."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str) and value.lower() in words:
+        return value.lower() == words[0]
+    return None
