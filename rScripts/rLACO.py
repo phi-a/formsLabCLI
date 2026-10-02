@@ -2,9 +2,11 @@
 #
 # Owns the chamber for the run through `formslab.devices.laco.LACO`:
 #   - applies every request on CAST "hvc" as soon as it arrives (each loop),
-#   - reads the chamber every poll_interval_s (tvac_bench.json) and right after
-#     a request, publishes kelvin scalars (chamberP, <zone>T, target_<zone>,
-#     <zone>_effSP, HVC_<sensor>) and the CAST "hvc" status block,
+#   - reads the whole chamber every poll_interval_s (tvac_bench.json; ~38
+#     queries, ~6 s), publishes kelvin scalars (chamberP, <zone>T,
+#     target_<zone>, <zone>_effSP, HVC_<sensor>) and the CAST "hvc" status block,
+#   - right after a request, reads just pressure, faults, valves and pumps
+#     (~1.5 s) so the cast tab shows the effect quickly,
 #   - appends the full reading to outputs/LACO.jsonl every LOG_INTERVAL s.
 #
 # The console commands are declared below (CAST_HELP / cast_request): typing
@@ -113,6 +115,7 @@ class rGlobal:
     readERROR = 0
     started_pumping = False    # this run turned the pump on or opened the rough valve
     retry_at = 0.0             # next connect attempt while unreachable (time.monotonic)
+    cast = {}                  # the last CAST "hvc" status block published
     connect_error = None       # last connect failure, logged once
 
 
@@ -192,8 +195,23 @@ def _read(forms, laco):
     if status.errors:
         forms.log(f"HVC-3500 partial read: {status.errors}", level="WARNING", component=name)
     _publish(forms, laco, status)
-    UpdateStatus(LABEL, status.as_cast())
+    rg.cast = status.as_cast()
+    UpdateStatus(LABEL, rg.cast)
     _log(forms, status.as_record())
+
+
+def _quick(forms, laco):
+    """Right after a command: pressure, faults, valves and pumps (~1.5 s),
+    merged into the last full reading. The full read keeps its schedule."""
+    try:
+        q = laco.quick_status()
+    except (OSError, ValueError) as e:
+        forms.log(f"HVC-3500 quick read failed: {e}", level="WARNING", component=name)
+        return
+    rg.cast = {**rg.cast, **q}
+    UpdateStatus(LABEL, rg.cast)
+    if q.get("pressure") is not None:
+        _set(forms, "chamberP", q["pressure"], laco.profile.pressure_unit)
 
 
 def rScript(forms):
@@ -217,7 +235,9 @@ def rScript(forms):
             if level == "INFO" and (message == "pump verified off"
                                     or message.startswith("stop_pumping:")):
                 rg.started_pumping = False
-    _read(forms, laco)
+        _quick(forms, laco)
+    if due:
+        _read(forms, laco)
 
 
 def rShutdown(forms):

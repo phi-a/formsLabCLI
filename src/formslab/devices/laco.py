@@ -296,6 +296,19 @@ class LACO:
             errors=dict(snap.get("errors", {})),
         )
 
+    def quick_status(self) -> dict:
+        """Pressure, faults and every valve and pump -- what a command changes --
+        in 9 reads (about 1.5 s) instead of the ~38 of `status()`. Keys as in
+        `LacoStatus.as_cast()`, so it can be merged into the CAST block."""
+        c = self.client
+        es = c.error_status()
+        d = {"connected": True, "pressure": c.pressure(),
+             "fault_severity": es.severity, "faults": ", ".join(es.names) or "none"}
+        for code, label in DEVICE_LABELS.items():
+            d[label] = c.device_state(code)
+        self.connected = True
+        return d
+
     # ----------------------------------------------------------------- writes
     def vacuum(self, setpoint: float) -> float:
         """Vacuum setpoint in `profile.pressure_unit`. Verified by read-back."""

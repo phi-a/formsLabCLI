@@ -8,8 +8,14 @@ Started by the console's ctrl tab (`run <plan>`), or directly:
 Every run is a lab plan (see `formslab.sequence`): the plan names its rScripts,
 the host loads them on a `LabForms` handle and runs the plan's steps in one
 loop paced in real time at `LOOP_HZ` -- poll ctrl (pause, resume, reset, end),
-tick each rScript once, write a CSV row when one is due. A plan ends after its
-last step; one that holds "until end" (plans/tvac.forms) runs until ctrl `end`.
+run the plan's current step, write a CSV row when one is due. Each rScript runs
+on its own thread at the same rate (rscripts.workers), so a slow instrument
+does not hold up the others or the plan. A plan ends after its last step; one
+that holds "until end" (plans/tvac.forms) runs until ctrl `end`.
+
+The lock file (`<output>/.run/sequence.lock`) names the running host: its
+process id, plan and start time. The console's ctrl tab reads it to find, show
+and stop the run, however it was started.
 
 However a run ends, each loaded rScript's ``rShutdown`` runs before the process
 exits. Only one host runs at a time: two would fight over the same instruments.
@@ -22,6 +28,8 @@ import sys
 import time
 import traceback
 from argparse import ArgumentParser
+from datetime import datetime, timezone
+from pathlib import Path
 
 import psutil
 
@@ -29,6 +37,7 @@ from formslab import rscripts
 from formslab.config import run_dir
 from formslab.console.cast.castutils import ResetJson
 from formslab.console.ctrl.ctrlutils import ReadCommand, ResetCtrlState
+from formslab.rscripts.workers import Workers
 from formslab.sequence import (
     JsonlEventSink, LabSequenceRunner, PlanError, SequenceError, find_plan, load_plan,
 )
@@ -56,22 +65,45 @@ def events_path():
     return run_dir() / "sequence.events.jsonl"
 
 
-def _acquire_lock(emit) -> bool:
+def is_host(pid: int) -> bool:
+    """True when `pid` is a live sequence host (not a reused pid)."""
+    try:
+        cmdline = " ".join(psutil.Process(pid).cmdline())
+    except (psutil.Error, OSError, ValueError):
+        return False
+    return "formslab.host.sequence" in cmdline
+
+
+def read_lock() -> dict | None:
+    """The lock's {pid, plan, started} -- the last host that took it, alive
+    or not (see `is_host`). None when there is no lock."""
+    try:
+        lines = lock_path().read_text(encoding="utf-8").splitlines()
+        pid = int(lines[0])
+    except (OSError, ValueError, IndexError):
+        return None
+    return {"pid": pid, "plan": lines[1] if len(lines) > 1 else "?",
+            "started": lines[2] if len(lines) > 2 else "?"}
+
+
+def _acquire_lock(emit, plan: str) -> bool:
     path = lock_path()
     for _ in range(2):
         try:
             fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
         except FileExistsError:
-            try:
-                owner = int(path.read_text(encoding="utf-8").split()[0])
-            except (OSError, ValueError, IndexError):
-                owner = -1
-            if owner > 0 and owner != os.getpid() and psutil.pid_exists(owner):
-                emit(f"Another sequence host is already running (pid={owner}).")
+            owner = read_lock()
+            if owner and owner["pid"] != os.getpid() and is_host(owner["pid"]):
+                emit(f"Another sequence host is already running (pid={owner['pid']}, "
+                     f"plan {owner['plan']}).")
                 return False
+            if owner:
+                emit(f"The previous run (pid {owner['pid']}, plan {owner['plan']}) ended "
+                     "without cleanup; its instruments may be as it left them.")
             path.unlink(missing_ok=True)       # stale: its process is gone
             continue
-        os.write(fd, f"{os.getpid()}\n".encode())
+        started = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        os.write(fd, f"{os.getpid()}\n{plan}\n{started}\n".encode())
         os.close(fd)
         return True
     emit("Could not take the sequence lock.")
@@ -144,7 +176,7 @@ def channel(plan_path, relay_func=None):
     def emit(msg: str) -> None:
         (relay_func or print)(msg)
 
-    if not _acquire_lock(emit):
+    if not _acquire_lock(emit, Path(plan_path).stem):
         return
     try:
         ResetCtrlState()
@@ -157,10 +189,16 @@ def channel(plan_path, relay_func=None):
 
     signal.signal(signal.SIGTERM, _on_signal)
     signal.signal(signal.SIGINT, _on_signal)
+    if hasattr(signal, "SIGBREAK"):              # Windows: Ctrl+Break / CTRL_BREAK_EVENT
+        signal.signal(signal.SIGBREAK, _on_signal)
+    workers = Workers(forms, hz=LOOP_HZ)
     try:
-        forms.log(f"Plan {plan.name} running ({LOOP_HZ:g} Hz).", component=COMPONENT)
+        forms.log(f"Plan {plan.name} running ({LOOP_HZ:g} Hz, pid {os.getpid()}).",
+                  component=COMPONENT)
+        workers.start()
         LabSequenceRunner(forms, plan.sequence, sink=JsonlEventSink(events_path()),
-                          poll=lambda: poll(forms), hz=LOOP_HZ).run()
+                          poll=lambda: poll(forms), tick=lambda _forms: None,
+                          hz=LOOP_HZ).run()
         forms.log(f"Plan {plan.name} complete.", component=COMPONENT)
     except GracefulExit:
         forms.log("Run ended.", component=COMPONENT)
@@ -171,7 +209,12 @@ def channel(plan_path, relay_func=None):
         forms.log(f"error: {traceback.format_exc()}", level="ERROR", component=COMPONENT)
         raise
     finally:
-        # Hardware first: each rScript's rShutdown leaves its instrument safe.
+        # Hardware first: stop the script threads, then each rScript's
+        # rShutdown leaves its instrument safe.
+        stuck = workers.stop()
+        if stuck:
+            forms.log(f"rScripts still busy after 15 s: {', '.join(stuck)}; running "
+                      "their rShutdown anyway", level="WARNING", component=COMPONENT)
         try:
             rscripts.shutdown(forms)
         except BaseException:

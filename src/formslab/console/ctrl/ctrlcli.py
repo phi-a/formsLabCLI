@@ -3,14 +3,16 @@
     run <plan>        a lab plan from plans/, or a path to a .forms plan
     run tvac          manual chamber operation (plans/tvac.forms) until `end`
     plans             list lab plans
-    status, ps        is a host running
-    pause, resume     hold / continue the running plan or mode
+    status, ps        is a host running, and which plan
+    pause, resume     hold / continue the running plan's steps
     end               stop it; rScripts' rShutdown runs before it exits
+
+The running host is found through its lock file, which the host itself writes
+(pid, plan, start time) -- so it is found however it was started, and on
+Windows the pid is the real interpreter, not the venv launcher in front of it.
 
 Every handler returns a CLIResult; nothing prints.
 """
-import os
-import signal
 import subprocess
 import sys
 import time
@@ -19,47 +21,48 @@ from pathlib import Path
 import psutil
 from rich.text import Text
 
-from formslab.config import output_dir
-from formslab.console.ctrl.ctrlutils import WriteCommand, process_exists
+from formslab.console.ctrl.ctrlutils import LoadCommands, WriteCommand
 from formslab.console.log.logcli import log_path
 from formslab.console.sessions.base import CLIResult
 from formslab.console.style import DIM, ERROR, HEADER, INFO, LABEL, SUCCESS, TEXT, WARNING
+from formslab.host.sequence import is_host, read_lock
 from formslab.sequence import discover as discover_plans, find_plan, is_lab_plan
 
-# How long `end` waits for the host to stop on its own (running rShutdown)
-# before it is killed.
-END_GRACE_S = 15.0
+# `end`: how long the host gets to take the request, then to finish cleanup.
+END_TAKE_S = 15.0
+END_FINISH_S = 30.0
 
 
-def _get_pid_path():
-    return output_dir() / "sequence.pid"
-
-
-def _running_pid():
-    try:
-        pid = int(_get_pid_path().read_text().strip())
-    except (OSError, ValueError):
-        return None
-    return pid if process_exists(pid) else None
+def _running():
+    """The lock of the live host, or None."""
+    lock = read_lock()
+    return lock if lock and is_host(lock["pid"]) else None
 
 
 def _launch_sequence(plan_path: str) -> CLIResult:
-    """Start `python -m formslab.host.sequence <plan>`. Its output goes to the
-    log tab's file; it inherits this working directory."""
-    pid = _running_pid()
-    if pid is not None:
-        return CLIResult(f"✔ sequence host already running (pid {pid})")
-
+    """Start `python -m formslab.host.sequence <plan>`, output to the log tab's
+    file, in this working directory. On Windows it is detached from the
+    console, so closing the console window does not kill a run."""
+    host = _running()
+    if host:
+        return CLIResult(f"✔ sequence host already running (pid {host['pid']}, "
+                         f"plan {host['plan']})")
     cmd = [sys.executable, "-m", "formslab.host.sequence", plan_path]
-    proc = subprocess.Popen(
-        cmd,
-        stdout=log_path().open("w"),
-        stderr=subprocess.STDOUT,
-        start_new_session=True,
-    )
-    _get_pid_path().write_text(str(proc.pid))
-    return CLIResult(f"🟢 sequence host started (pid {proc.pid}, plan={Path(plan_path).stem})",
-                     clear=False)
+    if sys.platform == "win32":
+        flags = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS}
+    else:
+        flags = {"start_new_session": True}
+    subprocess.Popen(cmd, stdout=log_path().open("w"), stderr=subprocess.STDOUT,
+                     stdin=subprocess.DEVNULL, **flags)
+    deadline = time.monotonic() + 5.0                 # the host writes its lock at start
+    while time.monotonic() < deadline:
+        host = _running()
+        if host:
+            return CLIResult(f"🟢 sequence host started (pid {host['pid']}, plan {host['plan']})",
+                             clear=False)
+        time.sleep(0.2)
+    return CLIResult(f"🟢 sequence host starting (plan {Path(plan_path).stem}); "
+                     "`status` will show it, `--log` if it does not", clear=False)
 
 
 def run_sequence(args=None) -> CLIResult:
@@ -99,54 +102,94 @@ def plans_command() -> CLIResult:
 
 
 def status_panel() -> CLIResult:
-    pid = _running_pid()
-    if pid is not None:
-        return CLIResult(f"● sequence host running (pid {pid})")
-    _get_pid_path().unlink(missing_ok=True)
+    host = _running()
+    if host:
+        return CLIResult(f"● sequence host running: plan {host['plan']} (pid {host['pid']}, "
+                         f"since {host['started']})")
+    stale = read_lock()
+    if stale:
+        return CLIResult(Text(f"⚠ sequence host not running -- the last run (plan "
+                              f"{stale['plan']}, pid {stale['pid']}) ended without cleanup; "
+                              "its instruments may be as it left them.", style=WARNING),
+                         clear=False)
     return CLIResult("✗ sequence host not running.", clear=False)
 
 
-def list_sequence() -> CLIResult:
-    """Every running sequence host, found by its module name on a Python
-    process's command line."""
+def _host_processes() -> list[psutil.Process]:
     found = []
-    for proc in psutil.process_iter(["pid", "name", "cmdline"]):
+    for proc in psutil.process_iter(["pid", "ppid", "cmdline"]):
         try:
-            if "python" not in (proc.info["name"] or "").lower():
-                continue
-            cmdline = " ".join(proc.info["cmdline"] or ())
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            if "formslab.host.sequence" in " ".join(proc.info["cmdline"] or ()):
+                found.append(proc)
+        except (psutil.Error, OSError):
             continue
-        if "formslab.host.sequence" in cmdline:
-            found.append(proc.info["pid"])
-    if not found:
+    return found
+
+
+def list_sequence() -> CLIResult:
+    """Every running host. On Windows each shows as the venv launcher and the
+    interpreter it starts; they are one run, listed once."""
+    procs = _host_processes()
+    pids = {p.pid for p in procs}
+    runs = [p for p in procs if p.info["ppid"] not in pids]       # the top of each tree
+    if not runs:
         return CLIResult("No sequence host processes found.", clear=False)
-    return CLIResult("sequence host processes:\n" + "\n".join(f"PID: {p}" for p in sorted(found)))
+    lock = read_lock()
+    lines = []
+    for top in runs:
+        tree = [top.pid] + [c.pid for c in procs if c.info["ppid"] == top.pid]
+        owner = lock and lock["pid"] in tree
+        lines.append(f"PID {tree[-1]}" + (f" (launcher {tree[0]})" if len(tree) > 1 else "")
+                     + (f"  plan {lock['plan']}, since {lock['started']}" if owner else
+                        "  (not the lock owner)"))
+    return CLIResult("sequence hosts:\n" + "\n".join(lines))
 
 
-def end_sequence(grace_s: float = END_GRACE_S) -> CLIResult:
-    """Ask the host to stop through ctrl, so its rScripts' rShutdown runs (a
-    plan's PSU outputs go off). Kill it only if it has not stopped in time: on
-    Windows a signal is a hard kill that skips that cleanup."""
-    pid = _running_pid()
-    if pid is None:
-        _get_pid_path().unlink(missing_ok=True)
-        return CLIResult("✗ sequence host not running.", clear=False)
-    WriteCommand("end")
-    deadline = time.monotonic() + grace_s
-    while time.monotonic() < deadline:
-        if not process_exists(pid):
-            _get_pid_path().unlink(missing_ok=True)
-            return CLIResult(f"✖ sequence host (pid {pid}) stopped cleanly.")
-        time.sleep(0.2)
+def _kill_tree(pid: int) -> None:
+    """The host, its children, and the venv launcher in front of it."""
     try:
-        os.kill(pid, signal.SIGTERM)
-    except OSError as e:
-        return CLIResult(f"✗ Could not stop pid {pid}: {e}", clear=False)
-    _get_pid_path().unlink(missing_ok=True)
-    return CLIResult(Text(f"⚠ sequence host (pid {pid}) did not stop in {grace_s:g} s and "
-                          "was killed; rShutdown did not run. Check the instruments.",
-                          style=ERROR))
+        proc = psutil.Process(pid)
+    except psutil.Error:
+        return
+    victims = [proc] + proc.children(recursive=True)
+    parent = proc.parent()
+    if parent is not None and is_host(parent.pid):
+        victims.append(parent)
+    for v in victims:
+        try:
+            v.kill()
+        except psutil.Error:
+            pass
+    psutil.wait_procs(victims, timeout=5)
+
+
+def end_sequence(take_s: float = END_TAKE_S, finish_s: float = END_FINISH_S) -> CLIResult:
+    """Ask the host to stop through ctrl, so its rScripts' rShutdown runs (a
+    plan's PSU outputs go off, pumping it started stops). A host that takes
+    the request is left to finish its cleanup; only one that never takes it
+    (hung) is killed -- and then rShutdown has not run."""
+    host = _running()
+    if host is None:
+        return status_panel()
+    pid = host["pid"]
+    WriteCommand("end")
+    deadline = time.monotonic() + take_s
+    while time.monotonic() < deadline and LoadCommands().get("end", {}).get("processed") is False:
+        if not is_host(pid):
+            break
+        time.sleep(0.2)
+    if is_host(pid) and LoadCommands().get("end", {}).get("processed") is False:
+        _kill_tree(pid)
+        return CLIResult(Text(f"⚠ sequence host (pid {pid}) did not take `end` in {take_s:g} s "
+                              "and was killed; rShutdown did not run. Check the instruments.",
+                              style=ERROR))
+    deadline = time.monotonic() + finish_s
+    while time.monotonic() < deadline and is_host(pid):
+        time.sleep(0.2)
+    if is_host(pid):
+        return CLIResult(f"… host (pid {pid}) took `end` and is still cleaning up; "
+                         "`status` shows when it has stopped.", clear=False)
+    return CLIResult(f"✖ sequence host (pid {pid}, plan {host['plan']}) stopped cleanly.")
 
 
 def help_panel() -> CLIResult:

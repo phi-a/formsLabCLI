@@ -125,9 +125,11 @@ class _Recorder:
         now = time.monotonic()
         if not force and (self._interval is None or now < self._next):
             return
-        if self._interval is not None:
+        # Advance only once a row is written: the first row waits for the
+        # rScripts (on their own threads) to publish something, not a whole
+        # interval.
+        if self._write_row() and self._interval is not None:
             self._next = now + self._interval
-        self._write_row()
 
     def set_interval(self, value=10, unit: str = "seconds") -> None:
         if unit not in _SECONDS:
@@ -136,10 +138,10 @@ class _Recorder:
         self._next = time.monotonic()
         self._forms.log(f"Record every {value} {unit}", component="LAB")
 
-    def _write_row(self) -> None:
+    def _write_row(self) -> bool:
         names = self._forms.list_variables()
         if not names:
-            return
+            return False
         header = ["index", "timestamp"] + [
             f"{n} [{v.unit}]" if (v := self._forms.get_variable(n)).unit else n for n in names]
         if header != self._header:
@@ -155,6 +157,7 @@ class _Recorder:
         with self.path.open("a", newline="", encoding="utf-8") as f:
             csv.writer(f).writerow(row)
         self._index += 1
+        return True
 
 
 class LabForms:

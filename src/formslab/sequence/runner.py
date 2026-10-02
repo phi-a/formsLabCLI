@@ -3,12 +3,15 @@
 The lab counterpart of FORMS' ``SequenceRunner``. Each segment is executed by
 the loop FORMS calls a boundary, here paced in real time:
 
-    poll       host: ctrl/cmd, and blocks while paused
-    rScripts   every loaded script, once (they gate their own cadence)
-    emit       stream snapshot, then a CSV row when one is due
+    poll       host: ctrl, and blocks while paused
+    rScripts   every loaded script once -- unless the host runs each on its
+               own thread (rscripts.workers), as it does on the bench
+    emit       a CSV row when one is due
 
 Segment durations and time limits count *active* seconds: time spent paused
-inside ``poll`` does not use up a hold or run down a timeout.
+inside ``poll`` does not use up a hold or run down a timeout. With worker
+threads, pausing pauses the plan only; the rScripts keep reading their
+instruments and taking cast commands.
 
 The runner commands hardware only through CAST, the channel the console's tabs
 already use. A ``command`` segment writes a request and waits until the rScript
@@ -53,6 +56,7 @@ class LabSequenceRunner:
     def __init__(self, forms, sequence: Sequence, *, sink=None,
                  poll: Optional[Callable[[], None]] = None,
                  write: Optional[Callable[[object], None]] = None,
+                 tick: Optional[Callable[[object], None]] = None,
                  hz: float = 10.0, clock: Callable[[], float] = time.monotonic,
                  sleep: Callable[[float], None] = time.sleep) -> None:
         self.forms = forms
@@ -60,6 +64,9 @@ class LabSequenceRunner:
         self.sink = sink or NullSink()
         self._poll = poll or _noop
         self._write = write or _noop
+        # Runs the rScripts once per loop. The host passes a no-op: it runs each
+        # script on its own thread (rscripts.workers).
+        self._tick = tick or rscripts.tick
         self._period = 1.0 / hz
         self._clock = clock
         self._sleep = sleep
@@ -71,7 +78,7 @@ class LabSequenceRunner:
         """One loop. Only the part after `poll` returns counts as active time."""
         self._poll()
         t0 = self._clock()
-        rscripts.tick(self.forms)
+        self._tick(self.forms)
         self._write(self.forms)
         self.forms.record()
         self._sleep(max(0.0, self._period - (self._clock() - t0)))

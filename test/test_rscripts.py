@@ -270,7 +270,7 @@ def test_tvac_plan_runs_until_end(chamber, tmp_path, monkeypatch):
     from formslab.host import sequence
 
     plan = _tvac_plan(tmp_path, monkeypatch, ["rLACO"])
-    timer = _operator(1.5)
+    timer = _operator(4.0)            # the first full chamber read takes ~2 s
     sequence.channel(plan)
     timer.join()
 

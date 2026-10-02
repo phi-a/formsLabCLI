@@ -199,3 +199,12 @@ def test_apply_warns_on_booleans_as_setpoints_and_writes_nothing(laco, sim):
     assert laco.apply({"platen": True}) == [
         ("WARNING", "platen: expected a number, got True; ignored")]
     assert sim.state.zone_setpoint == before
+
+
+def test_quick_status_reads_what_a_command_changes(fast, sim):
+    sim.state.pressure = 3.5
+    fast.device("vent", True)
+    q = fast.quick_status()
+    assert q["vent"] is True and q["pressure"] > 3.5          # rising
+    assert q["fault_severity"] == "N" and q["faults"] == "none"
+    assert set(q) >= {"rough", "fill", "foreline", "gate", "pump", "turbo"}

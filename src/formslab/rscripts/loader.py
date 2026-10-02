@@ -132,25 +132,33 @@ def loaded() -> list[str]:
     return [n for n, _ in _loaded]
 
 
-def tick(forms) -> None:
-    """Call every loaded, enabled rScript once, in load order.
+def call(forms, name: str, func) -> None:
+    """Call one rScript once. A failing script is logged when its error first
+    appears or changes, not on every call, and again when it recovers."""
+    if name in disabled:
+        return
+    try:
+        func(forms)
+    except Exception as exc:
+        msg = f"{type(exc).__name__}: {exc}"
+        if _last_error.get(name) != msg:
+            _last_error[name] = msg
+            _log(forms, f"{name}: {msg}\n{traceback.format_exc()}", "ERROR")
+    else:
+        if _last_error.pop(name, None) is not None:
+            _log(forms, f"{name}: recovered")
 
-    A failing script is logged when its error first appears or changes, not on
-    every loop, and again when it recovers.
-    """
+
+def scripts() -> list[tuple[str, object]]:
+    """The loaded (name, rScript function) pairs, in load order."""
+    return list(_loaded)
+
+
+def tick(forms) -> None:
+    """Call every loaded, enabled rScript once, in load order, on this thread.
+    (The host runs each script on its own thread instead -- see `workers`.)"""
     for name, func in _loaded:
-        if name in disabled:
-            continue
-        try:
-            func(forms)
-        except Exception as exc:
-            msg = f"{type(exc).__name__}: {exc}"
-            if _last_error.get(name) != msg:
-                _last_error[name] = msg
-                _log(forms, f"{name}: {msg}\n{traceback.format_exc()}", "ERROR")
-        else:
-            if _last_error.pop(name, None) is not None:
-                _log(forms, f"{name}: recovered")
+        call(forms, name, func)
 
 
 def shutdown(forms) -> None:
