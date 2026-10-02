@@ -37,12 +37,12 @@ def build_default_ctrl_commands() -> dict:
         "plans": {
             "key": None,
             "processed": True,
-            "desc": "List lab plans and modes",
+            "desc": "List lab plans",
         },
         "run": {
             "key": None,
             "processed": True,
-            "desc": "Run a lab plan or manual chamber operation. Usage: run <plan|tvac>",
+            "desc": "Run a lab plan. Usage: run <plan>, e.g. run tvac",
         },
         "pause": {"key": None, "processed": True, "desc": "Pause the running sequence"},
         "resume": {"key": None, "processed": True, "desc": "Resume a paused sequence"},

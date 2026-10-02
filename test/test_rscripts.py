@@ -205,7 +205,6 @@ def chamber(monkeypatch):
         profile = json.loads(config.default_path("tvac_bench.json").read_text(encoding="utf-8"))
         profile["connection"].update(host=sim.host, port=sim.port, timeout_s=2.0,
                                      poll_interval_s=0.0)
-        profile["tvac"] = {"rscripts": ["rLACO"], "record_s": 30}   # no real PSU in tests
         (config.config_dir() / "tvac_bench.json").write_text(json.dumps(profile), encoding="utf-8")
         yield sim
 
@@ -232,45 +231,83 @@ def test_rlaco_applies_a_cast_setpoint_request(forms, chamber):
     assert forms.get_variable("target_platen").value == pytest.approx(25.0 + 273.15)
 
 
-def test_tvac_mode_runs_the_benchs_rscripts(chamber):
-    """`run tvac` end to end, minus the subprocess: the host loads the scripts
-    the bench config names, ticks them in real time, records, releases its lock."""
-    from formslab.host import sequence
+def _tvac_plan(tmp_path, monkeypatch, scripts):
+    """A bench's own tvac.forms (searched before the checkout's), so a test
+    never loads rPSU against the real supply."""
+    d = tmp_path / "plans"
+    d.mkdir(exist_ok=True)
+    (d / "tvac.forms").write_text(
+        'mission.name = "tvac"\n'
+        f"rscripts.load = {scripts!r}\n"
+        "recording.interval = 30\n"
+        'sequence.operations = [{"hold": "until end"}]\n', encoding="utf-8")
+    monkeypatch.setenv("FORMSLAB_PLANS_DIR", str(d))
+    from formslab.sequence import find_plan
+    return find_plan("tvac")
 
-    sequence.channel(mode="tvac", loops=3)
 
-    assert ReadStatus("hvc")["connected"] is True
-    assert list(config.output_dir().glob("TVAC_*.csv"))
-    assert not sequence.lock_path().exists()
-
-
-def test_a_cast_command_reaches_the_chamber_through_the_host(chamber):
-    """The whole path: cast tab words -> rLACO's cast_request -> CAST -> rLACO
-    in the host -> LACO.apply -> the controller."""
+def _operator(after_s, *actions):
+    """Run `actions` and then a ctrl `end` from another thread, as an operator
+    at the console would while the host runs."""
     import threading
 
+    from formslab.console.ctrl.ctrlutils import WriteCommand
+
+    def act():
+        for a in actions:
+            a()
+        WriteCommand("end")
+
+    timer = threading.Timer(after_s, act)
+    timer.start()
+    return timer
+
+
+def test_tvac_plan_runs_until_end(chamber, tmp_path, monkeypatch):
+    """`run tvac` end to end, minus the subprocess: the host loads the plan's
+    scripts, ticks them in real time, records, stops on ctrl `end`, releases
+    its lock."""
+    from formslab.host import sequence
+
+    plan = _tvac_plan(tmp_path, monkeypatch, ["rLACO"])
+    timer = _operator(1.5)
+    sequence.channel(plan)
+    timer.join()
+
+    assert ReadStatus("hvc")["connected"] is True
+    assert list(config.output_dir().glob("tvac_*.csv"))
+    assert not sequence.lock_path().exists()
+    events = [json.loads(line) for line in
+              sequence.events_path().read_text(encoding="utf-8").splitlines()]
+    assert events[-1]["kind"] == "sequence_finished"
+    assert events[-1]["ended"] == "operator" and events[-1]["error"] is None
+
+
+def test_a_cast_command_reaches_the_chamber_through_the_host(chamber, tmp_path, monkeypatch):
+    """The whole path: cast tab words -> rLACO's cast_request -> CAST -> rLACO
+    in the host -> LACO.apply -> the controller."""
     from formslab.console.cast import castcli
     from formslab.host import sequence
 
+    plan = _tvac_plan(tmp_path, monkeypatch, ["rLACO"])
     typed = []      # typed while the host runs: it clears stale requests at start
-    timer = threading.Timer(0.5, lambda: typed.append(
-        castcli.execute_command(["hvc", "platen", "35"])))
-    timer.start()
-    sequence.channel(mode="tvac", loops=25)
+    timer = _operator(0.5, lambda: typed.append(castcli.execute_command(["hvc", "platen", "35"])),
+                      lambda: __import__("time").sleep(1.5))
+    sequence.channel(plan)
     timer.join()
     assert "platen" in typed[0].content.plain
     assert chamber.state.zone_setpoint[1] == pytest.approx(35.0)
 
 
-def test_ctrl_end_stops_a_mode_and_runs_rshutdown(script_dir):
+def test_ctrl_end_stops_the_run_and_runs_rshutdown(script_dir, tmp_path, monkeypatch):
     """`end` from the console reaches the host through ctrl, and the run's
     rShutdown still happens."""
     from formslab.host import sequence
 
-    write(script_dir, "rStop", "from formslab.console.ctrl.ctrlutils import WriteCommand\n"
-                               "def rScript(forms):\n    WriteCommand('end')\n"
+    write(script_dir, "rStop", "def rScript(forms): pass\n"
                                "def rShutdown(forms):\n    open(__file__ + '.done', 'w').close()\n")
-    (config.config_dir() / "tvac_bench.json").write_text(
-        json.dumps({"tvac": {"rscripts": ["rStop"]}}), encoding="utf-8")
-    sequence.channel(mode="tvac")                  # would run forever without `end`
+    plan = _tvac_plan(tmp_path, monkeypatch, ["rStop"])
+    timer = _operator(0.5)
+    sequence.channel(plan)                         # would run forever without `end`
+    timer.join()
     assert (script_dir / "rStop.py.done").exists()

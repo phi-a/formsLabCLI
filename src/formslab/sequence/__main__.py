@@ -41,13 +41,15 @@ def main(argv=None) -> int:
     held = 0.0
     print("sequence")
     for i, seg in enumerate(plan.sequence.segments, 1):
-        held += seg.params.get("seconds", 0.0)
+        held += seg.params.get("seconds") or 0.0
         print(f"  {i:>2}. {seg.label}")
-    print(f"held      {held:g} s, plus command and until waits")
+    open_ended = any(s.verb == "hold" and s.params["seconds"] is None for s in plan.sequence.segments)
+    print(f"held      {held:g} s, plus command and until waits"
+          + ("; runs until ctrl `end`" if open_ended else ""))
     if missing:
         print(f"missing rScripts: {', '.join(missing)}", file=sys.stderr)
         return 1
-    print(f"\nrun:  python -m formslab.host.sequence --plan \"{path}\"")
+    print(f"\nrun:  python -m formslab.host.sequence \"{path}\"")
     print(f"      or in the console ctrl tab: run {path.stem}")
     return 0
 

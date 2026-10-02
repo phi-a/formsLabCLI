@@ -121,7 +121,7 @@ src/formslab/
 ├── defaults/    shipped usbmap.json and tvac_bench.json
 ├── rscripts/    the rScripts runtime: loader, gates, the `forms` handle
 ├── sequence/    lab plans: test sequences, read and run
-└── host/        the process that runs a mode or a plan
+└── host/        the process that runs a plan
 rScripts/        the routines that own the instruments during a run
 plans/           lab plans, e.g. psu1_smtc08_first.forms
 scripts/         launchers and standalone analysis tools
@@ -170,7 +170,7 @@ is in [docs/SEQUENCE.md](docs/SEQUENCE.md).
 ```
 python -m formslab.sequence psu1_smtc08_first     # check a plan; touches no hardware
 labcli --ctrl
-ctrl> plans                                        # lab plans and modes
+ctrl> plans                                        # lab plans; tvac runs until end
 ctrl> run tvac                                     # manual operation: then the cast tab
 ctrl> run laco_pumpdown                            # or any plan
 ctrl> pause / resume / end

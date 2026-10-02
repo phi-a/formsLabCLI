@@ -59,7 +59,8 @@ class SegmentFinished(SequenceEvent):
 class SequenceFinished(SequenceEvent):
     name: str
     steps: int
-    error: Optional[str] = None
+    error: Optional[str] = None      # the plan stopped on a failure
+    ended: Optional[str] = None      # "operator": stopped by ctrl `end` (or a signal)
 
 
 class NullSink:

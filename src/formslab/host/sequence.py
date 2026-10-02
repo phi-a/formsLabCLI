@@ -1,14 +1,15 @@
 """The sequence host: the process that runs rScripts against the bench.
 
-Started by the console's ctrl tab (`run <plan|tvac>`), or directly:
+Started by the console's ctrl tab (`run <plan>`), or directly:
 
-    python -m formslab.host.sequence --mode tvac
-    python -m formslab.host.sequence --plan plans/psu1_smtc08_first.forms
+    python -m formslab.host.sequence tvac              # manual operation, until `end`
+    python -m formslab.host.sequence plans/psu1_smtc08_first.forms
 
-Every run is a `LabForms` handle and one loop paced in real time at `LOOP_HZ`:
-poll ctrl (pause, resume, reset, end), tick each rScript once, write a CSV row
-when one is due. A mode loads a fixed set of rScripts and runs until `end`; a
-plan names its own rScripts and runs its Sequence, then exits.
+Every run is a lab plan (see `formslab.sequence`): the plan names its rScripts,
+the host loads them on a `LabForms` handle and runs the plan's steps in one
+loop paced in real time at `LOOP_HZ` -- poll ctrl (pause, resume, reset, end),
+tick each rScript once, write a CSV row when one is due. A plan ends after its
+last step; one that holds "until end" (plans/tvac.forms) runs until ctrl `end`.
 
 However a run ends, each loaded rScript's ``rShutdown`` runs before the process
 exits. Only one host runs at a time: two would fight over the same instruments.
@@ -28,8 +29,9 @@ from formslab import rscripts
 from formslab.config import run_dir
 from formslab.console.cast.castutils import ResetJson
 from formslab.console.ctrl.ctrlutils import ReadCommand, ResetCtrlState
-from formslab.host import modes
-from formslab.sequence import JsonlEventSink, LabSequenceRunner, PlanError, SequenceError
+from formslab.sequence import (
+    JsonlEventSink, LabSequenceRunner, PlanError, SequenceError, find_plan, load_plan,
+)
 
 # Loop rate. Scripts gate their own hardware cadence; this bounds how quickly a
 # ctrl request or a plan's next segment is seen.
@@ -119,18 +121,23 @@ def _on_signal(sig, _frame):  # pragma: no cover - signal path
 
 # --- the run ---------------------------------------------------------------------------
 
-def _build(mode: str, plan_path):
-    if plan_path is not None:
-        from formslab.host.modes import plan as planmode
-        return planmode.initialize(plan_path)
-    if mode not in modes.MODES:
-        raise ValueError(f"unknown mode {mode!r} (modes: {', '.join(modes.MODES)})")
-    return modes.initialize(mode), None
+def _build(plan_path):
+    """The plan, and a handle with its rScripts loaded and recording set. A
+    plan whose rScripts do not all load does not start: its steps would only
+    time out against a missing instrument owner."""
+    plan = load_plan(plan_path)
+    forms = rscripts.LabForms(name=plan.name)
+    loaded = rscripts.load(forms, plan.rscripts)
+    missing = [n for n in plan.rscripts if n not in loaded]
+    if missing:
+        raise PlanError(f"{plan.name}: rScripts did not load: {', '.join(missing)} "
+                        "(the log above says why)")
+    forms.record(value=plan.record_interval, unit=plan.record_unit)
+    return forms, plan
 
 
-def channel(mode: str = "tvac", plan_path=None, relay_func=None, loops: int | None = None):
-    """Run a mode until `end`, or a plan to its end. ``loops`` stops a mode run
-    after that many loops (tests)."""
+def channel(plan_path, relay_func=None):
+    """Run a lab plan until its last step, or until ctrl `end`."""
     global paused
     paused = False
 
@@ -143,7 +150,7 @@ def channel(mode: str = "tvac", plan_path=None, relay_func=None, loops: int | No
         ResetCtrlState()
         ResetJson()
         events_path().write_text("", encoding="utf-8")
-        forms, plan = _build(mode, plan_path)
+        forms, plan = _build(plan_path)
     except BaseException:
         _release_lock()
         raise
@@ -151,21 +158,10 @@ def channel(mode: str = "tvac", plan_path=None, relay_func=None, loops: int | No
     signal.signal(signal.SIGTERM, _on_signal)
     signal.signal(signal.SIGINT, _on_signal)
     try:
-        if plan is not None:
-            forms.log(f"Plan {plan.name} running ({LOOP_HZ:g} Hz).", component=COMPONENT)
-            LabSequenceRunner(forms, plan.sequence, sink=JsonlEventSink(events_path()),
-                              poll=lambda: poll(forms), hz=LOOP_HZ).run()
-            forms.log(f"Plan {plan.name} complete.", component=COMPONENT)
-        else:
-            forms.log(f"Mode {mode} running ({LOOP_HZ:g} Hz).", component=COMPONENT)
-            period, n = 1.0 / LOOP_HZ, 0
-            while loops is None or n < loops:
-                started = time.monotonic()
-                poll(forms)
-                rscripts.tick(forms)
-                forms.record()
-                n += 1
-                time.sleep(max(0.0, period - (time.monotonic() - started)))
+        forms.log(f"Plan {plan.name} running ({LOOP_HZ:g} Hz).", component=COMPONENT)
+        LabSequenceRunner(forms, plan.sequence, sink=JsonlEventSink(events_path()),
+                          poll=lambda: poll(forms), hz=LOOP_HZ).run()
+        forms.log(f"Plan {plan.name} complete.", component=COMPONENT)
     except GracefulExit:
         forms.log("Run ended.", component=COMPONENT)
     except SequenceError as exc:
@@ -186,21 +182,16 @@ def channel(mode: str = "tvac", plan_path=None, relay_func=None, loops: int | No
 
 def main(argv=None) -> int:
     ap = ArgumentParser(prog="python -m formslab.host.sequence",
-                        description="Run rScripts against the bench: a mode, or a lab plan.")
-    group = ap.add_mutually_exclusive_group()
-    group.add_argument("--mode", choices=sorted(modes.MODES), default="tvac")
-    group.add_argument("--plan", help="a .forms lab plan: a path, or a name found in plans/")
+                        description="Run a lab plan against the bench.")
+    ap.add_argument("plan", help="a .forms lab plan: a path, or a name found in plans/ (e.g. tvac)")
     args = ap.parse_args(argv)
 
-    plan_path = None
-    if args.plan:
-        from formslab.sequence import find_plan
-        plan_path = find_plan(args.plan)
-        if plan_path is None:
-            print(f"Plan not found: {args.plan}", flush=True)
-            return 2
+    plan_path = find_plan(args.plan)
+    if plan_path is None:
+        print(f"Plan not found: {args.plan}", flush=True)
+        return 2
     try:
-        channel(mode=args.mode, plan_path=plan_path)
+        channel(plan_path)
     except GracefulExit:
         pass
     except SequenceError:

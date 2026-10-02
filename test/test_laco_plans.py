@@ -9,7 +9,6 @@ import pytest
 from formslab import config, rscripts
 from formslab.devices.hvc3500.simulator import Simulator
 from formslab.host import sequence
-from formslab.host.modes import plan as planmode
 from formslab.sequence import PlanError, SequenceError, find_plan, load_plan, parse_plan
 
 
@@ -38,7 +37,7 @@ def _quick(monkeypatch, **overrides):
                 params["seconds"] = 1.5
             segs.append(replace(s, params=params))
         return replace(p, sequence=replace(p.sequence, segments=tuple(segs)))
-    monkeypatch.setattr(planmode, "load_plan", load)
+    monkeypatch.setattr(sequence, "load_plan", load)
 
 
 def test_cast_step_uses_the_panel_grammar():

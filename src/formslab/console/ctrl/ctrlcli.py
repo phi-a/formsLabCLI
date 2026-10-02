@@ -1,8 +1,8 @@
 """The ctrl tab: start, watch and stop the sequence host.
 
-    run <plan>        a lab plan from plans/ (or a path to a .forms plan)
-    run tvac          manual chamber operation: the bench's rScripts until `end`
-    plans             list lab plans and modes
+    run <plan>        a lab plan from plans/, or a path to a .forms plan
+    run tvac          manual chamber operation (plans/tvac.forms) until `end`
+    plans             list lab plans
     status, ps        is a host running
     pause, resume     hold / continue the running plan or mode
     end               stop it; rScripts' rShutdown runs before it exits
@@ -24,7 +24,6 @@ from formslab.console.ctrl.ctrlutils import WriteCommand, process_exists
 from formslab.console.log.logcli import log_path
 from formslab.console.sessions.base import CLIResult
 from formslab.console.style import DIM, ERROR, HEADER, INFO, LABEL, SUCCESS, TEXT, WARNING
-from formslab.host.modes import MODES, spec
 from formslab.sequence import discover as discover_plans, find_plan, is_lab_plan
 
 # How long `end` waits for the host to stop on its own (running rShutdown)
@@ -44,15 +43,14 @@ def _running_pid():
     return pid if process_exists(pid) else None
 
 
-def _launch_sequence(mode: str = None, plan_path: str = None) -> CLIResult:
-    """Start `python -m formslab.host.sequence` for a mode or a plan. Its output
-    goes to the log tab's file; it inherits this working directory."""
+def _launch_sequence(plan_path: str) -> CLIResult:
+    """Start `python -m formslab.host.sequence <plan>`. Its output goes to the
+    log tab's file; it inherits this working directory."""
     pid = _running_pid()
     if pid is not None:
         return CLIResult(f"✔ sequence host already running (pid {pid})")
 
-    cmd = [sys.executable, "-m", "formslab.host.sequence"]
-    cmd += ["--plan", plan_path] if plan_path else ["--mode", mode]
+    cmd = [sys.executable, "-m", "formslab.host.sequence", plan_path]
     proc = subprocess.Popen(
         cmd,
         stdout=log_path().open("w"),
@@ -60,24 +58,22 @@ def _launch_sequence(mode: str = None, plan_path: str = None) -> CLIResult:
         start_new_session=True,
     )
     _get_pid_path().write_text(str(proc.pid))
-    what = f"plan={Path(plan_path).stem}" if plan_path else f"mode={mode}"
-    return CLIResult(f"🟢 sequence host started (pid {proc.pid}, {what})", clear=False)
+    return CLIResult(f"🟢 sequence host started (pid {proc.pid}, plan={Path(plan_path).stem})",
+                     clear=False)
 
 
 def run_sequence(args=None) -> CLIResult:
     if not args:
-        return CLIResult("✗ run what? A plan name (see `plans`), or a mode: "
-                         + ", ".join(MODES), clear=False)
-    target = args[0]
-    if target.lower() in MODES:
-        return _launch_sequence(mode=target.lower())
-    plan = find_plan(target)
+        return CLIResult("✗ run what? A plan name, e.g. `run tvac` (see `plans`)", clear=False)
+    plan = find_plan(args[0])
     if plan is None or not is_lab_plan(plan):
-        return CLIResult(f"✗ No plan or mode '{target}'. Use 'plans' to list them.", clear=False)
-    return _launch_sequence(plan_path=str(plan.resolve()))
+        return CLIResult(f"✗ No plan '{args[0]}'. Use 'plans' to list them.", clear=False)
+    return _launch_sequence(str(plan.resolve()))
 
 
 def plans_command() -> CLIResult:
+    from formslab.sequence import PlanError, load_plan
+
     result = Text()
     result.append("LAB PLANS\n", HEADER)
     result.append("═" * 60 + "\n", DIM)
@@ -85,17 +81,20 @@ def plans_command() -> CLIResult:
     if not plans:
         result.append("  No lab plans found in plans/\n", DIM)
     for path in plans:
-        result.append("  ▶   ", SUCCESS)
-        result.append(path.stem.ljust(28), INFO)
-        result.append(f"{path.parent}\n", DIM)
-    result.append("\nMODES (run until `end`)\n", HEADER)
-    result.append("═" * 60 + "\n", DIM)
-    for mode in MODES:
-        result.append("  ●   ", WARNING)
-        result.append(mode.ljust(28), WARNING)
-        result.append(", ".join(spec(mode)["rscripts"]) + "\n", DIM)
+        try:
+            plan = load_plan(path)
+        except PlanError as e:
+            result.append(f"  ✗   {path.stem.ljust(22)}", ERROR)
+            result.append(f"{e}\n", DIM)
+            continue
+        open_ended = any(s.verb == "hold" and s.params["seconds"] is None
+                         for s in plan.sequence.segments)
+        result.append("  ●   " if open_ended else "  ▶   ", WARNING if open_ended else SUCCESS)
+        result.append(path.stem.ljust(22), INFO)
+        result.append(("until end  " if open_ended else "           "), WARNING)
+        result.append(", ".join(plan.rscripts) + "\n", DIM)
     result.append("\nUsage: ", DIM)
-    result.append("run <plan|mode>\n", INFO)
+    result.append("run <plan>   (run tvac: manual operation until `end`)\n", INFO)
     return CLIResult(result, clear=True)
 
 
@@ -161,9 +160,9 @@ def help_panel() -> CLIResult:
 
     result.append("\n" + "═" * 60 + "\n", DIM)
     result.append("RUNS\n", HEADER)
-    for cmd, desc in (("plans", "List lab plans and modes"),
-                      ("run <plan>", "Run a lab plan, e.g. run psu1_smtc08_first"),
-                      ("run tvac", "Manual chamber operation until `end` (cast tab)")):
+    for cmd, desc in (("plans", "List lab plans"),
+                      ("run tvac", "Manual chamber operation until `end` (cast tab)"),
+                      ("run <plan>", "Run a lab plan, e.g. run laco_pumpdown")):
         result.append(f"  {cmd:<16}", LABEL)
         result.append(desc + "\n", TEXT)
 
@@ -182,6 +181,7 @@ def help_panel() -> CLIResult:
 COMMANDS = {
     "plans": plans_command,
     "missions": plans_command,   # the old name
+    "modes": plans_command,      # tvac is a plan now
     "list": plans_command,
     "status": status_panel,
     "ps": list_sequence,

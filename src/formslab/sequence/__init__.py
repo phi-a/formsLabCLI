@@ -6,7 +6,7 @@ log. The host runs it on a `LabForms` handle in real time; see `plan` for the
 grammar and `runner` for how a segment runs.
 
     python -m formslab.sequence psu1_smtc08_first          # check, no hardware
-    python -m formslab.host.sequence --plan psu1_smtc08_first
+    python -m formslab.host.sequence psu1_smtc08_first
 
 Orbit work is FORMS' job: it computes a profile offline, and a plan replays it.
 """

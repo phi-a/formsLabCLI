@@ -21,7 +21,8 @@ lab plan is formsLabCLI's alone.)
 Operations, one verb each:
 
     hold      run the loaded rScripts for a duration (``units``: seconds,
-              minutes, hours)
+              minutes, hours), or ``"until end"``: until the operator's ctrl
+              `end` (plans/tvac.forms is one -- manual operation)
     command   write a CAST request to a label and wait (``timeout_s``, default
               10) until the rScript that owns the label takes it
     cast      the same, written as the cast tab's words: {"cast": "hvc pump on"}
@@ -240,11 +241,15 @@ def _segment(where: str, op) -> Segment:
 
 
 def _hold(where, op) -> Segment:
+    if op["hold"] == "until end":
+        if "units" in op:
+            raise PlanError(f"{where}: hold \"until end\" takes no units")
+        return Segment("hold", {"seconds": None}, label="hold until end")
     units = op.get("units", "seconds")
     if units not in _UNITS:
         raise PlanError(f"{where}: hold units must be one of {sorted(_UNITS)}")
     if not _positive(op["hold"]):
-        raise PlanError(f"{where}: hold needs a positive duration")
+        raise PlanError(f"{where}: hold needs a positive duration, or \"until end\"")
     seconds = float(op["hold"]) * _UNITS[units]
     return Segment("hold", {"seconds": seconds}, label=f"hold {op['hold']:g} {units}")
 

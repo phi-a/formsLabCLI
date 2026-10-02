@@ -52,8 +52,8 @@ every command the routines declare.
 | `rCryoBoard` | cryocooler control board (Pico I2C) and its PSU1 CH1 supply | `cryo` | status on CAST |
 | `rSLTA` | sLTA camera, powered from PSU2 CH1 | `slta` | status on CAST |
 
-`run tvac` loads the list in the bench config (`tvac_bench.json` -> `tvac`),
-`["rLACO", "rSMTC08", "rPSU"]` by default.
+`run tvac` runs `plans/tvac.forms`, which loads rLACO, rSMTC08 and rPSU and
+runs until ctrl `end`.
 
 rLACO's `rShutdown` ends pumping its run started (rough valve closed, pump off)
 and releases the controller, which takes one client at a time. rPSU turns off

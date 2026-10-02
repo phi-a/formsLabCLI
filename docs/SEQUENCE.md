@@ -22,7 +22,7 @@ sequence.operations = [
 
 | step | does | fails the plan when |
 |---|---|---|
-| `hold` | runs the routines for a duration (`units`: seconds, minutes, hours) | — |
+| `hold` | runs the routines for a duration (`units`: seconds, minutes, hours), or `"until end"`: until ctrl `end` (`tvac.forms`) | — |
 | `command` | writes a CAST request to an instrument label and waits until the routine that owns it has taken it | not taken within `timeout_s` (default 10) |
 | `cast` | the same, as the cast tab's words: `{"cast": "hvc pump on"}` -- checked against the routine's grammar when the plan is read | as `command` |
 | `until` | runs until a variable is `above` / `below` a value; `unit` converts C/K | not met within `timeout_s` (required: a wait on hardware always has a limit) |
@@ -32,7 +32,8 @@ The request grammar of each label is its routine's; `cast` steps use the cast
 tab's words instead, which is usually easier to read. `help` in the cast tab
 lists them all; `LACO.apply` documents the `hvc` dict grammar.
 
-Shipped plans: `psu1_smtc08_first` (PSU1 + thermocouples), `laco_pumpdown`
+Shipped plans: `tvac` (manual operation from the cast tab, until `end`),
+`psu1_smtc08_first` (PSU1 + thermocouples), `laco_pumpdown`
 (pump on, rough open, until below 5 Torr, stop) and `laco_vent` (temperature
 guards, vent valve open, until atmosphere).
 
@@ -44,7 +45,7 @@ part, done offline (see ARCHITECTURE.md).
 ```
 python -m formslab.sequence <plan>              # check: scripts found, steps listed
 labcli --ctrl  ->  run <plan>                    # or:
-python -m formslab.host.sequence --plan <plan>
+python -m formslab.host.sequence <plan>
 ```
 
 Plans are found by path, or by name in `$FORMSLAB_PLANS_DIR`, `<cwd>/plans`,

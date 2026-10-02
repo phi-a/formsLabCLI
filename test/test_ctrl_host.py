@@ -21,23 +21,30 @@ class Launch(unittest.TestCase):
             result = ctrlcli.run_sequence(list(args))
         return popen, result
 
-    def test_a_mode_starts_the_host_module(self):
+    def test_tvac_is_a_plan_run_by_the_host_module(self):
         """`-m` is what stops us guessing where the package lives on disk."""
-        popen, _ = self._launch("tvac")
-        self.assertEqual(popen.call_args.args[0][1:], ["-m", "formslab.host.sequence",
-                                                       "--mode", "tvac"])
+        popen, result = self._launch("tvac")
+        cmd = popen.call_args.args[0]
+        self.assertEqual(cmd[1:3], ["-m", "formslab.host.sequence"])
+        self.assertTrue(Path(cmd[3]).is_file() and cmd[3].endswith("tvac.forms"))
+        self.assertIn("plan=tvac", result.content)
 
     def test_a_plan_is_found_by_name_and_passed_by_path(self):
         popen, result = self._launch("psu1_smtc08_first")
         cmd = popen.call_args.args[0]
-        self.assertEqual(cmd[3], "--plan")
-        self.assertTrue(Path(cmd[4]).is_file() and cmd[4].endswith("psu1_smtc08_first.forms"))
+        self.assertTrue(Path(cmd[3]).is_file() and cmd[3].endswith("psu1_smtc08_first.forms"))
         self.assertIn("plan=psu1_smtc08_first", result.content)
 
     def test_an_unknown_target_launches_nothing(self):
         popen, result = self._launch("darkness")
         popen.assert_not_called()
-        self.assertIn("No plan or mode", result.content)
+        self.assertIn("No plan 'darkness'", result.content)
+
+    def test_plans_lists_tvac_as_open_ended(self):
+        text = ctrlcli.plans_command().content.plain
+        line = next(ln for ln in text.splitlines() if " tvac " in ln)
+        self.assertIn("until end", line)
+        self.assertIn("rLACO, rSMTC08, rPSU", line)
 
     def test_the_log_ctrl_writes_is_the_log_the_tab_reads(self):
         popen, _ = self._launch("tvac")
@@ -87,7 +94,7 @@ class HostModule(unittest.TestCase):
         proc = subprocess.run([sys.executable, "-m", "formslab.host.sequence", "--help"],
                               capture_output=True, text=True, timeout=180)
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn("--plan", proc.stdout)
+        self.assertIn("plan", proc.stdout)
 
 
 if __name__ == "__main__":

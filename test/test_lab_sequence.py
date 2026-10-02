@@ -370,7 +370,6 @@ def test_host_runs_the_first_plan_and_leaves_psu1_off(bench, monkeypatch):
     from dataclasses import replace
 
     from formslab.host import sequence as host
-    from formslab.host.modes import plan as planmode
     from formslab.sequence import load_plan
 
     def quick(path):
@@ -379,7 +378,7 @@ def test_host_runs_the_first_plan_and_leaves_psu1_off(bench, monkeypatch):
                      for s in p.sequence.segments)
         return replace(p, record_interval=0.1, sequence=replace(p.sequence, segments=segs))
 
-    monkeypatch.setattr(planmode, "load_plan", quick)
+    monkeypatch.setattr(host, "load_plan", quick)
 
     host.channel(plan_path=find_plan("psu1_smtc08_first"))
 
@@ -389,7 +388,8 @@ def test_host_runs_the_first_plan_and_leaves_psu1_off(bench, monkeypatch):
               host.events_path().read_text(encoding="utf-8").splitlines()]
     assert events[0]["kind"] == "sequence_started" and events[0]["manifest"]["segment_count"] == 10
     assert events[-1] == {"kind": "sequence_finished", "name": "psu1_smtc08_first",
-                          "steps": events[-1]["steps"], "error": None}
+                          "steps": events[-1]["steps"], "error": None,
+                          "ended": None}
     from formslab.config import output_dir
     headers = [next(csv.reader(p.open(encoding="utf-8")))
                for p in sorted(output_dir().glob("psu1_smtc08_first_*.csv"))]
@@ -406,3 +406,19 @@ def test_host_refuses_a_plan_whose_scripts_do_not_load(tmp_path, monkeypatch):
     with pytest.raises(PlanError, match="rMissing"):
         host.channel(plan_path=plan)
     assert not host.lock_path().exists()
+
+
+def test_hold_until_end_is_open_ended():
+    plan = parse_plan(plan_src([{"hold": "until end"}]))
+    assert plan.sequence.segments[0].params == {"seconds": None}
+    with pytest.raises(PlanError, match="takes no units"):
+        parse_plan(plan_src([{"hold": "until end", "units": "minutes"}]))
+    with pytest.raises(PlanError, match="until end"):
+        parse_plan(plan_src([{"hold": "forever"}]))
+
+
+def test_the_shipped_tvac_plan_checks_clean(capsys):
+    assert check_main(["tvac"]) == 0
+    out = capsys.readouterr().out
+    assert "rLACO" in out and "rSMTC08" in out and "rPSU" in out
+    assert "runs until ctrl `end`" in out

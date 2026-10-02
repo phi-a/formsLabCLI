@@ -21,7 +21,7 @@ hardware test sequences against them. Running those sequences is its central job
 | Drivers | `formslab.devices` | One module per instrument, plus device objects (`laco.LACO`). Opens ports, speaks protocols; knows nothing about runs. |
 | Routines | `rScripts/*.py` on `formslab.rscripts` | The instrument during a run: apply CAST requests for it, publish its readings as variables, leave it safe in `rShutdown`. One owner per instrument. |
 | Sequences | `formslab.sequence` | Lab plans: which routines run, and the ordered steps of a test. Steps talk to routines through CAST, never to a driver. |
-| Host | `formslab.host` | One run: a mode (fixed routines until `end`) or a plan. Lock, ctrl, pacing, recording, shutdown. |
+| Host | `formslab.host` | One run of one plan. Lock, ctrl, pacing, recording, shutdown. |
 | Console | `formslab.console`, `formslab.app` | The operator: start and stop runs, watch and command instruments. |
 
 CAST (`castfile.json`) is the bus between them: a request block per instrument
@@ -31,12 +31,13 @@ block. Each routine declares its own console commands (`CAST_LABELS`,
 `CAST_HELP`, `cast_request` -- see rScripts/README.md), so the cast tab, a plan's
 `cast` step and the routine always agree on what a command means.
 
-## Modes
+## Everything is a plan
 
-One mode, `tvac`: manual chamber operation. It loads the rScripts listed in the
-bench config (`tvac_bench.json` -> `tvac`, default rLACO, rSMTC08, rPSU) and runs
-them until `end`; the operator works from the cast tab. Everything with an end
--- pumpdown, vent, a soak, a test -- is a lab plan.
+Every run is a lab plan (`plans/*.forms`). Manual chamber operation is the plan
+`tvac`: it loads rLACO, rSMTC08 and rPSU and holds "until end", while the
+operator works from the cast tab. Pumpdown, vent, a soak, a test are plans with
+steps and an end. A computer with different instruments keeps its own copy of
+a plan in `$FORMSLAB_PLANS_DIR`, which is searched before the checkout.
 
 ## FORMS
 

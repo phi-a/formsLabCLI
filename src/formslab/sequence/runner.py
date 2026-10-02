@@ -86,7 +86,7 @@ class LabSequenceRunner:
         self.sink.emit(SequenceStarted(name=seq.name, segment_count=len(seq.segments),
                                        manifest=seq.to_manifest()))
         result = RunResult(name=seq.name)
-        error = None
+        error = ended = None
         try:
             for i, segment in enumerate(seq.segments):
                 self.index = i
@@ -97,23 +97,27 @@ class LabSequenceRunner:
                 steps = _EXECUTORS[segment.verb](self, self.forms, segment)
                 result.segment_steps.append(steps)
                 self.sink.emit(SegmentFinished(index=i, verb=segment.verb, steps=steps))
+        except SystemExit:
+            ended = "operator"        # ctrl `end` or a signal: how an open-ended plan stops
+            raise
         except BaseException as exc:
             error = str(exc) or type(exc).__name__
             raise
         finally:
             result.steps = self.total_steps
-            self.sink.emit(SequenceFinished(name=seq.name, steps=self.total_steps, error=error))
+            self.sink.emit(SequenceFinished(name=seq.name, steps=self.total_steps, error=error,
+                                            ended=ended))
         return result
 
 
 # --- executors: (runner, forms, segment) -> loops taken ------------------------
 
 def _hold(runner, forms, segment) -> int:
-    seconds = segment.params["seconds"]
+    seconds = segment.params["seconds"]       # None: until the operator's `end`
     start, n = runner.elapsed, 0
-    while (done := runner.elapsed - start) < seconds:
+    while seconds is None or (done := runner.elapsed - start) < seconds:
         n += 1
-        runner.step(segment.verb, n, fraction=done / seconds)
+        runner.step(segment.verb, n, fraction=None if seconds is None else done / seconds)
     return n
 
 
