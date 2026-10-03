@@ -123,7 +123,7 @@ src/formslab/
 ├── sequence/    lab plans: test sequences, read and run
 └── host/        the process that runs a plan
 rScripts/        the routines that own the instruments during a run
-plans/           lab plans, e.g. psu1_smtc08_first.forms
+plans/           lab plans, e.g. psu1_smtc08_first.plan
 scripts/         launchers and standalone analysis tools
 ```
 

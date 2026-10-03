@@ -52,7 +52,7 @@ every command the routines declare.
 | `rCryoBoard` | cryocooler control board (Pico I2C) and its PSU1 CH1 supply | `cryo` | status on CAST |
 | `rSLTA` | sLTA camera, powered from PSU2 CH1 | `slta` | status on CAST |
 
-`run tvac` runs `plans/tvac.forms`, which loads rLACO, rSMTC08 and rPSU and
+`run tvac` runs `plans/tvac.plan`, which loads rLACO, rSMTC08 and rPSU and
 runs until ctrl `end`.
 
 rLACO's `rShutdown` ends pumping its run started (rough valve closed, pump off)

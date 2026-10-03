@@ -1,4 +1,4 @@
-"""Lab plans: `.forms` documents run by formsLabCLI's own sequence runner.
+"""Lab plans: `.plan` files run by formsLabCLI's own sequence runner.
 
 Covers the plan grammar (and what it refuses as FORMS' business), the runner's
 verbs on a fake clock, the rShutdown hook, rPSU and rSMTC08 against fake
@@ -18,7 +18,7 @@ from formslab.console.cast.castutils import (
 )
 from formslab.rscripts import control
 from formslab.sequence import (
-    LabSequenceRunner, ListSink, PlanError, SequenceError, find_plan, is_lab_plan, parse_plan,
+    LabSequenceRunner, ListSink, PlanError, SequenceError, find_plan, parse_plan,
 )
 from formslab.sequence.__main__ import main as check_main
 
@@ -71,21 +71,12 @@ def test_what_a_plan_refuses(source, needle):
     assert needle in str(err.value)
 
 
-def test_rscripts_load_is_what_makes_a_forms_file_a_lab_plan(tmp_path):
-    lab = tmp_path / "lab.forms"
-    lab.write_text(PLAN, encoding="utf-8")
-    mission = tmp_path / "mission.forms"
-    mission.write_text('orbit.a = 7000\nsequence.operations = [{"propagate": 60}]\n',
-                       encoding="utf-8")
-    assert is_lab_plan(lab) and not is_lab_plan(mission)
-
-
 def test_plans_are_found_by_name_or_path(tmp_path, monkeypatch):
-    (tmp_path / "mine.forms").write_text(PLAN, encoding="utf-8")
+    (tmp_path / "mine.plan").write_text(PLAN, encoding="utf-8")
     monkeypatch.setenv("FORMSLAB_PLANS_DIR", str(tmp_path))
-    assert find_plan("mine") == tmp_path / "mine.forms"
-    assert find_plan(str(tmp_path / "mine.forms")) == tmp_path / "mine.forms"
-    assert find_plan("psu1_smtc08_first").name == "psu1_smtc08_first.forms"   # the checkout's
+    assert find_plan("mine") == tmp_path / "mine.plan"
+    assert find_plan(str(tmp_path / "mine.plan")) == tmp_path / "mine.plan"
+    assert find_plan("psu1_smtc08_first").name == "psu1_smtc08_first.plan"   # the checkout's
     assert find_plan("nowhere") is None
 
 
@@ -401,7 +392,7 @@ def test_host_refuses_a_plan_whose_scripts_do_not_load(tmp_path, monkeypatch):
     from formslab.host import sequence as host
 
     monkeypatch.setenv(rscripts.ENV, str(tmp_path))
-    plan = tmp_path / "p.forms"
+    plan = tmp_path / "p.plan"
     plan.write_text('rscripts.load = ["rMissing"]\nsequence.operations = [{"hold": 1}]\n',
                     encoding="utf-8")
     with pytest.raises(PlanError, match="rMissing"):

@@ -33,7 +33,7 @@ block. Each routine declares its own console commands (`CAST_LABELS`,
 
 ## Everything is a plan
 
-Every run is a lab plan (`plans/*.forms`). Manual chamber operation is the plan
+Every run is a plan (`plans/*.plan`). Manual chamber operation is the plan
 `tvac`: it loads rLACO, rSMTC08 and rPSU and holds "until end", while the
 operator works from the cast tab. Pumpdown, vent, a soak, a test are plans with
 steps and an end. A computer with different instruments keeps its own copy of

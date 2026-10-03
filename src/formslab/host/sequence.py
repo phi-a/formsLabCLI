@@ -3,7 +3,7 @@
 Started by the console's ctrl tab (`run <plan>`), or directly:
 
     python -m formslab.host.sequence tvac              # manual operation, until `end`
-    python -m formslab.host.sequence plans/psu1_smtc08_first.forms
+    python -m formslab.host.sequence plans/psu1_smtc08_first.plan
 
 Every run is a lab plan (see `formslab.sequence`): the plan names its rScripts,
 the host loads them on a `LabForms` handle and runs the plan's steps in one
@@ -11,7 +11,7 @@ loop paced in real time at `LOOP_HZ` -- poll ctrl (pause, resume, reset, end),
 run the plan's current step, write a CSV row when one is due. Each rScript runs
 on its own thread at the same rate (rscripts.workers), so a slow instrument
 does not hold up the others or the plan. A plan ends after its last step; one
-that holds "until end" (plans/tvac.forms) runs until ctrl `end`.
+that holds "until end" (plans/tvac.plan) runs until ctrl `end`.
 
 The lock file (`<output>/.run/sequence.lock`) names the running host: its
 process id, plan and start time. The console's ctrl tab reads it to find, show
@@ -226,7 +226,7 @@ def channel(plan_path, relay_func=None):
 def main(argv=None) -> int:
     ap = ArgumentParser(prog="python -m formslab.host.sequence",
                         description="Run a lab plan against the bench.")
-    ap.add_argument("plan", help="a .forms lab plan: a path, or a name found in plans/ (e.g. tvac)")
+    ap.add_argument("plan", help="a .plan file: a path, or a name found in plans/ (e.g. tvac)")
     args = ap.parse_args(argv)
 
     plan_path = find_plan(args.plan)

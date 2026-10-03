@@ -1,7 +1,7 @@
 # Lab plans
 
 A lab plan is a hardware test sequence: the rScripts that own the instruments,
-and an ordered list of steps. It is a `.forms` file that formsLabCLI reads
+and an ordered list of steps. It is a `.plan` file that formsLabCLI reads
 statically (literal assignments only, nothing executed).
 
 ```python
@@ -22,7 +22,7 @@ sequence.operations = [
 
 | step | does | fails the plan when |
 |---|---|---|
-| `hold` | runs the routines for a duration (`units`: seconds, minutes, hours), or `"until end"`: until ctrl `end` (`tvac.forms`) | — |
+| `hold` | runs the routines for a duration (`units`: seconds, minutes, hours), or `"until end"`: until ctrl `end` (`tvac.plan`) | — |
 | `command` | writes a CAST request to an instrument label and waits until the routine that owns it has taken it | not taken within `timeout_s` (default 10) |
 | `cast` | the same, as the cast tab's words: `{"cast": "hvc pump on"}` -- checked against the routine's grammar when the plan is read | as `command` |
 | `until` | runs until a variable is `above` / `below` a value; `unit` converts C/K | not met within `timeout_s` (required: a wait on hardware always has a limit) |

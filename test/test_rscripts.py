@@ -219,11 +219,11 @@ def test_rlaco_applies_a_cast_setpoint_request(forms, chamber):
 
 
 def _tvac_plan(tmp_path, monkeypatch, scripts):
-    """A bench's own tvac.forms (searched before the checkout's), so a test
+    """A bench's own tvac.plan (searched before the checkout's), so a test
     never loads rPSU against the real supply."""
     d = tmp_path / "plans"
     d.mkdir(exist_ok=True)
-    (d / "tvac.forms").write_text(
+    (d / "tvac.plan").write_text(
         'mission.name = "tvac"\n'
         f"rscripts.load = {scripts!r}\n"
         "recording.interval = 30\n"

@@ -1,7 +1,7 @@
 """The ctrl tab: start, watch and stop the sequence host.
 
-    run <plan>        a lab plan from plans/, or a path to a .forms plan
-    run tvac          manual chamber operation (plans/tvac.forms) until `end`
+    run <plan>        a plan from plans/, or a path to a .plan file
+    run tvac          manual chamber operation (plans/tvac.plan) until `end`
     plans             list lab plans
     status, ps        is a host running, and which plan
     pause, resume     hold / continue the running plan's steps
@@ -26,7 +26,7 @@ from formslab.console.log.logcli import log_path
 from formslab.console.sessions.base import CLIResult
 from formslab.console.style import DIM, ERROR, HEADER, INFO, LABEL, SUCCESS, TEXT, WARNING
 from formslab.host.sequence import is_host, read_lock
-from formslab.sequence import discover as discover_plans, find_plan, is_lab_plan
+from formslab.sequence import discover as discover_plans, find_plan
 
 # `end`: how long the host gets to take the request, then to finish cleanup.
 END_TAKE_S = 15.0
@@ -69,7 +69,7 @@ def run_sequence(args=None) -> CLIResult:
     if not args:
         return CLIResult("✗ run what? A plan name, e.g. `run tvac` (see `plans`)", clear=False)
     plan = find_plan(args[0])
-    if plan is None or not is_lab_plan(plan):
+    if plan is None:
         return CLIResult(f"✗ No plan '{args[0]}'. Use 'plans' to list them.", clear=False)
     return _launch_sequence(str(plan.resolve()))
 

@@ -1,10 +1,9 @@
-"""Lab plans: `.forms` documents that run rScripts against the bench.
+"""Lab plans: `.plan` files that run rScripts against the bench.
 
-A lab plan uses the `.forms` assignment grammar -- literal ``block.field =
-value`` assignments and an explicit ``sequence.operations`` list -- plus
-``rscripts.load``, the scripts that own the instruments. Reading is static: the
-file is parsed, never executed. (FORMS itself refuses ``rscripts.load``, so a
-lab plan is formsLabCLI's alone.)
+A plan is literal ``block.field = value`` assignments (the style FORMS missions
+use), an explicit ``sequence.operations`` list, and ``rscripts.load``, the
+scripts that own the instruments. Reading is static: the file is parsed, never
+executed.
 
     mission.name = "psu1_smtc08_first"
     rscripts.load = ["rPSU", "rSMTC08"]
@@ -22,7 +21,7 @@ Operations, one verb each:
 
     hold      run the loaded rScripts for a duration (``units``: seconds,
               minutes, hours), or ``"until end"``: until the operator's ctrl
-              `end` (plans/tvac.forms is one -- manual operation)
+              `end` (plans/tvac.plan is one -- manual operation)
     command   write a CAST request to a label and wait (``timeout_s``, default
               10) until the rScript that owns the label takes it
     cast      the same, written as the cast tab's words: {"cast": "hvc pump on"}
@@ -48,7 +47,7 @@ from formslab.config import PACKAGE_ROOT
 from formslab.sequence.spec import Segment, Sequence
 
 ENV = "FORMSLAB_PLANS_DIR"
-SUFFIX = ".forms"
+SUFFIX = ".plan"
 
 _FIELDS = {
     "mission": {"name", "format", "description"},
@@ -122,21 +121,10 @@ def discover() -> list[Path]:
     seen, out = set(), []
     for d in search_dirs():
         for p in sorted(d.glob(f"*{SUFFIX}")):
-            if p.stem not in seen and is_lab_plan(p):
+            if p.stem not in seen:
                 seen.add(p.stem)
                 out.append(p)
     return out
-
-
-def is_lab_plan(path) -> bool:
-    """True when a `.forms` document declares ``rscripts.load`` -- the field
-    that makes it formsLabCLI's to run rather than FORMS'."""
-    try:
-        tree = ast.parse(Path(path).read_text(encoding="utf-8"))
-    except (OSError, SyntaxError, ValueError):
-        return False
-    return any(_target(node) == ("rscripts", "load") for node in tree.body
-               if isinstance(node, ast.Assign))
 
 
 # --- reading -----------------------------------------------------------------
@@ -161,16 +149,16 @@ def parse_plan(source: str, *, path: Path | None = None) -> Plan:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             deco = f"@{ast.unparse(node.decorator_list[0])}" if node.decorator_list else "def"
             raise PlanError(f"{line}: `{deco} {node.name}` is FORMS mission code; "
-                            "a lab plan has no definitions")
+                            "a plan has no definitions")
         target = _target(node) if isinstance(node, ast.Assign) else None
         if target is None:
             raise PlanError(f"{line}: only literal `block.field = value` assignments belong in a plan")
         block, field = target
         dotted = f"{block}.{field}"
         if block in _FORMS_BLOCKS:
-            raise PlanError(f"{line}: `{dotted}` is FORMS mission configuration. A lab plan "
-                            "runs on the wall clock with no orbit; run this document in FORMS "
-                            "without rscripts.load")
+            raise PlanError(f"{line}: `{dotted}` is FORMS mission configuration. A plan "
+                            "runs on the wall clock with no orbit; orbit work belongs in a "
+                            "FORMS mission")
         if field not in _FIELDS.get(block, ()):
             allowed = ", ".join(f"{b}.{f}" for b, fs in _FIELDS.items() for f in sorted(fs))
             raise PlanError(f"{line}: `{dotted}` is not a lab plan field (allowed: {allowed})")

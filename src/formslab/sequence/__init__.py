@@ -1,4 +1,4 @@
-"""Lab sequences: `.forms` plans that drive the bench through rScripts.
+"""Lab sequences: `.plan` files that drive the bench through rScripts.
 
 A plan names the rScripts that own the instruments (``rscripts.load``) and an
 ordered list of operations (``sequence.operations``): hold, command, until,
@@ -12,14 +12,14 @@ Orbit work is FORMS' job: it computes a profile offline, and a plan replays it.
 """
 from .events import JsonlEventSink, ListSink, NullSink
 from .plan import (
-    Plan, PlanError, discover, find_plan, is_lab_plan, load_plan, parse_plan, search_dirs,
+    Plan, PlanError, discover, find_plan, load_plan, parse_plan, search_dirs,
 )
 from .runner import LabSequenceRunner, RunResult, SequenceError
 from .spec import Segment, Sequence
 
 __all__ = [
     "JsonlEventSink", "ListSink", "NullSink",
-    "Plan", "PlanError", "discover", "find_plan", "is_lab_plan", "load_plan", "parse_plan",
+    "Plan", "PlanError", "discover", "find_plan", "load_plan", "parse_plan",
     "search_dirs",
     "LabSequenceRunner", "RunResult", "SequenceError",
     "Segment", "Sequence",

@@ -17,7 +17,7 @@ from formslab.sequence.plan import PlanError, find_plan, load_plan, search_dirs
 
 def main(argv=None) -> int:
     ap = ArgumentParser(prog="python -m formslab.sequence", description=__doc__.splitlines()[0])
-    ap.add_argument("plan", help="a .forms lab plan: a path, or a name found in plans/")
+    ap.add_argument("plan", help="a .plan file: a path, or a name found in plans/")
     args = ap.parse_args(argv)
 
     path = find_plan(args.plan)

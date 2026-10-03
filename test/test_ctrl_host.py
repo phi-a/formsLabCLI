@@ -27,7 +27,7 @@ class Launch(unittest.TestCase):
         popen, result = self._launch("tvac")
         cmd = popen.call_args.args[0]
         self.assertEqual(cmd[1:3], ["-m", "formslab.host.sequence"])
-        self.assertTrue(Path(cmd[3]).is_file() and cmd[3].endswith("tvac.forms"))
+        self.assertTrue(Path(cmd[3]).is_file() and cmd[3].endswith("tvac.plan"))
         self.assertIn("pid 4321, plan tvac", result.content)
 
     def test_on_windows_the_host_is_detached_from_the_console(self):
@@ -41,7 +41,7 @@ class Launch(unittest.TestCase):
     def test_a_plan_is_found_by_name_and_passed_by_path(self):
         popen, _ = self._launch("psu1_smtc08_first")
         cmd = popen.call_args.args[0]
-        self.assertTrue(Path(cmd[3]).is_file() and cmd[3].endswith("psu1_smtc08_first.forms"))
+        self.assertTrue(Path(cmd[3]).is_file() and cmd[3].endswith("psu1_smtc08_first.plan"))
 
     def test_an_unknown_target_launches_nothing(self):
         popen, result = self._launch("darkness")
