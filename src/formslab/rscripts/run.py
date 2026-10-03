@@ -1,22 +1,30 @@
-"""`LabForms`: the `forms` handle every rScript receives.
+"""`Run`: the object every rScript receives.
 
-An rScript receives one object, ``forms``, and touches only what it offers.
-(The name and call shapes date from when these scripts ran inside FORMS; it is
-built on the standard library and FORMS is not involved.)
+    def rScript(run):
+        run.log("connected", component="rMine")
+        run.publish("chamberP", 4.4, "Torr")      # create-or-update a named value
+        run.get("chamberP")                        # read it back (None if unset)
+
+A run is one execution of a plan. It is the shared state of that run: what
+rScripts publish, what the plan's `until` steps and the CSV read. Built on the
+standard library; it knows nothing about any instrument.
 
     log(message, level, component)       one line on stdout (the host's log)
-    types.scalar(name, value, unit)      a named value; `get_variable(name)`
-    record(value=30, unit="seconds")     set the CSV cadence; `record()` emits
-    time.clock() / time.timestamp        wall-clock, realtime only
+    publish(name, value, unit)           set a named value; creates it on first use
+    get(name) / variable(name)           its value / the `Scalar` (value and unit)
+    names()                              every published name, in creation order
+    record(value=30, unit="seconds")     set the CSV cadence; `record()` emits a row
+    time.clock() / time.timestamp        wall-clock
 
-Orbit-driven inputs (in umbra or not, a sun angle) arrive as ordinary variables,
-published from a profile FORMS computed offline; scripts read them with
-`get_variable` like any other.
+A value keeps the unit it was first published in; publishing it in another unit
+is an error, not a silent conversion. Orbit-driven inputs (in umbra or not, a
+sun angle) are published like any other value, from a profile computed offline.
 """
 from __future__ import annotations
 
 import csv
 import sys
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -56,21 +64,8 @@ class Scalar:
         return f"Scalar({self.name}={self.value!r}{unit})"
 
 
-class _Types:
-    def __init__(self, forms: "LabForms") -> None:
-        self._forms = forms
-
-    def scalar(self, name: str, value=0, unit: str | None = None, overwrite: bool = True) -> Scalar:
-        existing = self._forms._variables.get(name)
-        if existing is not None and not overwrite:
-            return existing
-        var = Scalar(name, value, unit)
-        self._forms.register_variable(name, var)
-        return var
-
-
 class _Clock:
-    """Wall-clock time since the handle was made."""
+    """Wall-clock time since the run was made."""
 
     def __init__(self) -> None:
         self._t0 = time.monotonic()
@@ -96,8 +91,8 @@ class _Recorder:
     than misaligning columns.
     """
 
-    def __init__(self, forms: "LabForms", directory: Path | None) -> None:
-        self._forms = forms
+    def __init__(self, run: "Run", directory: Path | None) -> None:
+        self._run = run
         self._dir = directory
         self._interval = None
         self._next = 0.0
@@ -110,7 +105,7 @@ class _Recorder:
     def __call__(self, value=None, unit: str = "seconds", *, force: bool = False) -> None:
         if value is not None:
             return self.set_interval(value, unit)
-        if not self._forms.recording:
+        if not self._run.recording:
             return
         now = time.monotonic()
         if not force and (self._interval is None or now < self._next):
@@ -126,32 +121,32 @@ class _Recorder:
             raise ValueError(f"record unit must be one of {sorted(_SECONDS)}, got {unit!r}")
         self._interval = float(value) * _SECONDS[unit]
         self._next = time.monotonic()
-        self._forms.log(f"Record every {value} {unit}", component="LAB")
+        self._run.log(f"Record every {value} {unit}", component="LAB")
 
     def _write_row(self) -> bool:
-        names = self._forms.list_variables()
+        names = self._run.names()
         if not names:
             return False
         header = ["index", "timestamp"] + [
-            f"{n} [{v.unit}]" if (v := self._forms.get_variable(n)).unit else n for n in names]
+            f"{n} [{v.unit}]" if (v := self._run.variable(n)).unit else n for n in names]
         if header != self._header:
             if self._header is not None:
                 self._part += 1
             self._header, self._index = header, 0
             directory = self._dir or output_dir()
             suffix = f"_{self._part}" if self._part else ""
-            self.path = Path(directory) / f"{self._forms.name}_{self._stamp}{suffix}.csv"
+            self.path = Path(directory) / f"{self._run.name}_{self._stamp}{suffix}.csv"
             with self.path.open("w", newline="", encoding="utf-8") as f:
                 csv.writer(f).writerow(header)
-        row = [self._index, _utc_now()] + [self._forms.get_variable(n).value for n in names]
+        row = [self._index, _utc_now()] + [self._run.variable(n).value for n in names]
         with self.path.open("a", newline="", encoding="utf-8") as f:
             csv.writer(f).writerow(row)
         self._index += 1
         return True
 
 
-class LabForms:
-    """The `forms` handle for a hardware-only run. See the module docstring."""
+class Run:
+    """One execution of a plan. See the module docstring."""
 
     def __init__(self, name: str = "LAB", *, record_dir: Path | None = None,
                  log_level: str = "INFO", stream=None) -> None:
@@ -159,8 +154,8 @@ class LabForms:
         self.component = "LAB"
         self.log_level = log_level
         self._stream = stream
-        self._variables: dict[str, object] = {}
-        self.types = _Types(self)
+        self._variables: dict[str, Scalar] = {}
+        self._lock = threading.Lock()
         self.time = _Clock()
         self.recording = True
         self.record = _Recorder(self, record_dir)
@@ -175,12 +170,24 @@ class LabForms:
         except OSError:
             pass
 
-    def register_variable(self, name: str, variable) -> None:
-        self._variables[name] = variable
+    def publish(self, name: str, value=0, unit: str | None = None) -> Scalar:
+        """Set a named value, creating it on first use. Safe to call from any
+        rScript's thread. Returns the `Scalar`."""
+        with self._lock:
+            var = self._variables.get(name)
+            if var is None:
+                var = self._variables[name] = Scalar(name, value, unit)
+                return var
+        var.set(value, unit)
+        return var
 
-    def get_variable(self, name: str):
+    def variable(self, name: str) -> Scalar | None:
         return self._variables.get(name)
 
-    def list_variables(self) -> list[str]:
+    def get(self, name: str, default=None):
+        var = self._variables.get(name)
+        return default if var is None else var.value
+
+    def names(self) -> list[str]:
         return list(self._variables)
 

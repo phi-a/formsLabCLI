@@ -123,14 +123,7 @@ class rGlobal:
 rg = rGlobal
 
 
-def _set(forms, nm, value, unit):
-    var = forms.get_variable(nm)
-    if var is None:
-        var = forms.types.scalar(nm, unit=unit, overwrite=False)
-    var.set(value=value, unit=unit)
-
-
-def _chamber(forms):
+def _chamber(run):
     """The one LACO object, connected. None (and a status update) if it cannot
     connect. While unreachable it retries every RETRY_INTERVAL s, not every
     poll: each attempt blocks the host loop for the connect timeout."""
@@ -142,13 +135,13 @@ def _chamber(forms):
             return None
         try:
             rg.laco.connect()
-            forms.log(f"HVC-3500 connected {rg.laco.endpoint}", component=name)
+            run.log(f"HVC-3500 connected {rg.laco.endpoint}", component=name)
             rg.connect_error = None
         except OSError as e:
             rg.retry_at = time.monotonic() + RETRY_INTERVAL
             msg = f"HVC-3500 connect to {rg.laco.endpoint} failed: {e}"
             if msg != rg.connect_error:      # log each new failure once
-                forms.log(f"{msg}; retrying every {RETRY_INTERVAL:g} s",
+                run.log(f"{msg}; retrying every {RETRY_INTERVAL:g} s",
                           level="ERROR", component=name)
                 rg.connect_error = msg
             UpdateStatus(LABEL, {"connected": False, "error": str(e)})
@@ -156,22 +149,22 @@ def _chamber(forms):
     return rg.laco
 
 
-def _publish(forms, laco, status):
+def _publish(run, laco, status):
     if status.pressure is not None:
-        _set(forms, "chamberP", status.pressure, laco.profile.pressure_unit)
+        run.publish("chamberP", status.pressure, laco.profile.pressure_unit)
     for sensor_name, t in status.sensors.items():
         if t is not None:
-            _set(forms, f"HVC_{sensor_name}", C2K(t), "K")
+            run.publish(f"HVC_{sensor_name}", C2K(t), "K")
     for z in status.zones.values():
         if z.temperature_c is not None:
-            _set(forms, f"{z.name}T", C2K(z.temperature_c), "K")
+            run.publish(f"{z.name}T", C2K(z.temperature_c), "K")
         if z.effective_setpoint_c is not None:
-            _set(forms, f"{z.name}_effSP", C2K(z.effective_setpoint_c), "K")
+            run.publish(f"{z.name}_effSP", C2K(z.effective_setpoint_c), "K")
         if z.target_c is not None:
-            _set(forms, f"target_{z.name}", C2K(z.target_c), "K")
+            run.publish(f"target_{z.name}", C2K(z.target_c), "K")
 
 
-def _log(forms, record):
+def _log(run, record):
     now = time.time()
     if now - rg._last_log_time < rg.LOG_INTERVAL:
         return
@@ -182,71 +175,71 @@ def _log(forms, record):
         with rg.log_path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(entry, default=str) + "\n")
     except OSError as e:
-        forms.log(f"LACO log write failed: {e}", level="WARNING", component=name)
+        run.log(f"LACO log write failed: {e}", level="WARNING", component=name)
 
 
-def _read(forms, laco) -> bool:
+def _read(run, laco) -> bool:
     """The full read. Abandoned (False) as soon as a command is waiting, so
     the command is applied first; the read is then retried."""
     try:
         status = laco.status(interrupt=lambda: CommandPending(LABEL))
     except (OSError, ValueError) as e:
         rg.readERROR += 1
-        forms.log(f"HVC-3500 read failed: {e}", level="ERROR", component=name)
+        run.log(f"HVC-3500 read failed: {e}", level="ERROR", component=name)
         UpdateStatus(LABEL, {"connected": False})
         return True
     if status is None:
         return False
     if status.errors:
-        forms.log(f"HVC-3500 partial read: {status.errors}", level="WARNING", component=name)
-    _publish(forms, laco, status)
+        run.log(f"HVC-3500 partial read: {status.errors}", level="WARNING", component=name)
+    _publish(run, laco, status)
     rg.cast = status.as_cast()
     UpdateStatus(LABEL, rg.cast)
-    _log(forms, status.as_record())
+    _log(run, status.as_record())
     return True
 
 
-def _quick(forms, laco):
+def _quick(run, laco):
     """Right after a command: pressure, faults, valves and pumps (~1.5 s),
     merged into the last full reading. The full read keeps its schedule."""
     try:
         q = laco.quick_status()
     except (OSError, ValueError) as e:
-        forms.log(f"HVC-3500 quick read failed: {e}", level="WARNING", component=name)
+        run.log(f"HVC-3500 quick read failed: {e}", level="WARNING", component=name)
         return
     rg.cast = {**rg.cast, **q}
     UpdateStatus(LABEL, rg.cast)
     if q.get("pressure") is not None:
-        _set(forms, "chamberP", q["pressure"], laco.profile.pressure_unit)
+        run.publish("chamberP", q["pressure"], laco.profile.pressure_unit)
 
 
-def rScript(forms):
+def rScript(run):
     if rg.disable:
         return
     request = ReadCommand(label=LABEL)
     due = time.monotonic() >= rg.next_full
     if not (request or due):
         return
-    laco = _chamber(forms)
+    laco = _chamber(run)
     if laco is None:
         if request:
-            forms.log(f"request {request} dropped: chamber not connected",
+            run.log(f"request {request} dropped: chamber not connected",
                       level="ERROR", component=name)
         return
     if request:
         for level, message in laco.apply(request):
-            forms.log(message, level=level, component=name)
+            run.log(message, level=level, component=name)
             if level == "INFO" and message in ("pump verified on", "rough verified open"):
                 rg.started_pumping = True
             if level == "INFO" and (message == "pump verified off"
                                     or message.startswith("stop_pumping:")):
                 rg.started_pumping = False
-        _quick(forms, laco)
-    if due and _read(forms, laco):
+        _quick(run, laco)
+    if due and _read(run, laco):
         rg.next_full = time.monotonic() + rg.POLL_INTERVAL
 
 
-def rShutdown(forms):
+def rShutdown(run):
     """End pumping this run started, then release the controller's connection
     (it takes one client at a time)."""
     if rg.laco is None:
@@ -254,9 +247,9 @@ def rShutdown(forms):
     if rg.started_pumping:
         try:
             done = rg.laco.stop_pumping()
-            forms.log(f"pumping this run started was ended: {', '.join(done) or 'already stopped'}",
+            run.log(f"pumping this run started was ended: {', '.join(done) or 'already stopped'}",
                       component=name)
         except Exception as e:
-            forms.log(f"could not end pumping at shutdown: {e} -- check the HMI",
+            run.log(f"could not end pumping at shutdown: {e} -- check the HMI",
                       level="ERROR", component=name)
     rg.laco.close()

@@ -5,13 +5,13 @@ on this call. They count **wall-clock** seconds, never simulated time: an
 rScript talks to hardware, and a sim running faster than real time must not
 poll a chamber controller faster than it would in real time.
 
-    r = RScriptControl(forms, name)
+    r = RScriptControl(run, name)
     r.hold(seconds=5)     # body runs once every 5 s, first after 5 s
     r.tick(seconds=5)     # body runs now, then every 5 s
     if r:                 # True = blocked on this call
         return
 
-State lives on the handle, keyed by script name, so each run starts clean and
+State lives on the Run, keyed by script name, so each run starts clean and
 two handles never share gates.
 """
 from __future__ import annotations
@@ -37,21 +37,21 @@ class _Gates:
         self.tick_count = 0
 
 
-def _gates(forms, name: str) -> _Gates:
-    table = getattr(forms, "_rscript_gates", None)
+def _gates(run, name: str) -> _Gates:
+    table = getattr(run, "_rscript_gates", None)
     if table is None:
         table = {}
-        setattr(forms, "_rscript_gates", table)
+        setattr(run, "_rscript_gates", table)
     return table.setdefault(name, _Gates())
 
 
 class RScriptControl:
     """The gates for one rScript on one handle. Cheap; build it every call."""
 
-    def __init__(self, forms, name: str) -> None:
-        self.forms = forms
+    def __init__(self, run, name: str) -> None:
+        self.run = run
         self.name = name
-        self._g = _gates(forms, name)
+        self._g = _gates(run, name)
         self._hold_blocked = None     # None = hold not used on this call
         self._tick_blocked = None
 

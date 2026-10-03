@@ -19,7 +19,7 @@ from formslab.devices.dp832a.commands import (
 )
 
 
-def _init_psu2(forms, r_global):
+def _init_psu2(run, r_global):
     readiness = psu_channel_state(
         CRYO_PSU_LABEL,
         CRYO_PSU_CHANNEL,
@@ -30,7 +30,7 @@ def _init_psu2(forms, r_global):
 
     if readiness == "match":
         if not getattr(r_global, "_psu2_ready", False):
-            forms.log(
+            run.log(
                 f"{CRYO_PSU_COMPONENT} CH{CRYO_PSU_CHANNEL} supply ready for cryocooler board",
                 level="INFO",
                 component=CRYO_PSU_COMPONENT,
@@ -42,7 +42,7 @@ def _init_psu2(forms, r_global):
 
     if readiness == "unknown":
         if not getattr(r_global, "_psu2_status_unknown_reported", False):
-            forms.log(
+            run.log(
                 f"{CRYO_PSU_COMPONENT} CH{CRYO_PSU_CHANNEL} telemetry is unavailable; preserving last-known cryocooler supply state",
                 level="WARNING",
                 component=CRYO_PSU_COMPONENT,
@@ -55,7 +55,7 @@ def _init_psu2(forms, r_global):
         return r_global
 
     r_global._psu2_status_unknown_reported = False
-    forms.log(f"Configuring CH{CRYO_PSU_CHANNEL} for cryocooler board input...", level="INFO", component=CRYO_PSU_COMPONENT)
+    run.log(f"Configuring CH{CRYO_PSU_CHANNEL} for cryocooler board input...", level="INFO", component=CRYO_PSU_COMPONENT)
     queue_psu_request(
         CRYO_PSU_LABEL,
         build_psu_channel_request(
@@ -74,14 +74,14 @@ def _init_psu2(forms, r_global):
     return r_global
 
 
-def _init_cryo_board(forms, r_global):
+def _init_cryo_board(run, r_global):
     if r_global.cryo is not None:
         return r_global
     try:
         try:
             from formslab.devices.cryocooler.board import CryoBoard
         except ModuleNotFoundError as exc:
-            forms.log(
+            run.log(
                 f"Cryocooler board support unavailable: {exc}. "
                 "Install the 'lab' extra to enable board control.",
                 level="WARNING",
@@ -89,7 +89,7 @@ def _init_cryo_board(forms, r_global):
             )
             r_global.cryo = None
             return r_global
-        forms.log("Initializing...", level="INFO", component="CRYO")
+        run.log("Initializing...", level="INFO", component="CRYO")
         time.sleep(1.0)
         r_global.cryo = CryoBoard("cryo_board")
         r_global.cryo.initialize(
@@ -97,7 +97,7 @@ def _init_cryo_board(forms, r_global):
             resistance=CRYO_DEFAULT_RESISTANCE_OHMS,
             enabled=False,
         )
-        forms.log(
+        run.log(
             f"Cryocooler board initialized at "
             f"{CRYO_DEFAULT_OUTPUT_VOLTAGE_V:.1f}V / "
             f"{CRYO_DEFAULT_RESISTANCE_OHMS:.0f} ohm (output OFF)",
@@ -106,12 +106,12 @@ def _init_cryo_board(forms, r_global):
         )
     except Exception as exc:
         tb = traceback.format_exc()
-        forms.log(f"Cryocooler board initialization failed: {exc}\n{tb}", level="ERROR", component="CRYO")
+        run.log(f"Cryocooler board initialization failed: {exc}\n{tb}", level="ERROR", component="CRYO")
         r_global.cryo = None
     return r_global
 
 
-def _shutdown_cryo_subsystem(forms, r_global, *, close_transport=True, release_handles=True):
+def _shutdown_cryo_subsystem(run, r_global, *, close_transport=True, release_handles=True):
     """
     Safely disable the CryoBoard output, power feed, and serial transport.
 
@@ -121,10 +121,10 @@ def _shutdown_cryo_subsystem(forms, r_global, *, close_transport=True, release_h
     if r_global.cryo is not None:
         try:
             r_global.cryo.shutdown(close_transport=close_transport)
-            forms.log("CryoBoard output disabled", level="INFO", component="CRYO")
+            run.log("CryoBoard output disabled", level="INFO", component="CRYO")
         except Exception as exc:
             tb = traceback.format_exc()
-            forms.log(f"CryoBoard shutdown failed: {exc}\n{tb}", level="WARNING", component="CRYO")
+            run.log(f"CryoBoard shutdown failed: {exc}\n{tb}", level="WARNING", component="CRYO")
 
     queue_psu_request(
         CRYO_PSU_LABEL,
@@ -133,7 +133,7 @@ def _shutdown_cryo_subsystem(forms, r_global, *, close_transport=True, release_h
     )
     r_global._psu2_ready = False
     r_global._psu2_request_pending = False
-    forms.log(
+    run.log(
         f"Queued {CRYO_PSU_COMPONENT} CH{CRYO_PSU_CHANNEL} disable for cryocooler board",
         level="INFO",
         component=CRYO_PSU_COMPONENT,

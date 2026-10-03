@@ -109,8 +109,8 @@ def fake_time(monkeypatch):
 
 
 @pytest.fixture
-def forms(tmp_path):
-    return rscripts.LabForms(name="T", record_dir=tmp_path)
+def run(tmp_path):
+    return rscripts.Run(name="T", record_dir=tmp_path)
 
 
 @pytest.fixture
@@ -126,19 +126,19 @@ def write(d, name, body):
     (d / f"{name}.py").write_text(body, encoding="utf-8")
 
 
-def run(forms, ops, fake_time, **kw):
+def start(run, ops, fake_time, **kw):
     plan = parse_plan(plan_src(ops))
     sink = ListSink()
-    runner = LabSequenceRunner(forms, plan.sequence, sink=sink, hz=4,     # 0.25 s: exact
+    runner = LabSequenceRunner(run, plan.sequence, sink=sink, hz=4,     # 0.25 s: exact
                                clock=fake_time.clock, sleep=fake_time.sleep, **kw)
-    return runner, sink, runner.run
+    return runner, sink, runner.execute
 
 
 # A stand-in owner of psu1: takes each request and publishes what it applied.
 PSU_OWNER = '''
 from formslab.console.cast.castutils import ReadCommand, UpdateStatus
 applied = []
-def rScript(forms):
+def rScript(run):
     req = ReadCommand("psu1")
     if req:
         applied.append(req)
@@ -146,10 +146,10 @@ def rScript(forms):
 '''
 
 
-def test_hold_runs_the_scripts_for_its_duration(forms, fake_time, script_dir):
-    write(script_dir, "rA", "calls = []\ndef rScript(forms):\n    calls.append(1)\n")
-    rscripts.load(forms, ["rA"])
-    runner, sink, go = run(forms, [{"hold": 2, "units": "seconds"}], fake_time)
+def test_hold_runs_the_scripts_for_its_duration(run, fake_time, script_dir):
+    write(script_dir, "rA", "calls = []\ndef rScript(run):\n    calls.append(1)\n")
+    rscripts.load(run, ["rA"])
+    runner, sink, go = start(run, [{"hold": 2, "units": "seconds"}], fake_time)
 
     result = go()
 
@@ -159,10 +159,10 @@ def test_hold_runs_the_scripts_for_its_duration(forms, fake_time, script_dir):
     assert sink.events[-1].error is None
 
 
-def test_a_command_waits_until_its_owner_takes_it(forms, fake_time, script_dir):
+def test_a_command_waits_until_its_owner_takes_it(run, fake_time, script_dir):
     write(script_dir, "rA", PSU_OWNER)
-    rscripts.load(forms, ["rA"])
-    _, _, go = run(forms, [{"command": "psu1", "request": {"1": {"on": True}}},
+    rscripts.load(run, ["rA"])
+    _, _, go = start(run, [{"command": "psu1", "request": {"1": {"on": True}}},
                            {"command": "psu1", "request": {"1": {"on": False}}}], fake_time)
 
     result = go()
@@ -172,10 +172,10 @@ def test_a_command_waits_until_its_owner_takes_it(forms, fake_time, script_dir):
     assert not CommandPending("psu1")
 
 
-def test_a_command_nobody_takes_fails_the_run(forms, fake_time, script_dir):
-    write(script_dir, "rA", "def rScript(forms): pass\n")
-    rscripts.load(forms, ["rA"])
-    _, sink, go = run(forms, [{"command": "psu1", "request": {"1": {"on": True}},
+def test_a_command_nobody_takes_fails_the_run(run, fake_time, script_dir):
+    write(script_dir, "rA", "def rScript(run): pass\n")
+    rscripts.load(run, ["rA"])
+    _, sink, go = start(run, [{"command": "psu1", "request": {"1": {"on": True}},
                                "timeout_s": 1}], fake_time)
 
     with pytest.raises(SequenceError, match="not taken within 1 s"):
@@ -183,35 +183,34 @@ def test_a_command_nobody_takes_fails_the_run(forms, fake_time, script_dir):
     assert "not taken" in sink.events[-1].error
 
 
-def test_until_converts_kelvin_to_the_limits_unit(forms, fake_time, script_dir):
+def test_until_converts_kelvin_to_the_limits_unit(run, fake_time, script_dir):
     write(script_dir, "rA", '''
-def rScript(forms):
-    v = forms.get_variable("TC01") or forms.types.scalar("TC01", 293.15, unit="K")
-    v.set(v.value + 1.0, unit="K")
+def rScript(run):
+    run.publish("TC01", (run.get("TC01") or 293.15) + 1.0, "K")
 ''')
-    rscripts.load(forms, ["rA"])
-    _, _, go = run(forms, [{"until": "TC01", "above": 25.0, "unit": "C", "timeout_s": 60}],
+    rscripts.load(run, ["rA"])
+    _, _, go = start(run, [{"until": "TC01", "above": 25.0, "unit": "C", "timeout_s": 60}],
                    fake_time)
 
     go()
 
-    assert forms.get_variable("TC01").value - 273.15 > 25.0
+    assert run.get("TC01") - 273.15 > 25.0
 
 
-def test_until_times_out_with_the_last_value(forms, fake_time, script_dir):
-    write(script_dir, "rA", 'def rScript(forms):\n'
-                            '    forms.types.scalar("TC01", 293.15, unit="K")\n')
-    rscripts.load(forms, ["rA"])
-    _, _, go = run(forms, [{"until": "TC01", "above": 25.0, "unit": "C", "timeout_s": 3}],
+def test_until_times_out_with_the_last_value(run, fake_time, script_dir):
+    write(script_dir, "rA", 'def rScript(run):\n'
+                            '    run.publish("TC01", 293.15, "K")\n')
+    rscripts.load(run, ["rA"])
+    _, _, go = start(run, [{"until": "TC01", "above": 25.0, "unit": "C", "timeout_s": 3}],
                    fake_time)
 
     with pytest.raises(SequenceError, match=r"last 20 C"):
         go()
 
 
-def test_paused_time_does_not_use_up_a_hold(forms, fake_time, script_dir):
-    write(script_dir, "rA", "def rScript(forms): pass\n")
-    rscripts.load(forms, ["rA"])
+def test_paused_time_does_not_use_up_a_hold(run, fake_time, script_dir):
+    write(script_dir, "rA", "def rScript(run): pass\n")
+    rscripts.load(run, ["rA"])
     polls = []
 
     def poll():                      # the first poll sits paused for 100 s
@@ -219,25 +218,25 @@ def test_paused_time_does_not_use_up_a_hold(forms, fake_time, script_dir):
         if len(polls) == 1:
             fake_time.sleep(100.0)
 
-    _, _, go = run(forms, [{"hold": 1}], fake_time, poll=poll)
+    _, _, go = start(run, [{"hold": 1}], fake_time, poll=poll)
     result = go()
 
     assert result.segment_steps == [4]
 
 
-def test_rshutdown_runs_last_loaded_first_even_after_a_failure(forms, script_dir, capsys):
+def test_rshutdown_runs_last_loaded_first_even_after_a_failure(run, script_dir, capsys):
     for n in ("A", "C"):
-        write(script_dir, f"r{n}", "def rScript(forms): pass\n"
-                                  f"def rShutdown(forms):\n    forms.order.append('{n}')\n")
-    write(script_dir, "rB", "def rScript(forms): pass\n"
-                            "def rShutdown(forms):\n    raise RuntimeError('stuck')\n")
-    forms.order = []
+        write(script_dir, f"r{n}", "def rScript(run): pass\n"
+                                  f"def rShutdown(run):\n    run.order.append('{n}')\n")
+    write(script_dir, "rB", "def rScript(run): pass\n"
+                            "def rShutdown(run):\n    raise RuntimeError('stuck')\n")
+    run.order = []
 
-    rscripts.load(forms, ["rA", "rB", "rC"])
-    rscripts.shutdown(forms)
-    rscripts.shutdown(forms)                  # once only
+    rscripts.load(run, ["rA", "rB", "rC"])
+    rscripts.shutdown(run)
+    rscripts.shutdown(run)                  # once only
 
-    assert forms.order == ["C", "A"]
+    assert run.order == ["C", "A"]
     assert "rB: rShutdown failed: RuntimeError: stuck" in capsys.readouterr().out
 
 
@@ -300,43 +299,43 @@ def bench(monkeypatch):
     return psus
 
 
-def test_rpsu_applies_requests_publishes_scalars_and_turns_off_at_shutdown(forms, bench):
-    assert rscripts.load(forms, ["rPSU"]) == ["rPSU"]
+def test_rpsu_applies_requests_publishes_scalars_and_turns_off_at_shutdown(run, bench):
+    assert rscripts.load(run, ["rPSU"]) == ["rPSU"]
     WriteCommand({"1": {"voltage": 1.0, "current": 0.1, "on": True}}, "psu1")
-    rscripts.tick(forms)
+    rscripts.tick(run)
 
     psu = bench["psu1"]
     assert psu.ch[1]["on"] and psu.ch[1]["vset"] == 1.0
     assert "psu2" not in bench                           # disabled: never opened
-    assert forms.get_variable("PSU1_CH1_V").value == 1.0
-    assert forms.get_variable("PSU1_CH1_ON").value == 1.0
+    assert run.get("PSU1_CH1_V") == 1.0
+    assert run.get("PSU1_CH1_ON") == 1.0
     assert ReadStatus("psu1")["1"]["on"] is True
 
-    rscripts.shutdown(forms)
+    rscripts.shutdown(run)
     assert psu.ch[1]["on"] is False and psu.disconnected
 
 
-def test_rpsu_leaves_channels_it_did_not_switch_on(forms, bench):
-    rscripts.load(forms, ["rPSU"])
-    rscripts.tick(forms)
+def test_rpsu_leaves_channels_it_did_not_switch_on(run, bench):
+    rscripts.load(run, ["rPSU"])
+    rscripts.tick(run)
     bench["psu1"].on(2)                                  # an operator, from the front panel
-    rscripts.shutdown(forms)
+    rscripts.shutdown(run)
     assert bench["psu1"].ch[2]["on"] is True
 
 
-def test_rsmtc08_publishes_kelvin_and_skips_an_absent_board(forms, bench, capsys):
-    assert rscripts.load(forms, ["rSMTC08"]) == ["rSMTC08"]
-    rscripts.tick(forms)
+def test_rsmtc08_publishes_kelvin_and_skips_an_absent_board(run, bench, capsys):
+    assert rscripts.load(run, ["rSMTC08"]) == ["rSMTC08"]
+    rscripts.tick(run)
 
-    assert forms.get_variable("TC01").value == pytest.approx(293.15)
-    assert forms.get_variable("TC08").value == pytest.approx(300.15)
-    assert forms.get_variable("TC01").unit == "K"
-    assert forms.get_variable("TC09") is None
+    assert run.get("TC01") == pytest.approx(293.15)
+    assert run.get("TC08") == pytest.approx(300.15)
+    assert run.variable("TC01").unit == "K"
+    assert run.variable("TC09") is None
     assert "SMTC08_B not configured" in capsys.readouterr().out
 
 
-def test_rsmtc08_reads_nan_while_a_board_fails(forms, bench, monkeypatch):
-    rscripts.load(forms, ["rSMTC08"])
+def test_rsmtc08_reads_nan_while_a_board_fails(run, bench, monkeypatch):
+    rscripts.load(run, ["rSMTC08"])
     module = sys.modules["rScripts.rSMTC08"]
 
     class Broken:
@@ -349,8 +348,8 @@ def test_rsmtc08_reads_nan_while_a_board_fails(forms, bench, monkeypatch):
             pass
 
     module.rg.boards["SMTC08_A"] = Broken()
-    rscripts.tick(forms)
-    assert math.isnan(forms.get_variable("TC01").value)
+    rscripts.tick(run)
+    assert math.isnan(run.get("TC01"))
     assert "SMTC08_A" not in module.rg.boards            # closed, retried later
 
 

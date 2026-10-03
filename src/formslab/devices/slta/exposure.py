@@ -6,9 +6,7 @@
 
 from math import isnan
 
-SpM = 60.0        # Seconds per minute. Held locally rather than imported from
-                  # forms.bricks.constants: exposure selection is lab logic and
-                  # must work on a console install without the library.
+SpM = 60.0        # Seconds per minute.
 
 # Exposure thresholds (seconds) -> exposure time (seconds)
 # Format: (min_duration, max_duration, exposure_time)

@@ -30,11 +30,11 @@ def test_nothing_imports_forms():
     assert offenders == {}
 
 
-def test_every_shipped_rscript_loads_on_the_lab_handle(tmp_path):
-    """Each rScript imports cleanly and defines rScript(forms). (Loading
+def test_every_shipped_rscript_loads(tmp_path):
+    """Each rScript imports cleanly and defines rScript(run). (Loading
     connects to nothing: scripts open hardware on their first tick.)"""
     from formslab import rscripts
 
     names = sorted(p.stem for p in (ROOT / "rScripts").glob("r*.py"))
-    forms = rscripts.LabForms(record_dir=tmp_path)
-    assert rscripts.load(forms, names) == names
+    run = rscripts.Run(record_dir=tmp_path)
+    assert rscripts.load(run, names) == names

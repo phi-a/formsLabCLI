@@ -72,7 +72,7 @@ def _merge_request(existing, incoming):
     merged.update(incoming)
     return merged
 
-def _refresh_status(forms, r_global):
+def _refresh_status(run, r_global):
     status = {
         "LINK": r_global.cryo is not None,
         "ON": False,
@@ -114,7 +114,7 @@ def _refresh_status(forms, r_global):
                 }
             )
         except Exception as exc:
-            forms.log(
+            run.log(
                 f"Cryocooler status read failed: {exc}",
                 level="WARNING",
                 component="CRYO",
@@ -125,15 +125,15 @@ def _refresh_status(forms, r_global):
     UpdateStatus("cryo", status)
 
 
-def _ensure_initialized(forms, r_global):
-    _init_psu2(forms, r_global)
+def _ensure_initialized(run, r_global):
+    _init_psu2(run, r_global)
     if not getattr(r_global, "_psu2_ready", False):
         return False
-    _init_cryo_board(forms, r_global)
+    _init_cryo_board(run, r_global)
     return r_global.cryo is not None
 
 
-def _apply_request(forms, r_global, request):
+def _apply_request(run, r_global, request):
     if not request:
         return True
 
@@ -157,7 +157,7 @@ def _apply_request(forms, r_global, request):
         ("shutdown", shutdown),
     ):
         if value is not None and not isinstance(value, bool):
-            forms.log(
+            run.log(
                 f"Invalid cryo {field_name} request: {value}",
                 level="WARNING",
                 component="CRYO",
@@ -165,7 +165,7 @@ def _apply_request(forms, r_global, request):
             return True
 
     if enabled is not None and not isinstance(enabled, bool):
-        forms.log(
+        run.log(
             f"Invalid cryo enabled request: {enabled}",
             level="WARNING",
             component="CRYO",
@@ -174,8 +174,8 @@ def _apply_request(forms, r_global, request):
 
     if shutdown:
         r_global._shutdown_latch = True
-        _shutdown_cryo_subsystem(forms, r_global, close_transport=False, release_handles=False)
-        _refresh_status(forms, r_global)
+        _shutdown_cryo_subsystem(run, r_global, close_transport=False, release_handles=False)
+        _refresh_status(run, r_global)
         return True
 
     if r_global._shutdown_latch and not startup:
@@ -190,14 +190,14 @@ def _apply_request(forms, r_global, request):
             blocked.append("enabled")
 
         if blocked:
-            forms.log(
+            run.log(
                 "Cryocooler is shutdown-latched; ignoring "
                 + ", ".join(blocked)
                 + " request until 'startup cryo' is issued",
                 level="WARNING",
                 component="CRYO",
             )
-            _refresh_status(forms, r_global)
+            _refresh_status(run, r_global)
             return True
 
     needs_init = (
@@ -208,12 +208,12 @@ def _apply_request(forms, r_global, request):
         or enabled is not None
     )
     if needs_init:
-        if not _ensure_initialized(forms, r_global):
-            _refresh_status(forms, r_global)
+        if not _ensure_initialized(run, r_global):
+            _refresh_status(run, r_global)
             return False
         if startup:
             r_global._shutdown_latch = False
-            forms.log("Cryocooler subsystem initialized", component="CRYO")
+            run.log("Cryocooler subsystem initialized", component="CRYO")
 
     if (
         update
@@ -241,22 +241,22 @@ def _apply_request(forms, r_global, request):
                     parts.append(f"resistance={resistance:.1f} ohm")
                 if enabled is not None:
                     parts.append("enabled" if enabled else "disabled")
-                forms.log(f"Cryocooler updated: {', '.join(parts)}", component="CRYO")
+                run.log(f"Cryocooler updated: {', '.join(parts)}", component="CRYO")
             except Exception as exc:
-                forms.log(f"Failed to update cryocooler: {exc}", level="ERROR", component="CRYO")
+                run.log(f"Failed to update cryocooler: {exc}", level="ERROR", component="CRYO")
 
-    _refresh_status(forms, r_global)
+    _refresh_status(run, r_global)
     return True
 
 
-def rScript(forms):
+def rScript(run):
     global rg
 
     if rg.disable:
         return
 
     try:
-        control = RScriptControl(forms, name)
+        control = RScriptControl(run, name)
         if rg.useInitialize:
             control.initialize()
         if rg.useHold:
@@ -266,27 +266,27 @@ def rScript(forms):
         if control:
             return
     except Exception as exc:
-        forms.log(f"RScriptControl exception: {exc}", level="ERROR", component=name)
+        run.log(f"RScriptControl exception: {exc}", level="ERROR", component=name)
         return
 
     if not rg._init_attempted:
         rg._init_attempted = True
     if not rg._shutdown_latch and (not rg._psu2_ready or rg.cryo is None):
-        _ensure_initialized(forms, rg)
-        _refresh_status(forms, rg)
+        _ensure_initialized(run, rg)
+        _refresh_status(run, rg)
 
     request = ReadCommand("cryo")
     if request:
         rg._pending_request = _merge_request(rg._pending_request, request)
 
-    if rg._pending_request and _apply_request(forms, rg, rg._pending_request):
+    if rg._pending_request and _apply_request(run, rg, rg._pending_request):
         rg._pending_request = None
 
 
-def rShutdown(forms):
+def rShutdown(run):
     """Release CryoBoard hardware when the host stops."""
     global rg
-    _shutdown_cryo_subsystem(forms, rg, close_transport=True, release_handles=True)
+    _shutdown_cryo_subsystem(run, rg, close_transport=True, release_handles=True)
     rg._pending_request = None
-    _refresh_status(forms, rg)
+    _refresh_status(run, rg)
 

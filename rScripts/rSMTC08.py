@@ -45,20 +45,17 @@ class rGlobal:
 rg = rGlobal
 
 
-def _publish(forms, first, temps_c):
+def _publish(run, first, temps_c):
     for idx, t in enumerate(temps_c, first):
         var_name = f"TC{idx:02d}"
-        var = forms.get_variable(var_name)
-        if var is None:
-            var = forms.types.scalar(var_name, unit="K", overwrite=False)
-        var.set(value=math.nan if t is None else C2K(t), unit="K")
+        run.publish(var_name, math.nan if t is None else C2K(t), "K")
         rg.status[f"{var_name} C"] = t
 
 
-def _fail(forms, label, first, exc):
+def _fail(run, label, first, exc):
     msg = f"{type(exc).__name__}: {exc}"
     if rg.last_error.get(label) != msg:
-        forms.log(f"{label} {msg}; retrying every {RETRY_INTERVAL:g} s",
+        run.log(f"{label} {msg}; retrying every {RETRY_INTERVAL:g} s",
                   level="ERROR", component=name)
         rg.last_error[label] = msg
     board = rg.boards.pop(label, None)
@@ -68,10 +65,10 @@ def _fail(forms, label, first, exc):
         except Exception:
             pass
     rg.retry_at[label] = time.monotonic() + RETRY_INTERVAL
-    _publish(forms, first, [None] * CHANNELS)
+    _publish(run, first, [None] * CHANNELS)
 
 
-def _board(forms, label, first):
+def _board(run, label, first):
     """The open board for `label`, or None (absent, or waiting to retry)."""
     if label in rg.boards:
         return rg.boards[label]
@@ -81,38 +78,38 @@ def _board(forms, label, first):
         board = SMTC08(label=label)
     except ValueError as exc:            # not in usbmap.json
         rg.absent.add(label)
-        forms.log(f"{label} not configured, skipped ({exc})", component=name)
+        run.log(f"{label} not configured, skipped ({exc})", component=name)
         return None
     except Exception as exc:
-        _fail(forms, label, first, exc)
+        _fail(run, label, first, exc)
         return None
     rg.boards[label] = board
-    forms.log(f"{label} open on {board.port}", component=name)
+    run.log(f"{label} open on {board.port}", component=name)
     return board
 
 
-def rScript(forms):
+def rScript(run):
     if rg.disable:
         return
-    if RScriptControl(forms, name).tick(seconds=POLL_INTERVAL):
+    if RScriptControl(run, name).tick(seconds=POLL_INTERVAL):
         return
     for label, first in BOARDS.items():
-        board = _board(forms, label, first)
+        board = _board(run, label, first)
         if board is None:
             continue
         try:
             temps = board.read_all()
         except Exception as exc:
-            _fail(forms, label, first, exc)
+            _fail(run, label, first, exc)
             continue
         if rg.last_error.pop(label, None) is not None:
-            forms.log(f"{label} reading again", component=name)
-        _publish(forms, first, temps)
+            run.log(f"{label} reading again", component=name)
+        _publish(run, first, temps)
     if rg.status:
         UpdateStatus("tc", dict(sorted(rg.status.items())))
 
 
-def rShutdown(forms):
+def rShutdown(run):
     for label, board in list(rg.boards.items()):
         try:
             board.close()

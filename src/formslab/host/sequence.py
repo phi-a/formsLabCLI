@@ -6,7 +6,7 @@ Started by the console's ctrl tab (`run <plan>`), or directly:
     python -m formslab.host.sequence plans/psu1_smtc08_first.plan
 
 Every run is a lab plan (see `formslab.sequence`): the plan names its rScripts,
-the host loads them on a `LabForms` handle and runs the plan's steps in one
+the host loads them on a `Run` handle and runs the plan's steps in one
 loop paced in real time at `LOOP_HZ` -- poll ctrl (pause, resume, reset, end),
 run the plan's current step, write a CSV row when one is due. Each rScript runs
 on its own thread at the same rate (rscripts.workers), so a slow instrument
@@ -121,13 +121,13 @@ def _release_lock() -> None:
 
 # --- control ---------------------------------------------------------------------
 
-def check_ctrl_commands(forms) -> None:
+def check_ctrl_commands(run) -> None:
     """Apply ctrl requests: end, pause, resume, reset (clears pending CAST requests)."""
     global paused
     for label in _CTRL_LABELS:
         if ReadCommand(label) is None:
             continue
-        forms.log(f"ctrl command received: {label}", component=COMPONENT)
+        run.log(f"ctrl command received: {label}", component=COMPONENT)
         if label == "end":
             raise GracefulExit()
         if label == "pause":
@@ -139,12 +139,12 @@ def check_ctrl_commands(forms) -> None:
             ResetJson()
 
 
-def poll(forms) -> None:
+def poll(run) -> None:
     """ctrl once, then block here while paused."""
-    check_ctrl_commands(forms)
+    check_ctrl_commands(run)
     while paused:
         time.sleep(0.1)
-        check_ctrl_commands(forms)
+        check_ctrl_commands(run)
 
 
 def _on_signal(sig, _frame):  # pragma: no cover - signal path
@@ -158,14 +158,14 @@ def _build(plan_path):
     plan whose rScripts do not all load does not start: its steps would only
     time out against a missing instrument owner."""
     plan = load_plan(plan_path)
-    forms = rscripts.LabForms(name=plan.name)
-    loaded = rscripts.load(forms, plan.rscripts)
+    run = rscripts.Run(name=plan.name)
+    loaded = rscripts.load(run, plan.rscripts)
     missing = [n for n in plan.rscripts if n not in loaded]
     if missing:
         raise PlanError(f"{plan.name}: rScripts did not load: {', '.join(missing)} "
                         "(the log above says why)")
-    forms.record(value=plan.record_interval, unit=plan.record_unit)
-    return forms, plan
+    run.record(value=plan.record_interval, unit=plan.record_unit)
+    return run, plan
 
 
 def channel(plan_path, relay_func=None):
@@ -182,7 +182,7 @@ def channel(plan_path, relay_func=None):
         ResetCtrlState()
         ResetJson()
         events_path().write_text("", encoding="utf-8")
-        forms, plan = _build(plan_path)
+        run, plan = _build(plan_path)
     except BaseException:
         _release_lock()
         raise
@@ -191,35 +191,35 @@ def channel(plan_path, relay_func=None):
     signal.signal(signal.SIGINT, _on_signal)
     if hasattr(signal, "SIGBREAK"):              # Windows: Ctrl+Break / CTRL_BREAK_EVENT
         signal.signal(signal.SIGBREAK, _on_signal)
-    workers = Workers(forms, hz=LOOP_HZ)
+    workers = Workers(run, hz=LOOP_HZ)
     try:
-        forms.log(f"Plan {plan.name} running ({LOOP_HZ:g} Hz, pid {os.getpid()}).",
+        run.log(f"Plan {plan.name} running ({LOOP_HZ:g} Hz, pid {os.getpid()}).",
                   component=COMPONENT)
         workers.start()
-        LabSequenceRunner(forms, plan.sequence, sink=JsonlEventSink(events_path()),
-                          poll=lambda: poll(forms), tick=lambda _forms: None,
-                          hz=LOOP_HZ).run()
-        forms.log(f"Plan {plan.name} complete.", component=COMPONENT)
+        LabSequenceRunner(run, plan.sequence, sink=JsonlEventSink(events_path()),
+                          poll=lambda: poll(run), tick=lambda _run: None,
+                          hz=LOOP_HZ).execute()
+        run.log(f"Plan {plan.name} complete.", component=COMPONENT)
     except GracefulExit:
-        forms.log("Run ended.", component=COMPONENT)
+        run.log("Run ended.", component=COMPONENT)
     except SequenceError as exc:
-        forms.log(f"Plan stopped: {exc}", level="ERROR", component=COMPONENT)
+        run.log(f"Plan stopped: {exc}", level="ERROR", component=COMPONENT)
         raise
     except Exception:
-        forms.log(f"error: {traceback.format_exc()}", level="ERROR", component=COMPONENT)
+        run.log(f"error: {traceback.format_exc()}", level="ERROR", component=COMPONENT)
         raise
     finally:
         # Hardware first: stop the script threads, then each rScript's
         # rShutdown leaves its instrument safe.
         stuck = workers.stop()
         if stuck:
-            forms.log(f"rScripts still busy after 15 s: {', '.join(stuck)}; running "
+            run.log(f"rScripts still busy after 15 s: {', '.join(stuck)}; running "
                       "their rShutdown anyway", level="WARNING", component=COMPONENT)
         try:
-            rscripts.shutdown(forms)
+            rscripts.shutdown(run)
         except BaseException:
             pass
-        forms.log("Host stopped.", component=COMPONENT)
+        run.log("Host stopped.", component=COMPONENT)
         _release_lock()
 
 

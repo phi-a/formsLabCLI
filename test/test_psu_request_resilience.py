@@ -15,7 +15,7 @@ import formslab.devices.cryocooler.owner as cryoutils
 import formslab.devices.slta.routine as sltautils
 
 
-class DummyForms:
+class DummyRun:
     def __init__(self):
         self.logs = []
 
@@ -60,7 +60,7 @@ class TestPsuStatusClassification(unittest.TestCase):
 
 class TestPsuInitGuards(unittest.TestCase):
     def test_slta_unknown_status_does_not_requeue(self):
-        forms = DummyForms()
+        run = DummyRun()
         state = SimpleNamespace(
             _psu2_ready=True,
             _psu2_request_pending=False,
@@ -70,14 +70,14 @@ class TestPsuInitGuards(unittest.TestCase):
         with patch.object(sltautils, "psu_channel_state", return_value="unknown"), patch.object(
             sltautils, "queue_psu_request"
         ) as queue:
-            sltautils._init_psu(forms, state)
+            sltautils._init_psu(run, state)
 
         queue.assert_not_called()
         self.assertTrue(state._psu2_ready)
         self.assertTrue(state._psu2_status_unknown_reported)
 
     def test_slta_missing_status_still_queues_initial_config(self):
-        forms = DummyForms()
+        run = DummyRun()
         state = SimpleNamespace(
             _psu2_ready=False,
             _psu2_request_pending=False,
@@ -87,14 +87,14 @@ class TestPsuInitGuards(unittest.TestCase):
         with patch.object(sltautils, "psu_channel_state", return_value="missing"), patch.object(
             sltautils, "queue_psu_request"
         ) as queue:
-            sltautils._init_psu(forms, state)
+            sltautils._init_psu(run, state)
 
         queue.assert_called_once()
         self.assertFalse(state._psu2_ready)
         self.assertTrue(state._psu2_request_pending)
 
     def test_cryo_unknown_status_does_not_requeue(self):
-        forms = DummyForms()
+        run = DummyRun()
         state = SimpleNamespace(
             _psu2_ready=True,
             _psu2_request_pending=False,
@@ -104,7 +104,7 @@ class TestPsuInitGuards(unittest.TestCase):
         with patch.object(cryoutils, "psu_channel_state", return_value="unknown"), patch.object(
             cryoutils, "queue_psu_request"
         ) as queue:
-            cryoutils._init_psu2(forms, state)
+            cryoutils._init_psu2(run, state)
 
         queue.assert_not_called()
         self.assertTrue(state._psu2_ready)

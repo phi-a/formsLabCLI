@@ -1,7 +1,7 @@
 """rScripts: lab routines that run inside the formsLabCLI host loop.
 
 The runtime needs only the standard library. Every run hands its scripts a
-`LabForms` handle (see `handle.py` for what it offers). An rScript owns its
+`Run` (see `run.py` for what it offers). An rScript owns its
 instruments for the run: it applies CAST requests for them, publishes their
 readings as variables, and leaves them safe in ``rShutdown``.
 
@@ -11,21 +11,21 @@ Writing one (rScripts/README.md has more; rLACO and rSMTC08 are short examples):
 
     name = "rMine"
 
-    def rScript(forms):
-        r = RScriptControl(forms, name)
+    def rScript(run):
+        r = RScriptControl(run, name)
         if r.tick(seconds=5):
             return
-        forms.log("five seconds passed", component=name)
+        run.log("five seconds passed", component=name)
 
 The host side:
 
-    rscripts.load(forms, ["rLACO"])
+    rscripts.load(run, ["rLACO"])
     while running:
-        rscripts.tick(forms)
-    rscripts.shutdown(forms)      # each script's rShutdown, if it has one
+        rscripts.tick(run)
+    rscripts.shutdown(run)      # each script's rShutdown, if it has one
 """
 from .control import RScriptControl
-from .handle import LabForms, Scalar
+from .run import Run, Scalar
 from .loader import ENV, disabled, find, load, loaded, search_dirs, shutdown, tick
 from .tasks import rTaskRegister, rTaskRunning, rTaskStart, rTaskStop, set_logger
 
@@ -39,7 +39,7 @@ def K2C(kelvin: float) -> float:
 
 
 __all__ = [
-    "RScriptControl", "LabForms", "Scalar",
+    "RScriptControl", "Run", "Scalar",
     "ENV", "disabled", "find", "load", "loaded", "search_dirs", "shutdown", "tick",
     "rTaskRegister", "rTaskRunning", "rTaskStart", "rTaskStop", "set_logger",
     "C2K", "K2C",

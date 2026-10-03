@@ -1,7 +1,7 @@
 """Find, load and run rScripts.
 
 An rScript is a file ``<name>.py`` in an rScripts directory with a
-module-level ``def rScript(forms):``. The host loads a list of them by name,
+module-level ``def rScript(run):``. The host loads a list of them by name,
 then calls `tick` once per loop, which calls each script's ``rScript``.
 
 Directories are searched in order, first match wins:
@@ -19,7 +19,7 @@ One module-level flag a script may set:
 
 and one optional hook:
 
-    def rShutdown(forms):     called once when the host stops, however it stops
+    def rShutdown(run):     called once when the host stops, however it stops
                               (end of plan, `end`, a crash), last loaded first.
                               Where a script leaves its hardware safe.
 """
@@ -67,11 +67,11 @@ def find(name: str) -> Path | None:
     return None
 
 
-def _log(forms, message: str, level: str = "INFO") -> None:
-    forms.log(message=message, level=level, component="rScript")
+def _log(run, message: str, level: str = "INFO") -> None:
+    run.log(message=message, level=level, component="rScript")
 
 
-def load(forms, names) -> list[str]:
+def load(run, names) -> list[str]:
     """Load the named rScripts, replacing any loaded before. Returns the names
     that loaded. Nothing runs until `tick`."""
     _loaded.clear()
@@ -81,15 +81,15 @@ def load(forms, names) -> list[str]:
     for raw in names:
         name = raw[:-3] if raw.endswith(".py") else raw
         if name in disabled:
-            _log(forms, f"{name}: disabled, not loaded")
+            _log(run, f"{name}: disabled, not loaded")
             continue
         path = find(name)
         if path is None:
             where = ", ".join(str(d) for d in search_dirs()) or "no rScripts directory found"
-            _log(forms, f"{name}: not found (searched {where})", "ERROR")
+            _log(run, f"{name}: not found (searched {where})", "ERROR")
             continue
         if _STATIC_DISABLE.search(path.read_text(encoding="utf-8", errors="ignore")):
-            _log(forms, f"{name}: enable = False, not loaded")
+            _log(run, f"{name}: enable = False, not loaded")
             continue
 
         module_name = f"rScripts.{name}"
@@ -100,17 +100,17 @@ def load(forms, names) -> list[str]:
             spec.loader.exec_module(module)
         except Exception as exc:
             sys.modules.pop(module_name, None)
-            _log(forms, f"{name}: import failed\n{traceback.format_exc()}", "ERROR")
+            _log(run, f"{name}: import failed\n{traceback.format_exc()}", "ERROR")
             continue
 
         func = getattr(module, "rScript", None)
         if not callable(func):
-            _log(forms, f"{name}: no rScript(forms) function; skipped", "WARNING")
+            _log(run, f"{name}: no rScript(run) function; skipped", "WARNING")
             continue
         _loaded.append((name, func))
         if callable(hook := getattr(module, "rShutdown", None)):
             _shutdown.append((name, hook))
-        _log(forms, f"{name}: loaded from {path}")
+        _log(run, f"{name}: loaded from {path}")
 
     return [n for n, _ in _loaded]
 
@@ -119,21 +119,21 @@ def loaded() -> list[str]:
     return [n for n, _ in _loaded]
 
 
-def call(forms, name: str, func) -> None:
+def call(run, name: str, func) -> None:
     """Call one rScript once. A failing script is logged when its error first
     appears or changes, not on every call, and again when it recovers."""
     if name in disabled:
         return
     try:
-        func(forms)
+        func(run)
     except Exception as exc:
         msg = f"{type(exc).__name__}: {exc}"
         if _last_error.get(name) != msg:
             _last_error[name] = msg
-            _log(forms, f"{name}: {msg}\n{traceback.format_exc()}", "ERROR")
+            _log(run, f"{name}: {msg}\n{traceback.format_exc()}", "ERROR")
     else:
         if _last_error.pop(name, None) is not None:
-            _log(forms, f"{name}: recovered")
+            _log(run, f"{name}: recovered")
 
 
 def scripts() -> list[tuple[str, object]]:
@@ -141,21 +141,21 @@ def scripts() -> list[tuple[str, object]]:
     return list(_loaded)
 
 
-def tick(forms) -> None:
+def tick(run) -> None:
     """Call every loaded, enabled rScript once, in load order, on this thread.
     (The host runs each script on its own thread instead -- see `workers`.)"""
     for name, func in _loaded:
-        call(forms, name, func)
+        call(run, name, func)
 
 
-def shutdown(forms) -> None:
-    """Run every loaded script's ``rShutdown(forms)``, last loaded first, once.
+def shutdown(run) -> None:
+    """Run every loaded script's ``rShutdown(run)``, last loaded first, once.
     A failing hook is logged and the rest still run."""
     hooks = list(reversed(_shutdown))
     _shutdown.clear()
     for name, hook in hooks:
         try:
-            hook(forms)
+            hook(run)
         except Exception as exc:
-            _log(forms, f"{name}: rShutdown failed: {type(exc).__name__}: {exc}\n"
+            _log(run, f"{name}: rShutdown failed: {type(exc).__name__}: {exc}\n"
                         f"{traceback.format_exc()}", "ERROR")

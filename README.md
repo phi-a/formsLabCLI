@@ -119,7 +119,7 @@ src/formslab/
 ├── console/     the tabs, sessions, and command tables
 ├── devices/     one folder per instrument (hvc3500, dp832a, smtc08, cryocooler, slta, powerswitch)
 ├── defaults/    shipped usbmap.json and tvac_bench.json
-├── rscripts/    the rScripts runtime: loader, gates, the `forms` handle
+├── rscripts/    the rScripts runtime: loader, gates, the `Run` each script receives
 ├── sequence/    lab plans: test sequences, read and run
 └── host/        the process that runs a plan
 rScripts/        the routines that own the instruments during a run

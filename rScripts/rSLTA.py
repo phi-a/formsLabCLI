@@ -2,7 +2,7 @@
 #
 # Captures on a forced request ({"image": true} on CAST "slta"), or, with
 # SLTARUN on, whenever the run says the spacecraft is in umbra. Umbra comes from
-# three variables on the handle -- InUmbra (0/1), UmbraDuration and
+# three variables on the run -- InUmbra (0/1), UmbraDuration and
 # UmbraTimeRemaining (s) -- which an eclipse profile computed by FORMS provides.
 # Until something publishes them, SLTARUN captures nothing.
 import os,time,math
@@ -132,30 +132,29 @@ def _task(stop_event, cmd: dict) -> None:
             rg.exposureMgr.release()
         UpdateStatus(label="slta", status={"running": False, "token": None})
 
-def _value(forms, var_name):
-    var = forms.get_variable(var_name)
+def _value(run, var_name):
     try:
-        return None if var is None else float(var.value)
+        return None if run.get(var_name) is None else float(run.get(var_name))
     except (TypeError, ValueError):
         return None
 
 
-def _umbra(forms):
-    """(in umbra, umbra duration s, time remaining s) from the handle's
+def _umbra(run):
+    """(in umbra, umbra duration s, time remaining s) from the run's
     variables; (None, None, None) while nothing publishes them."""
-    flag = _value(forms, "InUmbra")
+    flag = _value(run, "InUmbra")
     return (None if flag is None else bool(flag),
-            _value(forms, "UmbraDuration"), _value(forms, "UmbraTimeRemaining"))
+            _value(run, "UmbraDuration"), _value(run, "UmbraTimeRemaining"))
 
 
 # --- rScript Entry Point ---
-def rScript(forms):
+def rScript(run):
     global rg
     if rg.disable: return
-    else: _init(forms, rg)
+    else: _init(run, rg)
     # === Refactored execution control ===
     try:
-        r = RScriptControl(forms, name)
+        r = RScriptControl(run, name)
         if rg.useInitialize: r.initialize()
         if rg.useHold:       r.hold(seconds=rg.HOLD_INTERVAL)
         if rg.useTick:       r.tick(seconds=rg.TICK_INTERVAL)
@@ -163,13 +162,13 @@ def rScript(forms):
         else: 
             if rg.useHold: rg.useHold = False 
     except Exception as e:
-        forms.log(f"❌ RScriptControl exception: {e}", level="ERROR", component="rSLTA")
+        run.log(f"❌ RScriptControl exception: {e}", level="ERROR", component="rSLTA")
         return
 
-    _init_psu(forms, rg)
+    _init_psu(run, rg)
     
     # === Initialize Tasks
-    set_logger(lambda msg: forms.log(msg, component="TASK"))
+    set_logger(lambda msg: run.log(msg, component="TASK"))
     # === Register capture cycle callback once ===
     if not rg.register:
             rTaskRegister("slta", _task)
@@ -185,76 +184,76 @@ def rScript(forms):
             if request1.get("exposureAuto"):
                 if rg.exposureMgr:
                     rg.exposureMgr.clearOverride()
-                forms.log("Exposure set to AUTO (umbra-based)", component="rSLTA")
+                run.log("Exposure set to AUTO (umbra-based)", component="rSLTA")
             else:
                 val = request1.get("exposure")
                 if isinstance(val, int):
                     rg.cmd['exposure'] = val
                     if rg.exposureMgr:
                         rg.exposureMgr.setOverride(val)
-                    forms.log(f"Exposure override set to {val}s via CAST", component="rSLTA")
+                    run.log(f"Exposure override set to {val}s via CAST", component="rSLTA")
                 elif val is not None:
                     raise ValueError("exposure must be an integer")
         except Exception as e:
-            forms.log(f"Invalid exposure in request: {val} — {e}", level="WARNING", component="rSLTA")
+            run.log(f"Invalid exposure in request: {val} — {e}", level="WARNING", component="rSLTA")
 
         # Idle time
         try:
             val = request1.get("idle")
             if isinstance(val, int):
                 rg.cmd['idle'] = val
-                forms.log(f"Idle updated to {val} via CAST request", component="rSLTA")
+                run.log(f"Idle updated to {val} via CAST request", component="rSLTA")
             elif val is not None:
                 raise ValueError("idle must be an integer")
         except Exception as e:
-            forms.log(f"Invalid idle time in request: {val} — {e}", level="WARNING", component="rSLTA")
+            run.log(f"Invalid idle time in request: {val} — {e}", level="WARNING", component="rSLTA")
 
         # NSAMP
         try:
             val = request1.get("nsamp")
             if isinstance(val, int):
                 rg.cmd['nsamp'] = val
-                forms.log(f"NSAMP updated to {val} via CAST request", component="rSLTA")
+                run.log(f"NSAMP updated to {val} via CAST request", component="rSLTA")
             elif val is not None:
                 raise ValueError("nsamp must be an integer")
         except Exception as e:
-            forms.log(f"Invalid nsamp in request: {val} — {e}", level="WARNING", component="rSLTA")
+            run.log(f"Invalid nsamp in request: {val} — {e}", level="WARNING", component="rSLTA")
 
         # Clear dwell time
         try:
             val = request1.get("clear")
             if isinstance(val, int):
                 rg.cmd['clear'] = val
-                forms.log(f"Clear updated to {val}s via CAST request", component="rSLTA")
+                run.log(f"Clear updated to {val}s via CAST request", component="rSLTA")
             elif val is not None:
                 raise ValueError("clear must be an integer")
         except Exception as e:
-            forms.log(f"Invalid clear in request: {val} — {e}", level="WARNING", component="rSLTA")
+            run.log(f"Invalid clear in request: {val} — {e}", level="WARNING", component="rSLTA")
 
         # SLTA version (v1 or v2)
         try:
             val = request1.get("version")
             if isinstance(val, str) and val in ("v1", "v2"):
                 rg.cmd['version'] = val
-                forms.log(f"SLTA version set to {val} via CAST request", component="rSLTA")
+                run.log(f"SLTA version set to {val} via CAST request", component="rSLTA")
             elif val is not None:
                 raise ValueError("version must be 'v1' or 'v2'")
         except Exception as e:
-            forms.log(f"Invalid version in request: {val} — {e}", level="WARNING", component="rSLTA")
+            run.log(f"Invalid version in request: {val} — {e}", level="WARNING", component="rSLTA")
 
         # Image directory
         try:
             val = request1.get("IMAGEDIR")
             if val == "default":
                 rg.cmd['IMAGEDIR'] = None
-                forms.log("Image directory reset to default via CAST request", component="rSLTA")
+                run.log("Image directory reset to default via CAST request", component="rSLTA")
             elif isinstance(val, str):
                 rg.cmd['IMAGEDIR'] = val
-                forms.log(f"Image directory updated to {val} via CAST request", component="rSLTA")
+                run.log(f"Image directory updated to {val} via CAST request", component="rSLTA")
             elif val is not None:
                 raise ValueError("Image directory must be a string or 'default'")
         except Exception as e:
-            forms.log(f"Invalid image directory in request: {val} — {e}", level="WARNING", component="rSLTA")
+            run.log(f"Invalid image directory in request: {val} — {e}", level="WARNING", component="rSLTA")
 
         # Boolean requests
         for attr in ("shutdown", "startup", "SLTARUN"):
@@ -265,9 +264,9 @@ def rScript(forms):
                 if not isinstance(val, bool):
                     raise ValueError(f"{attr} must be a boolean")
                 setattr(rg, attr, val)
-                forms.log(f"{attr.capitalize()} request: {val}", level="INFO", component="rSLTA")
+                run.log(f"{attr.capitalize()} request: {val}", level="INFO", component="rSLTA")
             except Exception as e:
-                forms.log(f"Invalid {attr} request: {val} — {e}", level="WARNING", component="rSLTA")
+                run.log(f"Invalid {attr} request: {val} — {e}", level="WARNING", component="rSLTA")
 
     # Raw PSU2 CAST ownership now lives in rPSU.
 
@@ -275,29 +274,29 @@ def rScript(forms):
     # === If Startup or Shutdown Logic ===
     if rg.shutdown:
         _queue_psu2_shutdown()
-        forms.log("Queued PSU2 shutdown.", component="rSLTA")
+        run.log("Queued PSU2 shutdown.", component="rSLTA")
         UpdateStatus(label="psu2", status=ReadStatus("psu2"))
         rg.shutdown = False
         rg._psu2_ready = False
         rg._psu2_request_pending = False
         rg._psu2_status_unknown_reported = False
     elif rg.startup:
-        _init_psu(forms,rg)
+        _init_psu(run,rg)
         rg.startup = False
 
     # === Token Logic ===
     if request1 and request1.get("image", False):
-        forms.log("Forced image request detected", component="rSLTA")
+        run.log("Forced image request detected", component="rSLTA")
         token = rg.ImageToken.force()
         rg.cmd['mode'] = "F"
     elif rg.SLTARUN:
-        rg.umbra, rg.umbraDuration, _ = _umbra(forms)
+        rg.umbra, rg.umbraDuration, _ = _umbra(run)
         if rg.exposureMgr:
             rg.exposureMgr.update(rg.umbraDuration)
         token = rg.ImageToken.update(rg.umbra)
         if token:
             durationStr = f"duration={rg.umbraDuration:.0f}s" if rg.umbraDuration and not math.isnan(rg.umbraDuration) else "duration=unknown"
-            forms.log(f"Umbra-triggered token | {durationStr}", component="rSLTA")
+            run.log(f"Umbra-triggered token | {durationStr}", component="rSLTA")
     else: token = None
 
     # Update Task Status
@@ -305,7 +304,7 @@ def rScript(forms):
 
     # === Abort if leaving umbra (unless forced) ===
     if not rg.umbra and rg.running and not (rg.cmd['mode'] == 'F'):
-        forms.log("Exiting umbra — aborting capture", component="rSLTA")
+        run.log("Exiting umbra — aborting capture", component="rSLTA")
         rTaskStop("slta")  # Signal the thread to stop and wait for it to clean up
         _power_off_slta_channel()
         rg.running = False
@@ -315,7 +314,7 @@ def rScript(forms):
     # === Start capture if token is valid ===
     if token and (rg.umbra or rg.cmd['mode'] == 'F'):
         if not rg._psu2_ready:
-            forms.log(
+            run.log(
                 "PSU2 is not ready for SLTA capture yet — waiting for rPSU to apply configuration",
                 level="INFO",
                 component="rSLTA",
@@ -326,32 +325,32 @@ def rScript(forms):
             if rg.exposureMgr:
                 lockedExp = rg.exposureMgr.lock()
                 rg.cmd['exposure'] = lockedExp
-            forms.log(
+            run.log(
                 f"Starting capture | exposure={rg.cmd['exposure']}s | token={token}",
                 component="rSLTA"
             )
             try:
-                val = forms.get_variable("TC01").value
+                val = run.get("TC01")
                 rg.cmd["TK"] = int(round(val)) if val is not None else None
             except Exception as e:
-                forms.log(f"Failed to read or round{rg.TC}: {e}", level="WARNING", component="rSLTA")
+                run.log(f"Failed to read or round{rg.TC}: {e}", level="WARNING", component="rSLTA")
                 rg.cmd["TK"] = None
            
             if rTaskStart("slta", cmd=rg.cmd):
                 UpdateStatus(label="slta", status={"running": True, "token": token})
             else:
-                forms.log(
+                run.log(
                     "Capture cycle start failed — task already running",
                     level="WARNING", component="rSLTA"
                 )
                 if rg.exposureMgr:
                     rg.exposureMgr.release()  # Release lock if start failed
     elif token:
-        forms.log("Token available but outside umbra and no forced capture — skipping", component="rSLTA")
+        run.log("Token available but outside umbra and no forced capture — skipping", component="rSLTA")
 
     # === SLTA Status Update ===
     expStatus = rg.exposureMgr.status() if rg.exposureMgr else {}
-    timeRemaining = _umbra(forms)[2] if rg.SLTARUN else None
+    timeRemaining = _umbra(run)[2] if rg.SLTARUN else None
     UpdateStatus(
         label="slta",
         status = {

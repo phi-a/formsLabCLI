@@ -75,7 +75,6 @@ class rGlobal:
     psu2 = None
     _psu2_keepalive_time      = 0.0
     _psu2_keepalive_fails     = 0      # consecutive all-null results
-    _psu2_var_missing_reported = False
     _psu1_poll_time = 0.0
     _switched_on = set()                # (label, channel) turned on by this run
 
@@ -83,31 +82,31 @@ class rGlobal:
 rg = rGlobal
 
 
-def _init(forms, r_global):
+def _init(run, r_global):
     if r_global._vars_initialized:
         return r_global
 
     try:
         enabled = enabled_psu_labels()
     except Exception as exc:
-        forms.log(f"usbmap unreadable, no PSU opened: {exc}", level="ERROR", component=name)
+        run.log(f"usbmap unreadable, no PSU opened: {exc}", level="ERROR", component=name)
         enabled = ()
 
     for label in ("psu1", "psu2"):
         if label not in enabled:
-            forms.log(f"{label.upper()} disabled in usbmap; not opened", component=name)
+            run.log(f"{label.upper()} disabled in usbmap; not opened", component=name)
             continue
         try:
             setattr(r_global, label, get_psu(label))
-            forms.log(f"{label.upper()} connected", component=name)
+            run.log(f"{label.upper()} connected", component=name)
         except Exception as exc:
-            forms.log(f"{label.upper()} init failed: {exc}", level="ERROR", component=name)
+            run.log(f"{label.upper()} init failed: {exc}", level="ERROR", component=name)
 
     r_global._vars_initialized = True
     return r_global
 
 
-def _publish_status(forms, label, psu):
+def _publish_status(run, label, psu):
     """Publish PSU telemetry to CAST. Returns True on success, False when the
     VISA link appears to be down (all channels null)."""
     if psu is None:
@@ -123,7 +122,7 @@ def _publish_status(forms, label, psu):
             isinstance(v, dict) and v.get("vset") is None
             for v in state.values()
         ):
-            forms.log(
+            run.log(
                 f"{label.upper()} telemetry returned all-null — "
                 "VISA link may be down; preserving previous CAST state",
                 level="WARNING",
@@ -131,11 +130,10 @@ def _publish_status(forms, label, psu):
             )
             return False
         UpdateStatus(label, state)
-        if label == "psu1":
-            _publish_psu1_scalars(forms, state)
+        _publish_channels(run, label, state)
         return True
     except Exception as exc:
-        forms.log(
+        run.log(
             f"{label.upper()} status update failed: {exc}",
             level="WARNING",
             component=name,
@@ -143,61 +141,30 @@ def _publish_status(forms, label, psu):
         return False
 
 
-def _scalar(forms, var_name, value, unit):
-    var = forms.get_variable(var_name)
-    if var is None:
-        var = forms.types.scalar(var_name, unit=unit, overwrite=False)
-    var.set(value=value, unit=unit)
-
-
-def _publish_psu1_scalars(forms, state):
-    """PSU1 measured volts/amps and output state per channel; NaN when a
-    channel's query failed, so the CSV shows the gap."""
+def _publish_channels(run, label, state):
+    """A supply's measured volts/amps and output state per channel, as
+    PSU<n>_CH<c>_V / _I / _ON. A channel whose query failed is NaN, so the CSV
+    shows the gap rather than a stale number."""
+    prefix = label.upper()
     for ch, s in state.items():
         s = s if isinstance(s, dict) else {}
         for suffix, key, unit in (("V", "vmeas", "V"), ("I", "cmeas", "A")):
             value = s.get(key)
-            _scalar(forms, f"PSU1_CH{ch}_{suffix}", math.nan if value is None else float(value), unit)
+            run.publish(f"{prefix}_CH{ch}_{suffix}", math.nan if value is None else float(value), unit)
         on = s.get("on")
-        _scalar(forms, f"PSU1_CH{ch}_ON", math.nan if on is None else float(bool(on)), None)
+        run.publish(f"{prefix}_CH{ch}_ON", math.nan if on is None else float(bool(on)))
 
 
-def _publish_psu2_variable(forms, psu):
-    """Write the PSU2 [[v1,i1],[v2,i2]] tensor to the recorded variable.
-    Uses psu.state if available; emits NaN rows when PSU2 is not initialized."""
-    nan = math.nan
-
-    if psu is None or not psu.state:
-        tensor = [[nan, nan], [nan, nan]]
-    else:
-        tensor = []
-        for ch in (1, 2):
-            s = psu.state.get(ch, {})
-            v = s.get("vmeas")
-            i = s.get("cmeas")
-            tensor.append([
-                float(v) if v is not None else nan,
-                float(i) if i is not None else nan,
-            ])
-
-    psu2_var = forms.get_variable("PSU2")
-    if psu2_var is not None:
-        psu2_var.set(tensor)
-        rg._psu2_var_missing_reported = False
-    elif not rg._psu2_var_missing_reported:
-        forms.log(
-            "Variable PSU2 is not registered; skipping PSU2 tensor publish",
-            level="WARNING",
-            component=name,
-        )
-        rg._psu2_var_missing_reported = True
+def _publish_gap(run, label):
+    """The supply could not be read: NaN for every channel."""
+    _publish_channels(run, label, {ch: {} for ch in (1, 2, 3)})
 
 
-def _handle_channel_request(forms, label, psu, channel_text, channel_request):
+def _handle_channel_request(run, label, psu, channel_text, channel_request):
     if not isinstance(channel_request, dict):
         return False
     if psu is None:
-        forms.log(f"{label.upper()} not initialized — ignoring CH{channel_text} request", level="WARNING", component=name)
+        run.log(f"{label.upper()} not initialized — ignoring CH{channel_text} request", level="WARNING", component=name)
         return False
 
     channel = int(channel_text)
@@ -221,7 +188,7 @@ def _handle_channel_request(forms, label, psu, channel_text, channel_request):
                 ocp=None if ocp is None else float(ocp),
                 enable=True if protect is None else bool(protect),
             )
-            forms.log(
+            run.log(
                 f"{label.upper()} CH{channel} protection updated"
                 + (
                     f" (ovp={float(ovp):.2f}V, ocp={float(ocp):.3f}A, "
@@ -239,7 +206,7 @@ def _handle_channel_request(forms, label, psu, channel_text, channel_request):
             voltage = float(channel_request["voltage"])
             current = float(channel_request["current"])
             psu.set(channel, voltage, current)
-            forms.log(
+            run.log(
                 f"{label.upper()} CH{channel} set to {voltage:.2f}V, {current:.3f}A",
                 component=name,
             )
@@ -249,14 +216,14 @@ def _handle_channel_request(forms, label, psu, channel_text, channel_request):
             if channel_request["on"]:
                 psu.on(channel)
                 rg._switched_on.add((label, channel))
-                forms.log(f"{label.upper()} CH{channel} turned ON", component=name)
+                run.log(f"{label.upper()} CH{channel} turned ON", component=name)
             else:
                 psu.off(channel)
                 rg._switched_on.discard((label, channel))
-                forms.log(f"{label.upper()} CH{channel} turned OFF", component=name)
+                run.log(f"{label.upper()} CH{channel} turned OFF", component=name)
             changed = True
     except Exception as exc:
-        forms.log(
+        run.log(
             f"{label.upper()} CH{channel} command failed: {exc}",
             level="ERROR",
             component=name,
@@ -265,7 +232,7 @@ def _handle_channel_request(forms, label, psu, channel_text, channel_request):
     return changed
 
 
-def _handle_psu_request(forms, label, psu, request):
+def _handle_psu_request(run, label, psu, request):
     """Process a CAST request for a PSU. Returns True if a status refresh was performed."""
     if not request:
         return False
@@ -274,13 +241,13 @@ def _handle_psu_request(forms, label, psu, request):
     changed = False
 
     if request.get("shutdown"):
-        forms.log(f"{label.upper()} shutdown requested via CAST — ignored (use psucli)", level="WARNING", component=name)
+        run.log(f"{label.upper()} shutdown requested via CAST — ignored (use psucli)", level="WARNING", component=name)
 
     update = request.get("update")
     if isinstance(update, bool):
         refresh = update
     elif update is not None:
-        forms.log(
+        run.log(
             f"Invalid {label} update request: {update}",
             level="WARNING",
             component=name,
@@ -288,7 +255,7 @@ def _handle_psu_request(forms, label, psu, request):
 
     for channel_text in ("1", "2", "3"):
         changed = _handle_channel_request(
-            forms,
+            run,
             label,
             psu,
             channel_text,
@@ -296,22 +263,22 @@ def _handle_psu_request(forms, label, psu, request):
         ) or changed
 
     if refresh or changed:
-        _publish_status(forms, label, psu)
+        _publish_status(run, label, psu)
         return True
 
     return False
 
 
-def rScript(forms):
+def rScript(run):
     global rg
 
     if rg.disable:
         return
 
-    rg = _init(forms, rg)
+    rg = _init(run, rg)
 
     try:
-        control = RScriptControl(forms, name)
+        control = RScriptControl(run, name)
         if rg.useInitialize:
             control.initialize()
         if rg.useHold:
@@ -321,29 +288,26 @@ def rScript(forms):
         if control:
             return
     except Exception as exc:
-        forms.log(f"RScriptControl exception: {exc}", level="ERROR", component=name)
+        run.log(f"RScriptControl exception: {exc}", level="ERROR", component=name)
         return
 
     if not rg._status_initialized:
-        _publish_status(forms, "psu1", rg.psu1)
-        _publish_status(forms, "psu2", rg.psu2)
+        _publish_status(run, "psu1", rg.psu1)
+        _publish_status(run, "psu2", rg.psu2)
         rg._status_initialized = True
 
-    psu1_refreshed = _handle_psu_request(forms, "psu1", rg.psu1, ReadCommand("psu1"))
-    psu2_refreshed = _handle_psu_request(forms, "psu2", rg.psu2, ReadCommand("psu2"))
+    psu1_refreshed = _handle_psu_request(run, "psu1", rg.psu1, ReadCommand("psu1"))
+    psu2_refreshed = _handle_psu_request(run, "psu2", rg.psu2, ReadCommand("psu2"))
 
     now = time.time()
     if psu1_refreshed:
         rg._psu1_poll_time = now
     elif rg.psu1 is not None and now - rg._psu1_poll_time >= PSU1_POLL_INTERVAL:
-        _publish_status(forms, "psu1", rg.psu1)
+        _publish_status(run, "psu1", rg.psu1)
         rg._psu1_poll_time = now
 
     if rg.psu2 is None:
         return          # PSU2 not opened (disabled in usbmap, or failed): no keep-alive
-    if psu2_refreshed:
-        _publish_psu2_variable(forms, rg.psu2)
-
     # Keep-alive: poll PSU2 periodically when idle so the serial link doesn't
     # go stale (PSU2 can go quiet for hours).
     # Back off exponentially when PSU2 is persistently unreachable so a dead
@@ -357,31 +321,29 @@ def rScript(forms):
             PSU2_KEEPALIVE_BACKOFF,
         )
         if now - rg._psu2_keepalive_time >= interval:
-            ok = _publish_status(forms, "psu2", rg.psu2)
+            ok = _publish_status(run, "psu2", rg.psu2)
             rg._psu2_keepalive_time = now
             if ok:
                 rg._psu2_keepalive_fails = 0
-                _publish_psu2_variable(forms, rg.psu2)
             else:
                 rg._psu2_keepalive_fails = min(rg._psu2_keepalive_fails + 1, 3)
-                _publish_psu2_variable(forms, rg.psu2)  # emit NaN rows on failure
+                _publish_gap(run, "psu2")
                 if rg._psu2_keepalive_fails >= 2 and rg.psu2 is not None:
                     try:
                         rg.psu2.reconnect()
-                        forms.log("PSU2 reconnected", component=name)
+                        run.log("PSU2 reconnected", component=name)
                         rg._psu2_keepalive_fails = 0
-                        if _publish_status(forms, "psu2", rg.psu2):
-                            _publish_psu2_variable(forms, rg.psu2)
+                        if _publish_status(run, "psu2", rg.psu2):
                             rg._psu2_keepalive_time = time.time()
                     except Exception as exc:
-                        forms.log(
+                        run.log(
                             f"PSU2 reconnect failed: {exc}",
                             level="ERROR",
                             component=name,
                         )
 
 
-def rShutdown(forms):
+def rShutdown(run):
     """Turn off every channel this run switched on, then hand the front panels
     back. Channels the run found on, or that an operator switched on from the
     console, are left as they are."""
@@ -391,16 +353,16 @@ def rShutdown(forms):
             continue
         try:
             psu.off(channel)
-            forms.log(f"{label.upper()} CH{channel} turned OFF at shutdown", component=name)
+            run.log(f"{label.upper()} CH{channel} turned OFF at shutdown", component=name)
         except Exception as exc:
-            forms.log(f"{label.upper()} CH{channel} OFF at shutdown FAILED: {exc}",
+            run.log(f"{label.upper()} CH{channel} OFF at shutdown FAILED: {exc}",
                       level="ERROR", component=name)
     rg._switched_on.clear()
     for label in ("psu1", "psu2"):
         psu = getattr(rg, label, None)
         if psu is not None:
             try:
-                _publish_status(forms, label, psu)
+                _publish_status(run, label, psu)
                 psu.disconnect()
             except Exception as exc:
-                forms.log(f"{label.upper()} release failed: {exc}", level="WARNING", component=name)
+                run.log(f"{label.upper()} release failed: {exc}", level="WARNING", component=name)

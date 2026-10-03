@@ -4,12 +4,12 @@ Each loaded rScript is called in its own loop at the host's rate. A chamber
 read that takes seconds no longer delays the PSU, the thermocouples, a cast
 command to another instrument, or the plan's own steps. Each script's state
 (`rg`, its gates, its hardware handles) is touched only by its own thread; what
-they share is CAST (locked in `castutils`) and the `forms` variables.
+they share is CAST (locked in `castutils`) and the `run` variables.
 
-    workers = Workers(forms, hz=10)
+    workers = Workers(run, hz=10)
     workers.start()
     ...                                   # the plan runs on the main thread
-    stuck = workers.stop()                # then rscripts.shutdown(forms)
+    stuck = workers.stop()                # then rscripts.shutdown(run)
 
 `stop` waits for each thread to finish its current call, so a script's
 rShutdown never runs while its rScript is still talking to the instrument --
@@ -24,8 +24,8 @@ from formslab.rscripts import loader
 
 
 class Workers:
-    def __init__(self, forms, hz: float = 10.0) -> None:
-        self.forms = forms
+    def __init__(self, run, hz: float = 10.0) -> None:
+        self.run = run
         self.period = 1.0 / hz
         self._stop = threading.Event()
         self._threads: dict[str, threading.Thread] = {}
@@ -40,7 +40,7 @@ class Workers:
     def _run(self, name: str, func) -> None:
         while not self._stop.is_set():
             started = time.monotonic()
-            loader.call(self.forms, name, func)
+            loader.call(self.run, name, func)
             self._stop.wait(max(0.0, self.period - (time.monotonic() - started)))
 
     def alive(self) -> list[str]:

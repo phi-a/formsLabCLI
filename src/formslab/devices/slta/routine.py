@@ -7,22 +7,22 @@ from formslab.devices.dp832a.commands import (
     queue_psu_request,
 )
 # --- Helper Functions ---
-def _init(forms,rGlobal):
+def _init(run,rGlobal):
     if rGlobal._vars_initialized:
         return
-    _init_psu(forms, rGlobal)
+    _init_psu(run, rGlobal)
     rGlobal._vars_initialized = True
     rGlobal.ImageToken = ImageToken()
     rGlobal.exposureMgr = ExposureManager(defaultExposure=600)
     rGlobal.measure = True
     return
 
-def _init_psu(forms, rGlobal):
+def _init_psu(run, rGlobal):
     readiness = psu_channel_state("psu2", 1, voltage=12.0, current=2.0)
 
     if readiness == "match":
         if not getattr(rGlobal, "_psu2_ready", False):
-            forms.log("SLTA supply ready on PSU2 CH1", level="INFO", component="PSU2")
+            run.log("SLTA supply ready on PSU2 CH1", level="INFO", component="PSU2")
         rGlobal._psu2_ready = True
         rGlobal._psu2_request_pending = False
         rGlobal._psu2_status_unknown_reported = False
@@ -30,7 +30,7 @@ def _init_psu(forms, rGlobal):
 
     if readiness == "unknown":
         if not getattr(rGlobal, "_psu2_status_unknown_reported", False):
-            forms.log(
+            run.log(
                 "PSU2 CH1 telemetry is unavailable; preserving last-known SLTA configuration",
                 level="WARNING",
                 component="PSU2",
@@ -43,7 +43,7 @@ def _init_psu(forms, rGlobal):
         return
 
     rGlobal._psu2_status_unknown_reported = False
-    forms.log("Setting PSU2 CH1 for SLTA...", level="INFO", component="PSU2")
+    run.log("Setting PSU2 CH1 for SLTA...", level="INFO", component="PSU2")
     queue_psu_request(
         "psu2",
         build_psu_channel_request(1, ovp=12.5, ocp=2.1, protect=True, voltage=12.0, current=2.0),
@@ -105,7 +105,7 @@ class ImageToken:
         return self._token
     
 # === Handle sLTA CAST Commands ===
-def HandleSLTARequest(forms, request: dict, rg, label: str) -> object:
+def HandleSLTARequest(run, request: dict, rg, label: str) -> object:
     """Update rg object based on incoming SLTA request block."""
     if not request:
         return
@@ -116,58 +116,58 @@ def HandleSLTARequest(forms, request: dict, rg, label: str) -> object:
             val = request.get("exposure")
             if isinstance(val, int):
                 rg.cmd['exposure'] = val
-                forms.log(f"Exposure updated to {val} via CAST request", component="rSLTA")
+                run.log(f"Exposure updated to {val} via CAST request", component="rSLTA")
             elif val is not None:
                 raise ValueError("exposure must be an integer")
         except Exception as e:
-            forms.log(f"Invalid exposure in request: {val} — {e}", level="WARNING", component="rSLTA")
+            run.log(f"Invalid exposure in request: {val} — {e}", level="WARNING", component="rSLTA")
 
         # Idle time
         try:
             val = request.get("idle")
             if isinstance(val, int):
                 rg.cmd['idle'] = val
-                forms.log(f"Idle updated to {val} via CAST request", component="rSLTA")
+                run.log(f"Idle updated to {val} via CAST request", component="rSLTA")
             elif val is not None:
                 raise ValueError("idle must be an integer")
         except Exception as e:
-            forms.log(f"Invalid idle time in request: {val} — {e}", level="WARNING", component="rSLTA")
+            run.log(f"Invalid idle time in request: {val} — {e}", level="WARNING", component="rSLTA")
 
         # NSAMP
         try:
             val = request.get("nsamp")
             if isinstance(val, int):
                 rg.cmd['nsamp'] = val
-                forms.log(f"NSAMP updated to {val} via CAST request", component="rSLTA")
+                run.log(f"NSAMP updated to {val} via CAST request", component="rSLTA")
             elif val is not None:
                 raise ValueError("nsamp must be an integer")
         except Exception as e:
-            forms.log(f"Invalid nsamp in request: {val} — {e}", level="WARNING", component="rSLTA")
+            run.log(f"Invalid nsamp in request: {val} — {e}", level="WARNING", component="rSLTA")
 
         # Clear dwell time
         try:
             val = request.get("clear")
             if isinstance(val, int):
                 rg.cmd['clear'] = val
-                forms.log(f"Clear updated to {val}s via CAST request", component="rSLTA")
+                run.log(f"Clear updated to {val}s via CAST request", component="rSLTA")
             elif val is not None:
                 raise ValueError("clear must be an integer")
         except Exception as e:
-            forms.log(f"Invalid clear in request: {val} — {e}", level="WARNING", component="rSLTA")
+            run.log(f"Invalid clear in request: {val} — {e}", level="WARNING", component="rSLTA")
 
         # Image directory
         try:
             val = request.get("IMAGEDIR")
             if val == "default":
                 rg.cmd['IMAGEDIR'] = None
-                forms.log("Image directory reset to default via CAST request", component="rSLTA")
+                run.log("Image directory reset to default via CAST request", component="rSLTA")
             elif isinstance(val, str):
                 rg.cmd['IMAGEDIR'] = val
-                forms.log(f"Image directory updated to {val} via CAST request", component="rSLTA")
+                run.log(f"Image directory updated to {val} via CAST request", component="rSLTA")
             elif val is not None:
                 raise ValueError("Image directory must be a string or 'default'")
         except Exception as e:
-            forms.log(f"Invalid image directory in request: {val} — {e}", level="WARNING", component="rSLTA")
+            run.log(f"Invalid image directory in request: {val} — {e}", level="WARNING", component="rSLTA")
 
         # Boolean requests
         for attr in ("shutdown", "startup", "SLTARUN"):
@@ -178,9 +178,9 @@ def HandleSLTARequest(forms, request: dict, rg, label: str) -> object:
                 if not isinstance(val, bool):
                     raise ValueError(f"{attr} must be a boolean")
                 setattr(rg, attr, val)
-                forms.log(f"{attr.capitalize()} request: {val}", level="INFO", component="rSLTA")
+                run.log(f"{attr.capitalize()} request: {val}", level="INFO", component="rSLTA")
             except Exception as e:
-                forms.log(f"Invalid {attr} request: {val} — {e}", level="WARNING", component="rSLTA")
+                run.log(f"Invalid {attr} request: {val} — {e}", level="WARNING", component="rSLTA")
         return
 
     # Special case: PSU update
@@ -189,9 +189,9 @@ def HandleSLTARequest(forms, request: dict, rg, label: str) -> object:
             val = request.get("update")
             if isinstance(val, bool):
                 rg.update = val
-                forms.log(f"Update request: {val}", level="INFO", component="rSLTA")
+                run.log(f"Update request: {val}", level="INFO", component="rSLTA")
             elif val is not None:
                 raise ValueError("update must be a boolean")
         except Exception as e:
-            forms.log(f"Invalid update request: {val} — {e}", level="WARNING", component="rSLTA")
+            run.log(f"Invalid update request: {val} — {e}", level="WARNING", component="rSLTA")
     return

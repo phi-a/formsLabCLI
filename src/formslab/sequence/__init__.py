@@ -2,7 +2,7 @@
 
 A plan names the rScripts that own the instruments (``rscripts.load``) and an
 ordered list of operations (``sequence.operations``): hold, command, until,
-log. The host runs it on a `LabForms` handle in real time; see `plan` for the
+log. The host runs it on a `Run` in real time; see `plan` for the
 grammar and `runner` for how a segment runs.
 
     python -m formslab.sequence psu1_smtc08_first          # check, no hardware

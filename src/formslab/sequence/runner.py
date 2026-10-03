@@ -52,13 +52,13 @@ def _noop(*_args, **_kwargs):
 
 
 class LabSequenceRunner:
-    def __init__(self, forms, sequence: Sequence, *, sink=None,
+    def __init__(self, run, sequence: Sequence, *, sink=None,
                  poll: Optional[Callable[[], None]] = None,
                  write: Optional[Callable[[object], None]] = None,
                  tick: Optional[Callable[[object], None]] = None,
                  hz: float = 10.0, clock: Callable[[], float] = time.monotonic,
                  sleep: Callable[[float], None] = time.sleep) -> None:
-        self.forms = forms
+        self.run = run
         self.sequence = sequence
         self.sink = sink or NullSink()
         self._poll = poll or _noop
@@ -77,9 +77,9 @@ class LabSequenceRunner:
         """One loop. Only the part after `poll` returns counts as active time."""
         self._poll()
         t0 = self._clock()
-        self._tick(self.forms)
-        self._write(self.forms)
-        self.forms.record()
+        self._tick(self.run)
+        self._write(self.run)
+        self.run.record()
         self._sleep(max(0.0, self._period - (self._clock() - t0)))
         self.elapsed += self._clock() - t0
         self.total_steps += 1
@@ -87,7 +87,7 @@ class LabSequenceRunner:
                                 segment_step=segment_step, elapsed_s=round(self.elapsed, 3),
                                 fraction=fraction))
 
-    def run(self) -> RunResult:
+    def execute(self) -> RunResult:
         seq = self.sequence
         self.sink.emit(SequenceStarted(name=seq.name, segment_count=len(seq.segments),
                                        manifest=seq.to_manifest()))
@@ -98,9 +98,9 @@ class LabSequenceRunner:
                 self.index = i
                 self.sink.emit(SegmentStarted(index=i, verb=segment.verb,
                                               label=segment.label or segment.verb))
-                self.forms.log(f"[{i + 1}/{len(seq.segments)}] {segment.label or segment.verb}",
+                self.run.log(f"[{i + 1}/{len(seq.segments)}] {segment.label or segment.verb}",
                                component=COMPONENT)
-                steps = _EXECUTORS[segment.verb](self, self.forms, segment)
+                steps = _EXECUTORS[segment.verb](self, self.run, segment)
                 result.segment_steps.append(steps)
                 self.sink.emit(SegmentFinished(index=i, verb=segment.verb, steps=steps))
         except SystemExit:
@@ -116,9 +116,9 @@ class LabSequenceRunner:
         return result
 
 
-# --- executors: (runner, forms, segment) -> loops taken ------------------------
+# --- executors: (runner, run, segment) -> loops taken ------------------------
 
-def _hold(runner, forms, segment) -> int:
+def _hold(runner, run, segment) -> int:
     seconds = segment.params["seconds"]       # None: until the operator's `end`
     start, n = runner.elapsed, 0
     while seconds is None or (done := runner.elapsed - start) < seconds:
@@ -127,7 +127,7 @@ def _hold(runner, forms, segment) -> int:
     return n
 
 
-def _command(runner, forms, segment) -> int:
+def _command(runner, run, segment) -> int:
     label = segment.params["label"]
     request = segment.params["request"]
     timeout = segment.params["timeout_s"]
@@ -154,20 +154,20 @@ def _convert(value: float, have: str | None, want: str | None) -> float:
     raise SequenceError(f"cannot compare a value in {have} with a limit in {want}")
 
 
-def _until(runner, forms, segment) -> int:
+def _until(runner, run, segment) -> int:
     p = segment.params
     name, side, limit, unit = p["variable"], p["side"], p["value"], p["unit"]
     shown = f" {unit}" if unit else ""
     start, n, value = runner.elapsed, 0, None
     while True:
-        var = forms.get_variable(name)
+        var = run.variable(name)
         if var is not None:
             try:
                 value = _convert(float(var.value), getattr(var, "unit", None), unit)
             except (TypeError, ValueError):
                 value = math.nan
             if value > limit if side == "above" else value < limit:
-                forms.log(f"{name} = {value:.4g}{shown}, {side} {limit:g}{shown}", component=COMPONENT)
+                run.log(f"{name} = {value:.4g}{shown}, {side} {limit:g}{shown}", component=COMPONENT)
                 return n
         if runner.elapsed - start >= p["timeout_s"]:
             last = "it was never published" if value is None else f"last {value:.4g}{shown}"
@@ -177,8 +177,8 @@ def _until(runner, forms, segment) -> int:
         runner.step(segment.verb, n)
 
 
-def _log(runner, forms, segment) -> int:
-    forms.log(segment.params["message"], component=COMPONENT)
+def _log(runner, run, segment) -> int:
+    run.log(segment.params["message"], component=COMPONENT)
     return 0
 
 
