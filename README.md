@@ -117,7 +117,7 @@ src/formslab/
 ├── config.py    config, output and run directory resolution
 ├── state.py     CTRL command table and CAST device state
 ├── console/     the tabs, sessions, and command tables
-├── devices/     one folder per instrument (hvc3500, dp832a, smtc08, cryocooler, slta)
+├── devices/     one folder per instrument (hvc3500, dp832a, smtc08, cryocooler, slta, powerswitch)
 ├── defaults/    shipped usbmap.json and tvac_bench.json
 ├── rscripts/    the rScripts runtime: loader, gates, the `forms` handle
 ├── sequence/    lab plans: test sequences, read and run

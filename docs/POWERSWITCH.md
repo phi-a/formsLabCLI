@@ -3,7 +3,8 @@
 The labcli PSU tab treats the Digital Loggers PowerSwitch as logical device
 `PS`. Its permanent machine and network identity is the `PS` record in
 the live `usbmap.json` (`~/.formslab/usbmap.json`); outlet control and network setup are implemented by
-`src/formslab/devices/powerswitch.py`.
+`src/formslab/devices/powerswitch/`; run it directly with
+`python -m formslab.devices.powerswitch status`.
 
 ## Windows lab configuration
 

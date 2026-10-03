@@ -1,7 +1,7 @@
 """Configure and control the lab Digital Loggers PowerSwitch.
 
 The PowerSwitch is a network appliance, not a serial PSU. Its durable lab
-identity lives in ``lab/usbmap.json`` under ``PS``. This module provides both
+identity lives in the live ``usbmap.json`` under ``PS``. This module provides both
 the HTTP outlet operations and the platform-specific network setup used by the
 labcli PSU tab.
 """

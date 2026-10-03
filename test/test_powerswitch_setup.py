@@ -5,7 +5,7 @@ import subprocess
 from pathlib import Path
 
 from formslab.console.psu import psucli
-from formslab.devices import powerswitch
+from formslab.devices.powerswitch import driver as powerswitch
 
 
 def _completed(command, returncode=0, stdout="", stderr=""):
@@ -142,7 +142,6 @@ def test_labcli_setup_dispatches_the_python_lab_tool(monkeypatch):
 
     command = captured["command"]
     assert command[0] == powerswitch.sys.executable
-    assert Path(command[1]).name == "powerswitch.py"
-    assert Path(command[1]).parent.name == "devices"   # was lab/ before the split
-    assert command[2:] == ["setup", "--dry-run"]
+    assert command[1:3] == ["-m", "formslab.devices.powerswitch"]
+    assert command[3:] == ["setup", "--dry-run"]
     assert "PowerSwitch network setup completed successfully" in result.content.plain

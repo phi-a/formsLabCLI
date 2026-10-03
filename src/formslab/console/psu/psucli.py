@@ -10,9 +10,9 @@ from formslab.devices.dp832a.config import enabled_psu_labels
 # Load command definitions
 env = Path(__file__).parent
 CONFIG = env / "psufile.json"
-# The powerswitch driver is also runnable as a script; psucli shells out to it
+# The powerswitch driver is also runnable as a module; psucli shells out to it
 # for outlet control. `lab/` became `formslab/devices/` in the extraction.
-POWERSWITCH_SCRIPT = Path(__file__).resolve().parents[2] / "devices" / "powerswitch.py"
+POWERSWITCH_CMD = [sys.executable, "-m", "formslab.devices.powerswitch"]
 
 def load_commands():
     try:
@@ -231,11 +231,6 @@ def powerswitch_channel_handler(args, *, target=None):
     if ch < 1 or ch > 8:
         return CLIResult(Text(f"✗ Channel {ch} out of range (valid outlets: 1-8)", style=ERROR), clear=True)
 
-    # Get path to powerswitch.py
-    powerswitch_path = POWERSWITCH_SCRIPT
-    if not powerswitch_path.exists():
-        return CLIResult(Text(f"✗ powerswitch.py not found at {powerswitch_path}", style=ERROR), clear=True)
-
     result = Text()
 
     # Parse delay parameter
@@ -251,7 +246,7 @@ def powerswitch_channel_handler(args, *, target=None):
 
     # Handle --on
     if "--on" in args:
-        cmd_args = [sys.executable, str(powerswitch_path), "--outlet", str(ch), "on"]
+        cmd_args = [*POWERSWITCH_CMD, "--outlet", str(ch), "on"]
         try:
             proc_result = subprocess.run(cmd_args, capture_output=True, text=True, timeout=15)
 
@@ -273,7 +268,7 @@ def powerswitch_channel_handler(args, *, target=None):
 
     # Handle --off
     if "--off" in args:
-        cmd_args = [sys.executable, str(powerswitch_path), "--outlet", str(ch), "off"]
+        cmd_args = [*POWERSWITCH_CMD, "--outlet", str(ch), "off"]
         try:
             proc_result = subprocess.run(cmd_args, capture_output=True, text=True, timeout=15)
 
@@ -298,7 +293,7 @@ def powerswitch_channel_handler(args, *, target=None):
         import time
 
         # First turn off
-        cmd_args = [sys.executable, str(powerswitch_path), "--outlet", str(ch), "off"]
+        cmd_args = [*POWERSWITCH_CMD, "--outlet", str(ch), "off"]
         try:
             proc_result = subprocess.run(cmd_args, capture_output=True, text=True, timeout=15)
             if proc_result.returncode == 0:
@@ -317,7 +312,7 @@ def powerswitch_channel_handler(args, *, target=None):
         time.sleep(wait_time)
 
         # Then turn on
-        cmd_args = [sys.executable, str(powerswitch_path), "--outlet", str(ch), "on"]
+        cmd_args = [*POWERSWITCH_CMD, "--outlet", str(ch), "on"]
         try:
             proc_result = subprocess.run(cmd_args, capture_output=True, text=True, timeout=15)
             if proc_result.returncode == 0:
@@ -335,11 +330,7 @@ def powerswitch_channel_handler(args, *, target=None):
 
 def powerswitch_setup_handler(args=None, **kwargs):
     """Configure the network interface registered for the PowerSwitch."""
-    powerswitch_path = POWERSWITCH_SCRIPT
-    if not powerswitch_path.exists():
-        return CLIResult(Text(f"✗ powerswitch.py not found at {powerswitch_path}", style=ERROR), clear=True)
-
-    command = [sys.executable, str(powerswitch_path), "setup"]
+    command = [*POWERSWITCH_CMD, "setup"]
     if args and "--dry-run" in args:
         command.append("--dry-run")
 
@@ -371,11 +362,7 @@ def powerswitch_setup_handler(args=None, **kwargs):
 
 def powerswitch_status_handler(args=None, **kwargs):
     """Check powerswitch status."""
-    powerswitch_path = POWERSWITCH_SCRIPT
-    if not powerswitch_path.exists():
-        return CLIResult(Text(f"✗ powerswitch.py not found at {powerswitch_path}", style=ERROR), clear=True)
-
-    cmd_args = [sys.executable, str(powerswitch_path), "status"]
+    cmd_args = [*POWERSWITCH_CMD, "status"]
 
     try:
         result = subprocess.run(cmd_args, capture_output=True, text=True, timeout=5)
