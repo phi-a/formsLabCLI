@@ -1,6 +1,6 @@
 # --- rLACO: the LACO chamber (UIUC, HVC-3500 controller) ---
 #
-# Owns the chamber for the run through `formslab.devices.laco.LACO`:
+# Owns the chamber for the run through `formslab.devices.hvc3500.laco.LACO`:
 #   - applies every request on CAST "hvc" as soon as it arrives (each loop),
 #   - reads the whole chamber every poll_interval_s (tvac_bench.json; ~38
 #     queries, ~6 s), publishes kelvin scalars (chamberP, <zone>T,
@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 
 from formslab.config import output_dir
 from formslab.console.cast.castutils import CommandPending, ReadCommand, UpdateStatus
-from formslab.devices.laco import LACO, OPERATIONS, PUMPS, VALVES
+from formslab.devices.hvc3500.laco import LACO, OPERATIONS, PUMPS, VALVES
 from formslab.rscripts import C2K
 from formslab.rscripts.cast import CastUsage, choice, integer, number
 

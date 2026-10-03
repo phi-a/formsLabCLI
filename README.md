@@ -117,7 +117,7 @@ src/formslab/
 ├── config.py    config, output and run directory resolution
 ├── state.py     CTRL command table and CAST device state
 ├── console/     the tabs, sessions, and command tables
-├── devices/     one module per instrument
+├── devices/     one folder per instrument (hvc3500, dp832a, smtc08, cryocooler, slta)
 ├── defaults/    shipped usbmap.json and tvac_bench.json
 ├── rscripts/    the rScripts runtime: loader, gates, the `forms` handle
 ├── sequence/    lab plans: test sequences, read and run
@@ -197,11 +197,12 @@ chosen for you:
 otherwise. To force one, set `PYVISA_LIBRARY` (`@ivi` or `@py`). A Rigol on
 RS232 does not go through VISA at all; it uses pyserial on both systems.
 
-All Rigol supply control lives in `devices/DP832A.py`, for the console and the
-routines alike. It treats the pre-query buffer clear as optional. pyvisa-py's USBTMC
-session does not implement it, and before this was made non-fatal every PSU
-query on the Pi failed with `VI_ERROR_NSUP_OPER (-1073807257)` even though
-`*IDN?` answered.
+All Rigol supply control lives in `devices/dp832a/`, for the console and the
+routines alike. The buffer clear is optional and runs only before a retry:
+pyvisa-py's USBTMC session does not implement it (before this was made
+non-fatal every PSU query on the Pi failed with `VI_ERROR_NSUP_OPER
+(-1073807257)` even though `*IDN?` answered), and on the DP832A a clear sent
+right after a channel switch makes the supply drop its next reply.
 
 Setting up a Pi for a DP832A over USB:
 

@@ -4,7 +4,7 @@ import time
 
 # Ensure the repository's python/ directory is on the module search path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from formslab.devices.DP832A import PSU
+from formslab.devices.dp832a.driver import PSU
 
 
 def main():

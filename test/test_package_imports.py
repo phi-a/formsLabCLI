@@ -21,10 +21,10 @@ from pathlib import Path
 
 import formslab
 
-# Firmware, not a module. `devices/pico_board_control.py` is deployed onto the
+# Firmware, not a module. `devices/cryocooler/pico_board_control.py` is deployed onto the
 # Raspberry Pi Pico and imports MicroPython's `machine`, which does not exist on
 # the PC. It ships as package data; it is never imported here.
-FIRMWARE = {"formslab.devices.pico_board_control"}
+FIRMWARE = {"formslab.devices.cryocooler.pico_board_control"}
 
 # Modules that legitimately need an extra, and the distribution that provides
 # it. None today: everything imports on a base install. The map is asserted in
@@ -71,7 +71,7 @@ class PackageImports(unittest.TestCase):
 
     def test_firmware_is_present_but_not_imported(self):
         """The Pico firmware must ship, and must not be importable on the PC."""
-        firmware = (Path(formslab.__file__).parent / "devices"
+        firmware = (Path(formslab.__file__).parent / "devices" / "cryocooler"
                     / "pico_board_control.py")
         self.assertTrue(firmware.exists(), f"missing firmware: {firmware}")
 

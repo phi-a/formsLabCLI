@@ -30,8 +30,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from formslab.devices.CryoBoard import CryoBoard
-from formslab.devices.cryo_config import (
+from formslab.devices.cryocooler.board import CryoBoard
+from formslab.devices.cryocooler.config import (
     CRYO_DEFAULT_OUTPUT_VOLTAGE_V,
     CRYO_DEFAULT_RESISTANCE_OHMS,
     CRYO_PSU_CHANNEL,
@@ -41,7 +41,7 @@ from formslab.devices.cryo_config import (
     CRYO_SUPPLY_OVP_V,
     CRYO_SUPPLY_VOLTAGE_V,
 )
-from formslab.devices.DP832A import PSU
+from formslab.devices.dp832a.driver import PSU
 
 
 def report(board):

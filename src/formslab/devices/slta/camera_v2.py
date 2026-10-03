@@ -2,7 +2,7 @@ import os
 import subprocess
 from datetime import datetime
 
-from formslab.devices.sLTA import SLTA
+from formslab.devices.slta.camera import SLTA
 
 
 class SLTAv2(SLTA):

@@ -1,7 +1,7 @@
 import time
 import traceback
 
-from formslab.devices.cryo_config import (
+from formslab.devices.cryocooler.config import (
     CRYO_PSU_LABEL,
     CRYO_DEFAULT_OUTPUT_VOLTAGE_V,
     CRYO_DEFAULT_RESISTANCE_OHMS,
@@ -12,7 +12,7 @@ from formslab.devices.cryo_config import (
     CRYO_SUPPLY_OVP_V,
     CRYO_SUPPLY_VOLTAGE_V,
 )
-from formslab.devices.psu_command_utils import (
+from formslab.devices.dp832a.commands import (
     build_psu_channel_request,
     psu_channel_state,
     queue_psu_request,
@@ -79,7 +79,7 @@ def _init_cryo_board(forms, r_global):
         return r_global
     try:
         try:
-            from formslab.devices.CryoBoard import CryoBoard
+            from formslab.devices.cryocooler.board import CryoBoard
         except ModuleNotFoundError as exc:
             forms.log(
                 f"Cryocooler board support unavailable: {exc}. "

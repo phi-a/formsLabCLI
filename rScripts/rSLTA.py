@@ -11,11 +11,11 @@ from pathlib import Path
 from formslab.rscripts import (
     RScriptControl, rTaskRegister, rTaskRunning, rTaskStart, rTaskStop, set_logger,
 )
-from formslab.devices.image import capture
+from formslab.devices.slta.imaging import capture
 from formslab.console.cast.castutils import UpdateStatus, ReadCommand, ReadStatus
-from formslab.devices.sltautils import _init, _init_psu
-from formslab.devices.exposureutils import ExposureManager
-from formslab.devices.psu_command_utils import (
+from formslab.devices.slta.routine import _init, _init_psu
+from formslab.devices.slta.exposure import ExposureManager
+from formslab.devices.dp832a.commands import (
     build_psu_channel_request,
     queue_psu_request,
     wait_for_psu_channel,

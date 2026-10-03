@@ -43,7 +43,7 @@ from vent_test import _now, show, simulated_chamber  # noqa: E402
 
 from formslab import config  # noqa: E402
 from formslab.devices.hvc3500 import ProtocolError, load_profile  # noqa: E402
-from formslab.devices.laco import LACO  # noqa: E402
+from formslab.devices.hvc3500.laco import LACO  # noqa: E402
 
 MUST_BE_CLOSED = ("vent", "fill", "foreline", "gate", "turbo")
 

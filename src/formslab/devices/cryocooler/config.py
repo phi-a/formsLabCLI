@@ -10,7 +10,7 @@ resistance helpers below are re-exported from there so there is exactly one
 copy of the fit in the tree.
 """
 
-from formslab.devices.cryo_registers import (  # noqa: F401  (re-exported for callers)
+from formslab.devices.cryocooler.registers import (  # noqa: F401  (re-exported for callers)
     CCVRES_CODE_MAX,
     CCVRES_CODE_MIN,
     CCVRES_FIT_BASE_OHMS,

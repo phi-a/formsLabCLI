@@ -27,8 +27,8 @@ from pathlib import Path
 
 from formslab.config import usbmap_path
 
-from formslab.devices import cryo_registers as regs
-from formslab.devices.cryo_config import (
+from formslab.devices.cryocooler import registers as regs
+from formslab.devices.cryocooler.config import (
     CCV_MAX_V,
     CCV_MIN_V,
     CCVRES_MAX_OHMS,
@@ -36,7 +36,7 @@ from formslab.devices.cryo_config import (
     CRYO_DEFAULT_OUTPUT_VOLTAGE_V,
     CRYO_DEFAULT_RESISTANCE_OHMS,
 )
-from formslab.devices.pico_i2c import I2CTransportError, PicoI2C, resolve_serial_port
+from formslab.devices.cryocooler.pico_i2c import I2CTransportError, PicoI2C, resolve_serial_port
 
 
 class CryoBoard:

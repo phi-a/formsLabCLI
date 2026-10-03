@@ -17,8 +17,8 @@ import os
 import time
 
 from formslab.console.cast.castutils import ReadCommand, UpdateStatus
-from formslab.devices.psu_config import enabled_psu_labels
-from formslab.devices.psu_service import get_psu
+from formslab.devices.dp832a.config import enabled_psu_labels
+from formslab.devices.dp832a.service import get_psu
 from formslab.rscripts import RScriptControl
 from formslab.rscripts.cast import CastUsage, choice, integer, number
 

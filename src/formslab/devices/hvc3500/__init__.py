@@ -15,9 +15,11 @@ commissioning tool (cli.py).
 from .client import HVC3500Client, Transaction, WriteRefused
 from .profile import BenchProfile, load_profile
 from .protocol import ErrorStatus, ProtocolError, Reply
+from .laco import LACO, LacoStatus   # the chamber object, on top of the driver above
 
 __all__ = [
     "HVC3500Client", "Transaction", "WriteRefused",
     "BenchProfile", "load_profile",
     "ErrorStatus", "ProtocolError", "Reply",
+    "LACO", "LacoStatus",
 ]

@@ -10,9 +10,9 @@ from uuid import uuid4
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from formslab.console.cast.castutils import GenerateCleanCast, ReadCommand, WriteCommand
-from formslab.devices.psu_command_utils import classify_channel_status
-import formslab.devices.cryoutils as cryoutils
-import formslab.devices.sltautils as sltautils
+from formslab.devices.dp832a.commands import classify_channel_status
+import formslab.devices.cryocooler.owner as cryoutils
+import formslab.devices.slta.routine as sltautils
 
 
 class DummyForms:

@@ -6,8 +6,8 @@ import time
 # ``import lab`` works when running this file directly.
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from formslab.devices.DP832A import PSU
-from formslab.devices.sLTA import SLTA
+from formslab.devices.dp832a.driver import PSU
+from formslab.devices.slta.camera import SLTA
 
 
 PSU_DEVICE = "psu2"

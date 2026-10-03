@@ -20,7 +20,7 @@ import re
 import threading
 import time
 
-from formslab.devices.psu_config import resource_for
+from formslab.devices.dp832a.config import resource_for
 
 CHANNELS = (1, 2, 3)
 

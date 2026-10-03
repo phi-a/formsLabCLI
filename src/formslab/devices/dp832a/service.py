@@ -2,7 +2,7 @@
 
 from typing import Dict
 
-from formslab.devices.DP832A import PSU
+from formslab.devices.dp832a.driver import PSU
 
 
 _PSU_CACHE: Dict[str, PSU] = {}

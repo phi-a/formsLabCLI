@@ -11,7 +11,7 @@ from formslab.config import usbmap_path
 
 @pytest.mark.parametrize("port", ["COM7", "COM123", "/dev/ttyUSB0"])
 def test_smtc_opens_configured_port(monkeypatch, port):
-    module = importlib.import_module("formslab.devices.SMTC08")
+    module = importlib.import_module("formslab.devices.smtc08.driver")
     usbmap_path().write_text(json.dumps({"SMTC08_A": {"resource": port}}))
     client = Mock()
     monkeypatch.setattr(module, "ModbusSerialClient", client)

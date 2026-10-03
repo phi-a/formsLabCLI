@@ -1,4 +1,4 @@
-"""`formslab.devices.laco.LACO`: the UIUC chamber by name, over the simulator.
+"""`formslab.devices.hvc3500.laco.LACO`: the UIUC chamber by name, over the simulator.
 
 The vendor client is covered in test_hvc3500.py. These check the layer above
 it: zone names to numbers, the profile's limits, one structured status, and
@@ -11,7 +11,7 @@ import pytest
 from formslab import config
 from formslab.devices.hvc3500 import BenchProfile, WriteRefused
 from formslab.devices.hvc3500.simulator import Simulator
-from formslab.devices.laco import LACO, LacoStatus
+from formslab.devices.hvc3500.laco import LACO, LacoStatus
 
 
 @pytest.fixture

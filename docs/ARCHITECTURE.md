@@ -18,7 +18,7 @@ hardware test sequences against them. Running those sequences is its central job
 
 | Layer | Package | Owns |
 |---|---|---|
-| Drivers | `formslab.devices` | One module per instrument, plus device objects (`laco.LACO`). Opens ports, speaks protocols; knows nothing about runs. |
+| Drivers | `formslab.devices` | One folder per instrument (`hvc3500`, `dp832a`, `smtc08`, `cryocooler`, `slta`), plus device objects (`hvc3500.LACO`). Opens ports, speaks protocols; knows nothing about runs. |
 | Routines | `rScripts/*.py` on `formslab.rscripts` | The instrument during a run: apply CAST requests for it, publish its readings as variables, leave it safe in `rShutdown`. One owner per instrument. |
 | Sequences | `formslab.sequence` | Lab plans: which routines run, and the ordered steps of a test. Steps talk to routines through CAST, never to a driver. |
 | Host | `formslab.host` | One run of one plan. Lock, ctrl, pacing, recording, shutdown. |

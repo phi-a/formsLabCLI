@@ -5,8 +5,8 @@ The bench test for the real supply is `test_DP832A.py`, run by name.
 
 import pytest
 
-from formslab.devices import DP832A
-from formslab.devices.DP832A import (
+from formslab.devices.dp832a import driver as DP832A
+from formslab.devices.dp832a.driver import (
     PSU,
     RigolDriverSerial,
     RigolDriverVISA,

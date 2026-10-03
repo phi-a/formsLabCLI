@@ -1,7 +1,7 @@
-from formslab.devices.exposureutils import ExposureManager
+from formslab.devices.slta.exposure import ExposureManager
 import time,math,uuid
 from typing import Optional
-from formslab.devices.psu_command_utils import (
+from formslab.devices.dp832a.commands import (
     build_psu_channel_request,
     psu_channel_state,
     queue_psu_request,

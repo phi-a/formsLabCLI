@@ -12,8 +12,8 @@ from pathlib import Path
 import pytest
 
 from formslab import config
-from formslab.devices import cryo_registers as regs
-from formslab.devices.CryoBoard import CryoBoard
+from formslab.devices.cryocooler import registers as regs
+from formslab.devices.cryocooler.board import CryoBoard
 
 
 def _usbmap():

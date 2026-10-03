@@ -18,8 +18,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from formslab.devices import cryo_registers as regs
-from formslab.devices import cryo_config
+from formslab.devices.cryocooler import registers as regs
+from formslab.devices.cryocooler import config as cryo_config
 
 
 # --------------------------------------------------------------------------

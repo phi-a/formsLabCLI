@@ -3,9 +3,9 @@ from pathlib import Path
 from rich.text import Text
 from formslab.console.sessions.base import CLIResult
 from formslab.console.style import console, TEXT, ERROR, INFO, NUMBER, UNIT, LABEL, STATE_ON, STATE_OFF, SUCCESS, DIM
-from formslab.devices.DP832A import PSU
+from formslab.devices.dp832a.driver import PSU
 from formslab.config import usbmap_path
-from formslab.devices.psu_config import enabled_psu_labels
+from formslab.devices.dp832a.config import enabled_psu_labels
 
 # Load command definitions
 env = Path(__file__).parent

@@ -7,7 +7,7 @@ from typing import Callable
 
 from formslab import config
 
-from formslab.devices.cryo_config import (
+from formslab.devices.cryocooler.config import (
     CRYO_PSU_CHANNEL,
     CRYO_PSU_LABEL,
     CRYO_SUPPLY_CURRENT_A,

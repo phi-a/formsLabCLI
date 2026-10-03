@@ -36,8 +36,9 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 
-from formslab.devices.hvc3500 import BenchProfile, HVC3500Client, ProtocolError, load_profile
-from formslab.devices.hvc3500 import protocol as P
+from . import protocol as P
+from .client import HVC3500Client, ProtocolError
+from .profile import BenchProfile, load_profile
 
 DEVICE_LABELS = {"OR": "rough", "OV": "vent", "OF": "fill", "O4": "foreline",
                  "OG": "gate", "OP": "pump", "OT": "turbo"}

@@ -51,7 +51,7 @@ from datetime import datetime, timezone
 from formslab import config
 from formslab.devices.hvc3500 import BenchProfile, ProtocolError, load_profile
 from formslab.devices.hvc3500.simulator import Simulator
-from formslab.devices.laco import LACO
+from formslab.devices.hvc3500.laco import LACO
 
 VALVE_OPEN_WITHIN_S = 15.0       # for `cycle`: how long !VA gets to open the valve
 

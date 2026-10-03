@@ -14,7 +14,7 @@ import os
 import time
 
 from formslab.console.cast.castutils import UpdateStatus
-from formslab.devices.SMTC08 import SMTC08
+from formslab.devices.smtc08.driver import SMTC08
 from formslab.rscripts import C2K, RScriptControl
 from formslab.rscripts.cast import CastUsage
 

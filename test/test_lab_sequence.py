@@ -281,7 +281,8 @@ class FakePSU:
 def bench(monkeypatch):
     """rPSU and rSMTC08 from the checkout, wired to fakes: psu1 enabled, psu2
     disabled, SMTC08_A reading 20..27 C, SMTC08_B not in the usbmap."""
-    from formslab.devices import SMTC08 as smtc_module, psu_config, psu_service
+    from formslab.devices.smtc08 import driver as smtc_module
+    from formslab.devices.dp832a import config as psu_config, service as psu_service
 
     monkeypatch.delenv(rscripts.ENV, raising=False)
     rscripts.disabled.clear()

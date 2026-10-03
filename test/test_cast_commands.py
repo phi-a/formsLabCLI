@@ -13,7 +13,7 @@ from formslab.console.cast import castcli
 from formslab.console.cast.castutils import ReadCommand
 from formslab.devices.hvc3500 import BenchProfile
 from formslab.devices.hvc3500.simulator import Simulator
-from formslab.devices.laco import LACO
+from formslab.devices.hvc3500.laco import LACO
 from formslab.rscripts import cast
 
 # every LACO command, as typed after `hvc`, and the request it must produce

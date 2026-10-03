@@ -4,7 +4,7 @@ import sys
 import os
 # Ensure project root is on sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from formslab.devices.SMTC08 import SMTC08
+from formslab.devices.smtc08.driver import SMTC08
 
 def typeTmv2C(mv):
     if mv < 0:

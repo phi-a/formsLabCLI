@@ -5,9 +5,9 @@ import signal
 import threading
 from typing import Callable, Optional
 
-from formslab.devices.DP832A import PSU
-from formslab.devices.sLTA import SLTA
-from formslab.devices.sLTAv2 import SLTAv2
+from formslab.devices.dp832a.driver import PSU
+from formslab.devices.slta.camera import SLTA
+from formslab.devices.slta.camera_v2 import SLTAv2
 
 # Global reference for cleanup
 slta = None

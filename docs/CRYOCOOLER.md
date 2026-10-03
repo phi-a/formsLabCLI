@@ -21,42 +21,36 @@ FlatSat PC ──USB CDC (mpremote)──▶ Pico ──SoftI2C──┬── 0
                                                     └── 0x18 digipot
 ```
 
-`src/formslab/devices/pico_i2c.py` is the seam. It exposes only `scan()`, `read_register()` and
+`src/formslab/devices/cryocooler/pico_i2c.py` is the seam. It exposes only `scan()`, `read_register()` and
 `write_register()`, so swapping in a native USB-I2C adapter later means writing
 one class with those three methods — nothing above it changes.
 
 ## Layers
 
-| File | Responsibility |
+| File (`src/formslab/devices/cryocooler/`) | Responsibility |
 |---|---|
-| `src/formslab/devices/pico_board_control.py` | MicroPython firmware. A bare I2C bridge: scan/read/write. No calibration, no state, no board knowledge. |
-| `src/formslab/devices/pico_i2c.py` | PC-side transport. Serial link, firmware deploy, framed calls. `mpremote` imported lazily. |
-| `src/formslab/devices/cryo_registers.py` | Register map and every encoding. Pure, no imports, fully testable. |
-| `src/formslab/devices/CryoBoard.py` | Board behaviour and state. |
-| `src/formslab/devices/cryo_config.py` | Operating policy: PSU channel, supply setpoints, the 12–20 V band. |
-| `src/formslab/devices/cryoboard_utils.py` | Queue requests onto the CAST `cryo` channel. |
+| `pico_board_control.py` | MicroPython firmware. A bare I2C bridge: scan/read/write. No calibration, no state, no board knowledge. |
+| `pico_i2c.py` | PC-side transport. Serial link, firmware deploy, framed calls. `mpremote` imported lazily. |
+| `registers.py` | Register map and every encoding. Pure, no imports, fully testable. |
+| `board.py` | `CryoBoard`: board behaviour and state. |
+| `config.py` | Operating policy: PSU channel, supply setpoints, the 12–20 V band. |
+| `owner.py` | What rCryoBoard needs: bring up the supply, own the board. |
 | `rScripts/rCryoBoard.py` | The only owner of a live `CryoBoard`. |
 
-Other routines never touch `CryoBoard` — they call
-`cryoboard_utils.queue_cryo_request()`.
+Nothing else touches `CryoBoard`. The console and lab plans command the board
+through CAST, as `cryo ...` in the cast tab or `{"cast": "cryo on"}` in a plan;
+rCryoBoard applies it.
 
 ## Supply, and a channel conflict
 
 The board's input is fed from **psu1 (Rigol DP832A) CH1**, confirmed on the
-bench 2026-08-29 and set in `cryo_config.py`. `CRYO_PSU_COMPONENT` is derived
+bench 2026-08-29 and set in `cryocooler/config.py`. `CRYO_PSU_COMPONENT` is derived
 from the label so log lines cannot drift from it.
 
-> **Conflict — psu1 CH1 has two claimants.**
-> `src/formslab/devices/tvacutils.py::_init_psu` also configures psu1 CH1 and CH2 for the TVAC
-> shroud heaters (`channel_map={"PYsT": 2, "MYsT": 1}`), setting `OVP 28.5 V /
-> OCP 2.1 A` and driving them from the shroud controller. The cryocooler wants
-> the same CH1 at 24 V / 2.0 A with `OVP 24.5 V`.
->
-> `rTVAC` and `rCryoBoard` therefore must not run against this PSU at the same
-> time — whichever configures last wins, and the cryocooler would be browned
-> out or over-volted by a shroud setpoint. Either move the shroud heaters, move
-> the cryocooler to a free channel, or keep the two routines out of the same
-> mission load.
+> **One owner for psu1 CH1.** rCryoBoard configures this channel (24 V / 2.0 A,
+> `OVP 24.5 V`) and asks rPSU, the owner of psu1, to apply it. Do not command
+> psu1 CH1 from a plan or the console while rCryoBoard runs: whichever writes
+> last wins, and a stray setpoint would brown out or over-volt the board.
 
 ## Power thresholds
 

@@ -4,7 +4,7 @@ from rich.text import Text
 
 from formslab import config
 from formslab.console.sessions.base import CLIResult
-from formslab.devices import psu_config
+from formslab.devices.dp832a import config as psu_config
 
 
 def _write_map():
