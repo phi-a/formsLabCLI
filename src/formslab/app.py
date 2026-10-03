@@ -5,10 +5,8 @@ The screen is a fixed frame, not a transcript: each command repaints the same
 regions in the same rows (see `formslab/console/frame.py`) rather than adding to
 a scroll. A redirected stream still gets append-only text.
 
-Previously bootstrapped by `setenv.setup_environment()`, which inserted five
-directories onto `sys.path` and chdir'd into the FORMS checkout. `formslab` is
-an installed package now, so imports resolve on their own and the console runs
-from any working directory.
+`formslab` is an installed package, so imports resolve on their own and the
+console runs from any working directory.
 """
 import os
 import sys

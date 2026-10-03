@@ -19,5 +19,3 @@ data/
 *.fz
 *.fits
 
-# API catalog written by `--tree --rebuild`; belongs to the FORMS install.
-data/astrid/

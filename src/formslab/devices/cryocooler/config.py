@@ -2,10 +2,10 @@
 Cryocooler subsystem configuration.
 
 Operating policy for the cryocooler: which PSU channel feeds the board, what
-the supply is set to, and the band FORMS is willing to drive the cooler in.
+the supply is set to, and the band formsLabCLI is willing to drive the cooler in.
 
 Device-level facts -- I2C addresses, the register map, the DAC and resistance
-encodings -- are *not* here. They live in ``lab/cryo_registers.py``, and the
+encodings -- are *not* here. They live in ``cryocooler/registers.py``, and the
 resistance helpers below are re-exported from there so there is exactly one
 copy of the fit in the tree.
 """
@@ -50,7 +50,7 @@ CRYO_OUTPUT_SUPPLY_THRESHOLD_V = 20.0
 CRYO_DEFAULT_OUTPUT_VOLTAGE_V = 17.0
 CRYO_DEFAULT_RESISTANCE_OHMS = 266.0
 
-# Band FORMS drives the cryocooler in. Narrower than what the converter can be
+# Band formsLabCLI drives the cryocooler in. Narrower than what the converter can be
 # programmed for; this is the range CAST accepts and rCryoBoard enforces.
 CCV_MIN_V = 12.0
 CCV_MAX_V = 20.0

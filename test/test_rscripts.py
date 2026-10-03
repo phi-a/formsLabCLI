@@ -62,19 +62,6 @@ def test_static_disable_is_not_even_imported(forms, script_dir, capsys):
     assert "enable = False" in capsys.readouterr().out
 
 
-def test_script_that_imports_forms_is_skipped_with_a_reason(forms, script_dir, capsys):
-    write(script_dir, "rOrbit", "import forms.bricks.frames\ndef rScript(forms): pass\n")
-    sys.modules.pop("forms", None)
-    assert rscripts.load(forms, ["rOrbit"]) == []
-    assert "needs FORMS" in capsys.readouterr().out
-
-
-def test_requires_forms_is_skipped_on_a_lab_handle(forms, script_dir, capsys):
-    write(script_dir, "rSun", "requires = ('forms',)\ndef rScript(forms): pass\n")
-    assert rscripts.load(forms, ["rSun"]) == []
-    assert "requires a FORMS handle" in capsys.readouterr().out
-
-
 def test_missing_and_entryless_scripts_are_reported(forms, script_dir, capsys):
     write(script_dir, "rNoEntry", "x = 1\n")
     assert rscripts.load(forms, ["rNoEntry", "rNowhere"]) == []

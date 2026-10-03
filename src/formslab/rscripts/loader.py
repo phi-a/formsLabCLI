@@ -13,10 +13,9 @@ Directories are searched in order, first match wins:
 Scripts are loaded by file path, not through ``sys.path``, so nothing about
 where the host was started from decides which file runs.
 
-Two module-level flags a script may set:
+One module-level flag a script may set:
 
     enable = False            never loaded (checked before import)
-    requires = ("forms",)     needs a real FORMS handle; skipped on LabForms
 
 and one optional hook:
 
@@ -72,18 +71,12 @@ def _log(forms, message: str, level: str = "INFO") -> None:
     forms.log(message=message, level=level, component="rScript")
 
 
-def _needs_forms(exc: BaseException) -> bool:
-    missing = getattr(exc, "name", None) or ""
-    return isinstance(exc, ModuleNotFoundError) and (missing == "forms" or missing.startswith("forms."))
-
-
 def load(forms, names) -> list[str]:
     """Load the named rScripts, replacing any loaded before. Returns the names
     that loaded. Nothing runs until `tick`."""
     _loaded.clear()
     _shutdown.clear()
     _last_error.clear()
-    lab = getattr(forms, "is_lab_handle", False)
 
     for raw in names:
         name = raw[:-3] if raw.endswith(".py") else raw
@@ -107,15 +100,9 @@ def load(forms, names) -> list[str]:
             spec.loader.exec_module(module)
         except Exception as exc:
             sys.modules.pop(module_name, None)
-            if _needs_forms(exc):
-                _log(forms, f"{name}: needs FORMS, which is not installed; skipped", "WARNING")
-            else:
-                _log(forms, f"{name}: import failed\n{traceback.format_exc()}", "ERROR")
+            _log(forms, f"{name}: import failed\n{traceback.format_exc()}", "ERROR")
             continue
 
-        if lab and "forms" in tuple(getattr(module, "requires", ())):
-            _log(forms, f"{name}: requires a FORMS handle; skipped on this lab run", "WARNING")
-            continue
         func = getattr(module, "rScript", None)
         if not callable(func):
             _log(forms, f"{name}: no rScript(forms) function; skipped", "WARNING")

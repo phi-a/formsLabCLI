@@ -100,12 +100,12 @@ a new tab has to declare its banner free before the frame will poll it.
 
 The base install is the console and the transports its drivers open — nothing
 else. No numpy, no matplotlib, no astrodynamics library; driving a PSU needs
-none of them, and that absence is why this package was split out of FORMS.
+none of them.
 
 ```
 pip install -e .              # console + transports
 pip install -e ".[pico]"      # + mpremote, to talk to the cryo board's Pico bridge
-pip install -e ".[analysis]"  # + matplotlib, for the scripts/ plots
+pip install -e ".[images]"    # + astropy, for scripts/fz2fits.py (sLTA frames)
 pip install -e ".[dev]"       # + pytest
 ```
 

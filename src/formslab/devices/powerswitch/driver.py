@@ -139,7 +139,7 @@ def setup_windows(
     applied = _run(command, runner=runner)
     if applied.returncode != 0:
         _print_process_failure(applied)
-        print("[hint] Re-open FORMS CLI with 'Run as administrator' and retry --setup.")
+        print("[hint] Re-open labcli with 'Run as administrator' and retry --setup.")
         return False
 
     print(f"[ok] Configured {config.adapter} for PowerSwitch {config.host}.")
@@ -176,7 +176,7 @@ def setup_linux(
         applied = _run(command, runner=runner)
         if applied.returncode != 0:
             _print_process_failure(applied)
-            print("[hint] Run FORMS CLI with sufficient network-administration privileges.")
+            print("[hint] Run labcli with sufficient network-administration privileges.")
             return False
     print(f"[ok] Configured {config.adapter} for PowerSwitch {config.host}.")
     return True

@@ -1,11 +1,8 @@
 """Where the console's per-bench configuration and mutable state live.
 
-Before the extraction none of this needed answering. `setenv.py` chdir'd into
-the FORMS checkout, so a relative path like ``cli/cmd/cmdfile.json`` resolved,
-and a `__file__`-relative write landed in a working tree that happened to be
-writable. Neither holds for an installed package: `pip install formslab` puts
-the code in site-packages, which is read-only on a shared lab machine and wiped
-on upgrade. Anything the console *writes* has to leave the package.
+An installed package cannot hold what the console writes: `pip install formslab`
+puts the code in site-packages, which is read-only on a shared lab machine and
+wiped on upgrade. Anything the console *writes* has to leave the package.
 
 Three locations, by what the thing actually is:
 
@@ -17,8 +14,7 @@ Three locations, by what the thing actually is:
   edits or backs up.
 * **Output** (``$FORMSLAB_OUTPUT_DIR``, else ``<cwd>/outputs``) -- run
   products: logs, captured frames, temperature histories. Working-directory
-  relative so a bench session's artifacts land where it was started, which is
-  how the FORMS side resolves its own outputs.
+  relative so a bench session's artifacts land where it was started.
 
 `usbmap.json` is the one file with a shipped default *and* a live copy. First
 read seeds the config copy from the packaged one, so a fresh install comes up

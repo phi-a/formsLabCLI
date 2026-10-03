@@ -2,8 +2,7 @@
 
 For work that must not stall the host loop (an exposure, a long transfer). A
 task is ``func(stop_event, *args, **kwargs)`` and should return soon after
-``stop_event`` is set. Ported unchanged in behaviour from FORMS
-``forms.utils.rTask``.
+``stop_event`` is set.
 """
 from __future__ import annotations
 

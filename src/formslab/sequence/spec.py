@@ -1,8 +1,8 @@
 """Sequence and Segment: the runtime model of a lab plan.
 
-Same shape as FORMS' ``forms.sequence.spec``: a Sequence is an ordered list of
-Segments, a Segment is a ``verb`` plus a ``params`` dict, and ``to_manifest``
-is what the event stream carries. Data only; nothing here runs.
+A Sequence is an ordered list of Segments, a Segment is a ``verb`` plus a
+``params`` dict, and ``to_manifest`` is what the event stream carries. Data
+only; nothing here runs.
 """
 from __future__ import annotations
 

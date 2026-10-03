@@ -1,4 +1,4 @@
-"""Shared PSU instance access for FORMS routines."""
+"""Shared PSU instance access for rScripts."""
 
 from typing import Dict
 

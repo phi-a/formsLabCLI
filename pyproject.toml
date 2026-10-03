@@ -37,9 +37,9 @@ labcli = "formslab.app:main"
 # `mpremote` is imported lazily inside devices/cryocooler/pico_i2c.py, so the cryo modules
 # import and test without it -- only talking to real hardware needs it.
 pico = ["mpremote"]
-# Plotting for the scripts/ analysis tools. Separate because a headless lab
-# box should not pull matplotlib in to drive a PSU.
-analysis = ["matplotlib", "numpy"]
+# scripts/fz2fits.py, which converts sLTA frames. Separate because a bench box
+# that only drives instruments should not pull astropy in.
+images = ["astropy"]
 dev = ["pytest", "pytest-xdist"]
 
 [tool.setuptools]

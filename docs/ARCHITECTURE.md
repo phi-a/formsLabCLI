@@ -9,7 +9,7 @@ hardware test sequences against them. Running those sequences is its central job
  │ ctrl  run/pause/end  │── ctrlfile ───▶ │ poll ctrl                          │
  │ cast  status, cmds   │── castfile ◀──▶ │ tick every rScript ─▶ devices/*     │
  │ psu   direct control │                 │ plan step (hold/command/until/log) │
- │ log   host output    │◀── forms.log ── │ CSV row when due                   │
+ │ log   host output    │◀── host.log ─── │ CSV row when due                   │
  └──────────────────────┘                 │ rShutdown on any exit              │
                                           └───────────────────────────────────┘
 ```

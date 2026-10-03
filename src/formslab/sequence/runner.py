@@ -1,7 +1,6 @@
 """Run a lab plan's Sequence on the wall clock.
 
-The lab counterpart of FORMS' ``SequenceRunner``. Each segment is executed by
-the loop FORMS calls a boundary, here paced in real time:
+Each step of the plan is executed by a loop paced in real time:
 
     poll       host: ctrl, and blocks while paused
     rScripts   every loaded script once -- unless the host runs each on its

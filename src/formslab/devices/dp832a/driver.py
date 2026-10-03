@@ -1,7 +1,7 @@
 """Rigol DP832A power supply: transport drivers and the `PSU` API.
 
-This is the only Rigol PSU module. The console's `psu` tab and the FORMS
-routines (through `psu_service`) both drive supplies through `PSU` here.
+This is the only Rigol PSU module. The console's `psu` tab and the rScripts
+(through `service.get_psu`) both drive supplies through `PSU` here.
 
 Two transports sit under it, chosen per resource by `driver_for_resource`:
 

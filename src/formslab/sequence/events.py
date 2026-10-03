@@ -2,8 +2,8 @@
 
 Written to ``<output>/.run/sequence.events.jsonl``: ``sequence_started``
 (carrying the manifest), ``segment_started``, ``progress``, ``segment_finished``,
-``sequence_finished`` (with ``error`` when the plan stopped). The kinds match
-FORMS' own stream. Times are wall-clock seconds.
+``sequence_finished`` (with ``error`` when the plan stopped). Times are
+wall-clock seconds.
 """
 from __future__ import annotations
 

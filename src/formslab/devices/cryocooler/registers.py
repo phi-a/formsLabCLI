@@ -48,7 +48,7 @@ CDC = 0x05
 MODE = 0x06
 STATUS = 0x07
 
-# Historic FORMS/reference-script name for VOUT_FS (0x04), kept so existing
+# Historic reference-script name for VOUT_FS (0x04), kept so existing
 # call sites and notebooks keep resolving.
 VOUT_ES = VOUT_FS
 
@@ -87,7 +87,7 @@ DIGIPOT_REGISTERS = (REG0, REG1)
 DIGIPOT_REGISTER_NAMES = {REG0: "RDAC", REG1: "EEPROM"}
 
 # Instruction byte that copies the live RDAC value into EEPROM. Never issued
-# by FORMS -- the wiper is programmed on every run -- but recorded here so the
+# by formsLabCLI -- the wiper is programmed on every run -- but recorded here so the
 # bit pattern is not rediscovered from scratch. The part needs ~25 ms after it.
 DIGIPOT_STORE_EEPROM = 0b11000000
 DIGIPOT_STORE_EEPROM_DELAY_S = 0.025
@@ -159,13 +159,13 @@ def ref_register_bytes(code):
 # Internal feedback ratios selectable through VOUT_FS bits 1:0.
 FEEDBACK_RATIOS = (0.2256, 0.1128, 0.0752, 0.0564)
 
-# FORMS drives the cryocooler on the 0.0564 setting for the whole 12-20 V
+# formsLabCLI drives the cryocooler on the 0.0564 setting for the whole 12-20 V
 # band: it is the only ratio that covers the band on one setting, at ~20 mV
 # per DAC step.
 FEEDBACK_INDEX = 3
 
 # Measured correction between commanded and delivered output voltage. Both the
-# reference bench script and the deployed FORMS firmware carry these same two
+# reference bench script and the deployed formsLabCLI firmware carry these same two
 # numbers, so they are treated as current until a fresh calibration run says
 # otherwise.
 CAL_SLOPE = 1.187
@@ -201,13 +201,13 @@ def output_from_dac_code(code, feedback_index=FEEDBACK_INDEX):
 #   75.30 + 17.43 * D   -- the fit in docs/Cyrocooler_board_docs.pdf, taken
 #                          from resistance measured across this board.
 #
-# FORMS uses the measured fit, which is what the board documentation's own
+# formsLabCLI uses the measured fit, which is what the board documentation's own
 # listing programs and what cryo_config has published since the cryocooler
 # work landed.
 #
 # Two things about it are UNRESOLVED and deliberately left as they are:
 #
-# 1. The documentation derives the code with floor(), FORMS with round().
+# 1. The documentation derives the code with floor(), formsLabCLI with round().
 #    round() is kept -- it is what the shipped code does, and it lands nearest
 #    the requested value -- but a request is therefore satisfied to within half
 #    a step (~8.7 ohm) either side, not always from below.

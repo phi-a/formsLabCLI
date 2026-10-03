@@ -1,8 +1,8 @@
 """`LabForms`: the `forms` handle every rScript receives.
 
-An rScript receives one object, ``forms``, and touches only what it offers. The
-name and the call shapes come from FORMS, where these scripts started; it is
-built on the standard library and FORMS is not involved.
+An rScript receives one object, ``forms``, and touches only what it offers.
+(The name and call shapes date from when these scripts ran inside FORMS; it is
+built on the standard library and FORMS is not involved.)
 
     log(message, level, component)       one line on stdout (the host's log)
     types.scalar(name, value, unit)      a named value; `get_variable(name)`
@@ -35,8 +35,6 @@ class Scalar:
     """A named number with a fixed unit. Setting it in another unit is an
     error rather than a silent conversion."""
 
-    registered = True
-
     def __init__(self, name: str, value=0, unit: str | None = None) -> None:
         self.name = name
         self.value = value
@@ -49,14 +47,6 @@ class Scalar:
 
     def get(self):
         return self.value
-
-    def as_record_value(self):
-        return self.value
-
-    def record(self):
-        """FORMS marks a variable for CSV here. The lab handle records every
-        variable, so this is accepted and does nothing."""
-        return self
 
     def __float__(self) -> float:
         return float(self.value)
@@ -163,8 +153,6 @@ class _Recorder:
 class LabForms:
     """The `forms` handle for a hardware-only run. See the module docstring."""
 
-    is_lab_handle = True
-
     def __init__(self, name: str = "LAB", *, record_dir: Path | None = None,
                  log_level: str = "INFO", stream=None) -> None:
         self.name = name
@@ -196,6 +184,3 @@ class LabForms:
     def list_variables(self) -> list[str]:
         return list(self._variables)
 
-    def derive(self) -> None:
-        """FORMS updates derived state here each step. Nothing is derived in a
-        hardware-only run."""

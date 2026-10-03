@@ -17,7 +17,7 @@ def log_path() -> Path:
     when it launches, and this tab reads it back. Previously the two computed it
     from different roots, so the tab could tail a file nothing was writing.
     """
-    return output_dir() / "forms.log"
+    return output_dir() / "host.log"
 
 
 # Load command definitions from logfile.json
