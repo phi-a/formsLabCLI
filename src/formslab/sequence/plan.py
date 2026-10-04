@@ -259,6 +259,30 @@ def check_text(text: str) -> list[tuple[int, str]]:
     return sorted(errors, key=lambda e: e[0])
 
 
+def needed_rscripts(text: str) -> list[str]:
+    """The rScripts the steps in plan `text` use: the owner of each instrument a
+    step commands, and of each value an `until` waits on. For the editor, to put a
+    deleted `load` line back as it was."""
+    from formslab.rscripts import cast
+
+    labels, _ = cast.owners()
+    value_owner: dict[str, str] = {}
+    for module in {id(m): m for m in labels.values()}.values():
+        for name, _unit in cast.variables(module):
+            value_owner.setdefault(name.lower(), cast.script_name(module))
+    need: set[str] = set()
+    for line in text.splitlines():
+        words = line.split()
+        if not words or words[0].startswith("#") or words[0].lower() in ("load", "record"):
+            continue
+        head = words[0].lower()
+        if head in labels:
+            need.add(cast.script_name(labels[head]))
+        elif head == "until" and len(words) > 1 and words[1].lower() in value_owner:
+            need.add(value_owner[words[1].lower()])
+    return [n for n in available_rscripts() if n in need]
+
+
 def available_rscripts() -> list[str]:
     """The rScripts a plan can `load`: every ``r*.py`` on the search path."""
     from formslab.rscripts import loader

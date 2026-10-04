@@ -17,13 +17,7 @@
     fresh: -1,     // the line just inserted as a step: empty, so it shows the step chooser, not a blank
   };
 
-  const kindOf = (line) => {
-    const t = line.trim();
-    if (!t) return "blank";
-    if (t.startsWith("#")) return "comment";
-    const head = t.split(/\s+/)[0].toLowerCase();
-    return head === "load" ? "load" : head === "record" ? "record" : "step";
-  };
+  const { kindOf, withHeader, missingHeaders } = window.PlanText;
   const splitWords = (line) => line.trim().split(/\s+/).filter(Boolean);
   const text = () => S.lines.join("\n") + "\n";
   const dirty = () => text() !== S.original;
@@ -104,7 +98,8 @@
       row.append(body);
       const tools = el("div", { class: "tools" });
       if (S.editable) {
-        for (const [label, title, fn] of [["^", "Move up", () => move(i, -1)], ["v", "Move down", () => move(i, 1)],
+        const header = kindOf(line) === "load" || kindOf(line) === "record";     // their place is fixed
+        for (const [label, title, fn] of [...(header ? [] : [["^", "Move up", () => move(i, -1)], ["v", "Move down", () => move(i, 1)]]),
                                           ["+", "Insert a step below", () => insert(i + 1, "")],
                                           ["#", "Insert a comment below", () => insert(i + 1, "# ")],
                                           ["x", "Delete this line", () => remove(i)]]) {
@@ -266,6 +261,13 @@
           class: "tok " + (k === 0 ? "verb" : "kw") + (k === 0 && current === undefined ? " empty" : ""),
           "data-fam": famOf(k === 0 ? current : words[0]) });
         if (current === undefined) sel.append(el("option", { value: "" }, k === 0 ? "add a step..." : "..."));
+        const addable = k === 0 && current === undefined ? missingHeaders(S.lines) : [];   // load / record, if deleted
+        for (const kind of addable) {
+          const opt = el("option", { value: "@" + kind }, kind + (kind === "load" ? "  (always first)" : "  (after load)"));
+          opt.title = kind === "load" ? "Which rScripts run. A plan starts with it; it goes to the top for you."
+                                      : "How often a CSV row is written. It goes right after load for you.";
+          sel.append(opt);
+        }
         const seen = new Set();
         for (const o of wordOpts) {
           if (seen.has(o.text.toLowerCase())) continue;
@@ -279,7 +281,10 @@
           if (!match) { sel.append(el("option", { value: current }, current + " (?)")); sel.classList.add("bad"); }
           sel.value = match ? match.text : current;
         }
-        sel.addEventListener("change", () => apply(words.slice(0, k).concat(sel.value ? [sel.value] : [])));
+        sel.addEventListener("change", () => {
+          if (sel.value.startsWith("@")) { addHeader(sel.value.slice(1), i); return; }
+          apply(words.slice(0, k).concat(sel.value ? [sel.value] : []));
+        });
         chain.append(sel);
       } else {                                                // a value to type, maybe also fixed words
         const listId = `dl-${i}-${k}`;
@@ -313,6 +318,23 @@
   }
 
   // --- structure -------------------------------------------------------------------------------
+
+  // Put `kind` (load or record) where it belongs, wherever it was asked from; the
+  // empty row the request came from is dropped.
+  async function addHeader(kind, fromRow) {
+    const lines = S.lines.slice();
+    if (lines[fromRow] !== undefined && kindOf(lines[fromRow]) === "blank") lines.splice(fromRow, 1);
+    let scripts = [];
+    if (kind === "load") {                                  // the scripts the steps already use, else a safe default
+      try { scripts = (await api("/api/plan/needs", { text: lines.join("\n") })).rscripts; } catch (e) { /* fall back */ }
+      if (!scripts.length) scripts = [S.available.includes("rSMTC08") ? "rSMTC08" : (S.available[0] || "")].filter(Boolean);
+    }
+    const { lines: next, index } = withHeader(lines, kind, scripts);
+    S.lines = next;
+    S.fresh = -1;
+    renderRows(); scheduleCheck(); updateButtons();
+    S.rows[index]?.row.scrollIntoView({ block: "nearest" });
+  }
 
   function insert(at, value) {
     S.lines.splice(at, 0, value);

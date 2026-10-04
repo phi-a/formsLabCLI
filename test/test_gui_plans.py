@@ -225,9 +225,14 @@ def test_reading_an_unknown_or_path_like_name_is_a_404():
 # --- over HTTP ----------------------------------------------------------------------------------------
 
 @pytest.fixture
-def client(monkeypatch):
-    with running_server(monkeypatch) as server:
-        yield Client(server).login()
+def server(monkeypatch):
+    with running_server(monkeypatch) as srv:
+        yield srv
+
+
+@pytest.fixture
+def client(server):
+    return Client(server).login()
 
 
 def test_the_editor_routes_need_a_login_and_the_header(monkeypatch):
@@ -378,3 +383,35 @@ def test_delete_and_tokens_over_http(client, monkeypatch):
     assert "tester delete plan mine" in (config.run_dir() / "gui.log").read_text(encoding="utf-8")
     code, body = client.json("POST", "/api/plan/tokens", {"text": "load rLACO\nhvc vent open\n"})
     assert code == 200 and [t["role"] for t in body["lines"][1]] == ["verb", "kw", "kw"]
+
+
+# --- which rScripts a plan's steps use (to put a deleted load line back) -----------------------------------
+
+def test_the_rscripts_the_steps_use_are_found_from_the_steps():
+    from formslab.sequence.plan import needed_rscripts
+    assert needed_rscripts("hvc vent open\nuntil chamberP above 700 timeout 1 min\n") == ["rLACO"]
+    assert needed_rscripts("psu1 ch1 on\nuntil TC01 above 30 C timeout 1 min\nhvc stop\n") == ["rLACO", "rPSU", "rSMTC08"]
+    assert needed_rscripts("# a note\nload rLACO\nrecord every 2 s\nlog hi\nhold 5 s\n") == []   # nothing uses an instrument
+    assert needed_rscripts("") == [] and needed_rscripts("hvc teleport now\nnonsense\n") == ["rLACO"]
+
+
+@pytest.mark.parametrize("name", SHIPPED)
+def test_what_the_steps_need_is_always_part_of_the_plans_load_line(name):
+    """A plan may load more than its steps use (psu1_smtc08_first loads rSMTC08 only to
+    record), never less: the inferred scripts are a subset of what the plan loads."""
+    from formslab.sequence.plan import needed_rscripts
+    text = find_plan(name).read_text(encoding="utf-8")
+    loaded = next(ln.split()[1:] for ln in text.splitlines() if ln.split()[:1] == ["load"])
+    assert set(needed_rscripts(text)) <= set(loaded)
+
+
+@pytest.mark.parametrize("name, expected", [("laco_vent", ["rLACO"]), ("laco_pumpdown", ["rLACO"]),
+                                            ("psu1_smtc08_first", ["rPSU"]), ("tvac", [])])
+def test_the_load_line_comes_back_as_the_steps_need_it(name, expected):
+    from formslab.sequence.plan import needed_rscripts
+    assert needed_rscripts(find_plan(name).read_text(encoding="utf-8")) == expected
+
+
+def test_needs_over_http(server, client):
+    assert client.json("POST", "/api/plan/needs", {"text": "hvc vent open\n"}) == (200, {"rscripts": ["rLACO"]})
+    assert Client(server).json("POST", "/api/plan/needs", {"text": ""})[0] == 401

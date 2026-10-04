@@ -24,7 +24,7 @@ from formslab import rscripts
 from formslab.rscripts import cast
 from formslab.rscripts.grammar import GrammarError
 from formslab.sequence import PlanError, discover, load_plan
-from formslab.sequence.plan import available_rscripts, check_text, line_options, tokens
+from formslab.sequence.plan import available_rscripts, check_text, line_options, needed_rscripts, tokens
 from formslab.state import cast_state_path
 
 # How often each block is republished while its owner runs (seconds). A block
@@ -352,3 +352,9 @@ def plan_tokens(text: str) -> list[list[dict]]:
     """Each line's words with their role in the grammar, for drawing it."""
     with _lock:
         return tokens(text)
+
+
+def plan_needs(text: str) -> list[str]:
+    """The rScripts a plan's steps use, for restoring its `load` line."""
+    with _lock:
+        return needed_rscripts(text)

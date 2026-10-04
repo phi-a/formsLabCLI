@@ -83,7 +83,7 @@ def test_zoom_and_pan_stay_inside_the_data(js):
     assert js["palette"] >= 8
 
 
-@pytest.mark.parametrize("script", ["app.js", "chart.js", "editor.js", "tvac.js"])
+@pytest.mark.parametrize("script", ["app.js", "chart.js", "editor.js", "tvac.js", "plantext.js"])
 def test_every_page_script_is_valid_javascript(script):
     """A syntax slip blanks the whole page, and no Python test would notice."""
     out = subprocess.run([NODE, "--check", str(CHART.parent / script)], capture_output=True, text=True, timeout=30)

@@ -81,6 +81,11 @@ Pick a plan on the left; a plan you open is shown line by line:
 
 - the `load` line is a row of checkboxes, one per rScript;
 - `record every` is a number and a unit;
+- `load` and `record` are header lines, so their place is not yours to pick: a plan
+  starts with `load`, then `record`. If you delete one, the step chooser offers it
+  again (`load  (always first)`, `record  (after load)`) and puts it back where it
+  belongs, whichever row you asked from. A restored `load` already ticks the rScripts
+  your steps use (the one that owns `hvc`, the one that publishes `chamberP`...);
 - every step is a chain of dropdowns. Choosing `hvc` narrows the next choice to
   hvc's commands, choosing `platen` makes the next box a number with its limits
   and unit (`<C -180..200 C>`), and a value that does not fit is flagged under
