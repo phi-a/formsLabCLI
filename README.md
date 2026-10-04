@@ -106,6 +106,7 @@ none of them.
 pip install -e .              # console + transports
 pip install -e ".[pico]"      # + mpremote, to talk to the cryo board's Pico bridge
 pip install -e ".[images]"    # + astropy, for scripts/fz2fits.py (sLTA frames)
+pip install -e ".[orbit]"     # + numpy/scipy/matplotlib, for formslab.orbit (orbit and environment models)
 pip install -e ".[dev]"       # + pytest
 ```
 
@@ -121,7 +122,8 @@ src/formslab/
 ├── defaults/    shipped usbmap.json and tvac_bench.json
 ├── rscripts/    the rScripts runtime: loader, gates, the `forms` handle
 ├── sequence/    lab plans: test sequences, read and run
-└── host/        the process that runs a plan
+├── host/        the process that runs a plan
+└── orbit/       orbit, view-factor and environment models ([orbit] extra; nothing above imports it)
 rScripts/        the routines that own the instruments during a run
 plans/           lab plans, e.g. psu1_smtc08_first.plan
 scripts/         launchers and standalone analysis tools

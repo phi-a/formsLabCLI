@@ -40,6 +40,10 @@ pico = ["mpremote"]
 # scripts/fz2fits.py, which converts sLTA frames. Separate because a bench box
 # that only drives instruments should not pull astropy in.
 images = ["astropy"]
+# formslab.orbit: the orbit, view-factor and radiative-environment models used
+# to simulate test conditions. The numpy stack stays out of the base install;
+# nothing in the console or host imports formslab.orbit.
+orbit = ["numpy>=1.24", "scipy>=1.10", "matplotlib>=3.8"]
 dev = ["pytest", "pytest-xdist"]
 
 [tool.setuptools]
