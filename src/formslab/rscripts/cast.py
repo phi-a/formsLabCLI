@@ -1,60 +1,56 @@
 """Cast commands declared by rScripts.
 
-An rScript that owns CAST labels declares its console commands next to the code
-that applies them -- plain data plus one pure function:
+An rScript that owns CAST labels declares, as data, the commands it accepts and
+the values it publishes (see `formslab.rscripts.grammar` for the patterns):
 
-    CAST_LABELS = ("hvc",)
-    CAST_HELP = [("hvc platen <C>", "Platen setpoint, C"), ...]    # (usage, meaning)
+    CAST_LABELS = ("psu1", "psu2")
+    COMMANDS = [("<ch:ch1|ch2|ch3> on|off", "Channel output",
+                 lambda ch, s: {ch[2:]: {"on": s == "on"}}), ...]
+    VARIABLES = [("PSU1_CH1_V", "V"), ...]       # (name, unit); [] if none
 
-    def cast_request(label, words):        # words typed after the label
-        ...                                # -> the request dict, or raise CastUsage
+Either may be a function returning the list, for a script whose commands depend
+on the bench (rLACO reads its zones from tvac_bench.json). Importing a script
+must not touch hardware, start threads or write files: the console imports it
+to read these.
 
-Two processes use them. The console's cast panel imports the script (importing
-must not touch hardware), turns `hvc vent open` into ``{"vent": "open"}`` and
-writes it to CAST. The host runs the same script, which reads the request back
-from CAST and applies it. So a command means the same thing typed in the panel,
-written by a lab plan, or sent by any other CAST writer.
+Two processes use them. The console's cast tab (and a plan, and `labcli cast`)
+turns `hvc vent open` into ``{"vent": "open"}`` and writes it to CAST. The host
+runs the same script, which reads the request back from CAST and applies it. So
+a command means the same thing however it is sent.
 """
 from __future__ import annotations
 
+import copy
 import importlib.util
-import math
 from pathlib import Path
 
+from formslab.rscripts.grammar import Grammar, GrammarError, Option
 from formslab.rscripts.loader import search_dirs
 
+__all__ = ["Grammar", "GrammarError", "Option", "commands", "complete", "grammar",
+           "help_rows", "owners", "request", "variables"]
 
-class CastUsage(ValueError):
-    """The words do not make a request; the message says what would."""
-
-
-# --- helpers for cast_request implementations ----------------------------------
-
-def number(word: str, what: str, lo: float | None = None, hi: float | None = None) -> float:
-    try:
-        v = float(word)
-    except ValueError:
-        raise CastUsage(f"{what}: {word!r} is not a number") from None
-    if not math.isfinite(v):
-        raise CastUsage(f"{what}: {word!r} is not a number")
-    if (lo is not None and v < lo) or (hi is not None and v > hi):
-        raise CastUsage(f"{what} {v:g} is outside {lo:g}..{hi:g}")
-    return v
+# Plan keywords: a CAST label may not be one of these.
+RESERVED = ("hold", "until", "log", "load", "record")
 
 
-def integer(word: str, what: str, lo: int | None = None, hi: int | None = None) -> int:
-    v = number(word, what, lo, hi)
-    if v != int(v):
-        raise CastUsage(f"{what}: {word!r} is not a whole number")
-    return int(v)
+def _declared(module, attr: str) -> list:
+    value = getattr(module, attr, ())
+    return list(value() if callable(value) else value)
 
 
-def choice(word: str, words: tuple[str, str], what: str) -> bool:
-    """True for words[0], False for words[1] (e.g. ("on", "off"))."""
-    w = word.lower()
-    if w not in words:
-        raise CastUsage(f"{what}: expected {' or '.join(words)}, got {word!r}")
-    return w == words[0]
+def commands(module) -> list[tuple]:
+    """A script's (pattern, help, builder) list."""
+    return _declared(module, "COMMANDS")
+
+
+def variables(module) -> list[tuple[str, str | None]]:
+    """A script's (name, unit) list of the values it publishes."""
+    return [(n, u or None) for n, u in _declared(module, "VARIABLES")]
+
+
+def script_name(module) -> str:
+    return module.__name__.split(".")[-1]
 
 
 # --- discovery ---------------------------------------------------------------------
@@ -90,21 +86,57 @@ def owners() -> tuple[dict[str, object], dict[str, str]]:
                 errors[path.stem] = f"{type(exc).__name__}: {exc}"
                 continue
             for label in getattr(module, "CAST_LABELS", ()):
-                labels.setdefault(label, module)
+                labels.setdefault(label.lower(), module)
     return labels, errors
+
+
+# --- the composed grammar ----------------------------------------------------------
+
+def _request_only(label, request):
+    return request
+
+
+def label_commands(scripts=None, build=_request_only) -> list[tuple]:
+    """Every declared command behind its label (``hvc vent open``), for the
+    scripts named in `scripts` (all on the path when None). Each builder
+    returns ``build(label, request)``."""
+    labels, _ = owners()
+    out = []
+    for label, module in labels.items():
+        if scripts is not None and script_name(module) not in scripts:
+            continue
+        if label in RESERVED:
+            raise GrammarError(f"{script_name(module)}: CAST label {label!r} is a plan keyword")
+        for pattern, help, builder in commands(module):
+            out.append((f"{label} {pattern}", help, _bound(label, builder, build)))
+    return out
+
+
+def _bound(label, builder, build):
+    def make(*captures):
+        req = builder(*captures) if callable(builder) else copy.deepcopy(builder)
+        if not isinstance(req, dict) or not req:
+            raise GrammarError(f"{label}: nothing to send")
+        return build(label, req)
+    return make
+
+
+def grammar(scripts=None) -> Grammar:
+    return Grammar(label_commands(scripts))
 
 
 def request(label: str, words: list[str]) -> dict:
     """The request dict for `label` from the words typed after it."""
     labels, _ = owners()
-    module = labels.get(label)
-    if module is None:
-        raise CastUsage(f"no rScript declares CAST label {label!r} "
-                        f"(declared: {', '.join(sorted(labels)) or 'none'})")
-    req = module.cast_request(label, list(words))
-    if not isinstance(req, dict) or not req:
-        raise CastUsage(f"{label}: nothing to send")
-    return req
+    module = labels.get(label.lower())
+    if module is not None and not commands(module):
+        raise GrammarError(f"{label} takes no commands: `status {label}` shows its readings")
+    return grammar().parse([label, *words])
+
+
+def complete(words: list[str]) -> list[Option]:
+    """What can come after `words` in a cast command."""
+    return grammar().complete(words)
 
 
 def help_rows() -> list[tuple[str, str, str]]:
@@ -115,6 +147,7 @@ def help_rows() -> list[tuple[str, str, str]]:
         if id(module) in done:
             continue
         done.add(id(module))
-        script = module.__name__.split(".")[-1]
-        rows += [(script, usage, meaning) for usage, meaning in getattr(module, "CAST_HELP", ())]
+        prefix = "|".join(module.CAST_LABELS)
+        rows += [(script_name(module), f"{prefix} {usage}", meaning)
+                 for usage, meaning in Grammar(commands(module)).rows()]
     return rows

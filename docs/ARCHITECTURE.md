@@ -27,9 +27,11 @@ hardware test sequences against them. Running those sequences is its central job
 CAST (`castfile.json`) is the bus between them: a request block per instrument
 label (`hvc`, `tc`, `psu1`, `psu2`, `cryo`, `slta`), written by the console or a
 plan and taken by the routine that owns that label, which writes back a status
-block. Each routine declares its own console commands (`CAST_LABELS`,
-`CAST_HELP`, `cast_request` -- see rScripts/README.md), so the cast tab, a plan's
-`cast` step and the routine always agree on what a command means.
+block. Each routine declares its own commands and published values as data
+(`CAST_LABELS`, `COMMANDS`, `VARIABLES` -- see rScripts/README.md), read by one
+grammar (`rscripts/grammar.py`), so the cast tab, a plan and the routine always
+agree on what a command means, and the same declarations answer "what can come
+next" for completion.
 
 ## Everything is a plan
 

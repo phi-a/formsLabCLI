@@ -16,7 +16,6 @@ import time
 from formslab.console.cast.castutils import UpdateStatus
 from formslab.devices.smtc08.driver import SMTC08
 from formslab.rscripts import C2K, RScriptControl
-from formslab.rscripts.cast import CastUsage
 
 name = os.path.splitext(os.path.basename(__file__))[0]
 
@@ -25,12 +24,9 @@ CHANNELS = 8
 POLL_INTERVAL = 2.0
 RETRY_INTERVAL = 30.0
 
-CAST_LABELS = ("tc",)
-CAST_HELP = []
-
-
-def cast_request(label, words):
-    raise CastUsage("tc is read-only: `status tc` shows the thermocouples")
+CAST_LABELS = ("tc",)          # read-only: no commands
+COMMANDS = []
+VARIABLES = [(f"TC{first + i:02d}", "K") for first in BOARDS.values() for i in range(CHANNELS)]
 
 
 class rGlobal:

@@ -30,17 +30,28 @@ Found by name in `$FORMSLAB_RSCRIPTS_DIR`, then `<cwd>/rScripts`, then here.
 
 ## Cast commands
 
-A routine declares its console commands beside the code that applies them
-(`src/formslab/rscripts/cast.py`):
+A routine declares, as data beside the code that applies them, the commands it
+takes and the values it publishes (`src/formslab/rscripts/grammar.py` has the
+pattern syntax):
 
-    CAST_LABELS = ("hvc",)
-    CAST_HELP = [("hvc vent open|close", "Vent valve ..."), ...]
-    def cast_request(label, words): ...      # words after the label -> request dict
+    CAST_LABELS = ("psu1", "psu2")
+    COMMANDS = [
+        ("<ch:ch1|ch2|ch3> on|off", "Channel output",
+         lambda ch, s: {ch[2:]: {"on": s == "on"}}),
+        ("<ch:ch1|ch2|ch3> set <V:number 0..32 V> <A:number 0..3.2 A>", "Setpoints",
+         lambda ch, v, a: {ch[2:]: {"voltage": v, "current": a}}),
+        ("update", "Read the supply now", {"update": True}),
+    ]
+    VARIABLES = [("PSU1_CH1_V", "V"), ...]      # (name, unit) of every value it publishes
+
+Either list may be a function returning it, when it depends on the bench (rLACO
+reads its zones from `tvac_bench.json`). Importing a routine must not touch
+hardware, start threads or write files: the console imports it to read these.
 
 The cast tab turns `hvc vent open` into `{"vent": "open"}` and writes it to the
-CAST `hvc` block; rLACO, running in the host, applies it. A plan step
-`{"cast": "hvc vent open"}` means exactly the same. `help` in the cast tab lists
-every command the routines declare.
+CAST `hvc` block; rLACO, running in the host, applies it. The same words in a
+plan mean exactly the same. In the cast tab, `help` lists every command and a
+trailing `?` (`hvc platen ?`) lists what can come next.
 
 ## The routines
 

@@ -270,7 +270,7 @@ def _cast(where, op) -> Segment:
         raise PlanError(f"{where}: cast takes the words typed in the cast tab, e.g. \"hvc pump on\"")
     try:
         request = cast.request(words[0], words[1:])
-    except cast.CastUsage as e:
+    except cast.GrammarError as e:
         raise PlanError(f"{where}: {e}") from None
     seg = _command(where, {"command": words[0], "request": request,
                            **({"timeout_s": op["timeout_s"]} if "timeout_s" in op else {})})

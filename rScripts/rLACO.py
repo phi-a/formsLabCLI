@@ -9,9 +9,9 @@
 #     (~1.5 s) so the cast tab shows the effect quickly,
 #   - appends the full reading to outputs/LACO.jsonl every LOG_INTERVAL s.
 #
-# The console commands are declared below (CAST_HELP / cast_request): typing
-# `hvc vent open` in the cast panel writes {"vent": "open"} to CAST "hvc", and
-# this script applies it. `LACO.apply` documents the whole request grammar.
+# The console commands are declared below (COMMANDS): typing `hvc vent open`
+# in the cast tab writes {"vent": "open"} to CAST "hvc", and this script applies
+# it. `LACO.apply` documents the whole request grammar.
 #
 # On host stop: if this run started pumping (pump on or rough valve opened) and
 # it is still pumping, rShutdown ends it (rough closed, pump off). Everything
@@ -26,7 +26,6 @@ from formslab.config import output_dir
 from formslab.console.cast.castutils import CommandPending, ReadCommand, UpdateStatus
 from formslab.devices.hvc3500.laco import LACO, OPERATIONS, PUMPS, VALVES
 from formslab.rscripts import C2K
-from formslab.rscripts.cast import CastUsage, choice, integer, number
 
 name = os.path.splitext(os.path.basename(__file__))[0]
 LABEL = "hvc"
@@ -35,71 +34,57 @@ RETRY_INTERVAL = 30.0      # seconds between connect attempts while unreachable
 # --- console commands --------------------------------------------------------------
 
 CAST_LABELS = (LABEL,)
-CAST_HELP = [
-    ("hvc platen <C>", "Platen setpoint, C (refused outside the profile limits)"),
-    ("hvc shroud <C>", "Shroud setpoint, C"),
-    ("hvc <zone> on|off", "Thermal control for a zone (!ZS/!ZO)"),
-    ("hvc <zone> rate <C/min>", "Zone rate setpoint"),
-    ("hvc <zone> range <C>", "Zone control range"),
-    ("hvc vacuum <P>", "Vacuum setpoint (profile pressure unit)"),
-    ("hvc vacuum range <P>", "Vacuum control range"),
-    ("hvc vacuum rate <value>", "Vacuum rate control"),
-    ("hvc hold <s>", "Hold time"),
-    ("hvc recipe <n>", "Select recipe n"),
-    ("hvc recipe start|stop", "Run / stop the selected recipe (!RS/!RO)"),
-    ("hvc start", "Start the cycle, or continue a held step (!CS)"),
-    ("hvc abort", "Abort the running cycle (!CA)"),
-    ("hvc reset", "Reset the controller; starts its recovery (!CR)"),
-    ("hvc vent2atm|fill2atm|purge|closeall", "Cycle vacuum operation (!VA/!FA/!PS/!NA); "
-                                             "acts only inside a running cycle"),
-    ("hvc rough|vent|fill|foreline|gate open|close", "A valve: read first, verified; PLC interlocks apply"),
-    ("hvc pump|turbo on|off", "A pump: read first, verified; PLC interlocks apply"),
-    ("hvc stop", "End pumping: rough valve closed, then pump off"),
-]
 
 
-def cast_request(label, words):
+def COMMANDS():
+    """Every hvc command. Zone names and setpoint limits come from this bench's
+    tvac_bench.json, so the list is built on use, not at import."""
     from formslab.devices.hvc3500 import load_profile
 
     profile = load_profile()
-    if not words:
-        raise CastUsage("hvc <command>; `help` lists them")
-    w, rest = words[0].lower(), words[1:]
-    n = len(rest)
+    cmds = []
+    for z in profile.zones:
+        lo, hi = profile.setpoint_bounds(z)
+        cmds += [
+            (f"{z} <C:number {lo:g}..{hi:g} C>", f"{z} setpoint (refused outside the profile limits)",
+             lambda c, z=z: {z: c}),
+            (f"{z} on|off", f"{z} thermal control (!ZS/!ZO)", lambda s, z=z: {f"{z}_control": s == "on"}),
+            (f"{z} rate <rate:number 0.. C/min>", f"{z} rate setpoint", lambda r, z=z: {f"{z}_rate": r}),
+            (f"{z} range <range:number 0.. C>", f"{z} control range", lambda r, z=z: {f"{z}_range": r}),
+        ]
+    unit = profile.pressure_unit
+    ops = "|".join(op for op in OPERATIONS if op != "close_all")
+    return cmds + [
+        (f"vacuum <P:number 0.. {unit}>", "Vacuum setpoint", lambda p: {"vacuum": p}),
+        (f"vacuum range <P:number 0.. {unit}>", "Vacuum control range", lambda p: {"vacuum_range": p}),
+        ("vacuum rate <rate:number 0..>", "Vacuum rate control", lambda r: {"vacuum_rate": r}),
+        ("hold <s:number 0.. s>", "Hold time", lambda t: {"hold_s": t}),
+        ("recipe <n:integer 1..20>", "Select recipe n", lambda n: {"recipe": n}),
+        ("recipe start|stop", "Run / stop the selected recipe (!RS/!RO)",
+         lambda w: {"recipe_run": w == "start"}),
+        ("start", "Start the cycle, or continue a held step (!CS)", {"start": True}),
+        ("abort", "Abort the running cycle (!CA)", {"abort": True}),
+        ("reset", "Reset the controller; starts its recovery (!CR)", {"reset": True}),
+        (f"<operation:{ops}>", "Cycle vacuum operation (!VA/!FA/!PS); acts only inside a running cycle",
+         lambda op: {op: True}),
+        ("closeall", "Close all valves in a running cycle (!NA)", {"close_all": True}),
+        (f"<valve:{'|'.join(VALVES)}> open|close", "A valve: read first, verified; PLC interlocks apply",
+         lambda v, a: {v: a}),
+        (f"<pump:{'|'.join(PUMPS)}> on|off", "A pump: read first, verified; PLC interlocks apply",
+         lambda p, s: {p: s}),
+        ("stop", "End pumping: rough valve closed, then pump off", {"stop_pumping": True}),
+    ]
 
-    if w in profile.zones:
-        lo, hi = profile.setpoint_bounds(w)
-        if n == 1 and rest[0].lower() in ("on", "off"):
-            return {f"{w}_control": rest[0].lower() == "on"}
-        if n == 1:
-            return {w: number(rest[0], f"{w} setpoint C", lo, hi)}
-        if n == 2 and rest[0].lower() in ("rate", "range"):
-            return {f"{w}_{rest[0].lower()}": number(rest[1], f"{w} {rest[0]}", 0)}
-        raise CastUsage(f"hvc {w} <C> | on | off | rate <C/min> | range <C>")
-    if w == "vacuum":
-        if n == 1:
-            return {"vacuum": number(rest[0], "vacuum setpoint", 0)}
-        if n == 2 and rest[0].lower() in ("range", "rate"):
-            return {f"vacuum_{rest[0].lower()}": number(rest[1], f"vacuum {rest[0]}", 0)}
-        raise CastUsage("hvc vacuum <P> | range <P> | rate <value>")
-    if w == "hold" and n == 1:
-        return {"hold_s": number(rest[0], "hold time s", 0)}
-    if w == "recipe" and n == 1:
-        if rest[0].lower() in ("start", "stop"):
-            return {"recipe_run": rest[0].lower() == "start"}
-        return {"recipe": integer(rest[0], "recipe", 1, 20)}
-    if w in ("start", "abort", "reset") and n == 0:
-        return {w: True}
-    op = "close_all" if w == "closeall" else w
-    if op in OPERATIONS and n == 0:
-        return {op: True}
-    if w in VALVES and n == 1:
-        return {w: "open" if choice(rest[0], ("open", "close"), w) else "close"}
-    if w in PUMPS and n == 1:
-        return {w: "on" if choice(rest[0], ("on", "off"), w) else "off"}
-    if w == "stop" and n == 0:
-        return {"stop_pumping": True}
-    raise CastUsage(f"unknown hvc command {' '.join(words)!r}; `help` lists them")
+
+def VARIABLES():
+    from formslab.devices.hvc3500 import load_profile
+
+    profile = load_profile()
+    out = [("chamberP", profile.pressure_unit)]
+    out += [(f"HVC_{sensor}", "K") for sensor in profile.sensors]
+    for z in profile.zones:
+        out += [(f"{z}T", "K"), (f"{z}_effSP", "K"), (f"target_{z}", "K")]
+    return out
 
 
 # --- the routine -------------------------------------------------------------------

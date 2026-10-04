@@ -20,7 +20,6 @@ from formslab.devices.dp832a.commands import (
     queue_psu_request,
     wait_for_psu_channel,
 )
-from formslab.rscripts.cast import CastUsage, choice, integer
 
 # --- Constants ---
 name = os.path.splitext(os.path.basename(__file__))[0]
@@ -28,44 +27,21 @@ name = os.path.splitext(os.path.basename(__file__))[0]
 # --- console commands (see formslab.rscripts.cast) ---------------------------------
 
 CAST_LABELS = ("slta",)
-CAST_HELP = [
-    ("slta image", "Capture one image now"),
-    ("slta run on|off", "Umbra-triggered captures (SLTARUN)"),
-    ("slta exposure <s>|auto", "Exposure 1-3600 s, or auto (umbra-based)"),
-    ("slta idle <s>", "Idle polling interval, 1-600 s"),
-    ("slta nsamp <n>", "Samples per pixel, 1-1000"),
-    ("slta clear <s>", "Clear dwell, 0-600 s"),
-    ("slta version v1|v2", "Driver version"),
-    ("slta imagedir <name>|default", "Image subdirectory (no spaces)"),
-    ("slta startup|shutdown", "Power the camera supply up / down"),
+COMMANDS = [
+    ("image", "Capture one image now", {"image": True}),
+    ("run on|off", "Umbra-triggered captures (SLTARUN)", lambda s: {"SLTARUN": s == "on"}),
+    ("exposure <s:integer 1..3600 s>", "Exposure time", lambda t: {"exposure": t}),
+    ("exposure auto", "Exposure from the umbra duration", {"exposureAuto": True}),
+    ("idle <s:integer 1..600 s>", "Idle polling interval", lambda t: {"idle": t}),
+    ("nsamp <n:integer 1..1000>", "Samples per pixel", lambda n: {"nsamp": n}),
+    ("clear <s:integer 0..600 s>", "Clear dwell", lambda t: {"clear": t}),
+    ("version v1|v2", "Driver version", lambda v: {"version": v}),
+    ("imagedir <name:text>", "Image subdirectory (no spaces); `default` resets it",
+     lambda n: {"IMAGEDIR": n}),
+    ("startup|shutdown", "Power the camera supply up / down", lambda w: {w: True}),
 ]
+VARIABLES = []
 
-
-def cast_request(label, words):
-    usage = "slta image | run on|off | exposure <s>|auto | idle <s> | nsamp <n> | clear <s> | version v1|v2 | imagedir <name> | startup | shutdown"
-    if len(words) == 1:
-        w = words[0].lower()
-        if w == "image":
-            return {"image": True}
-        if w in ("startup", "shutdown"):
-            return {w: True}
-    if len(words) == 2:
-        w, v = words[0].lower(), words[1]
-        if w == "run":
-            return {"SLTARUN": choice(v, ("on", "off"), "slta run")}
-        if w == "exposure":
-            return {"exposureAuto": True} if v.lower() == "auto" else {"exposure": integer(v, "exposure s", 1, 3600)}
-        if w == "idle":
-            return {"idle": integer(v, "idle s", 1, 600)}
-        if w == "nsamp":
-            return {"nsamp": integer(v, "nsamp", 1, 1000)}
-        if w == "clear":
-            return {"clear": integer(v, "clear s", 0, 600)}
-        if w == "version" and v.lower() in ("v1", "v2"):
-            return {"version": v.lower()}
-        if w == "imagedir":
-            return {"IMAGEDIR": v}
-    raise CastUsage(usage)
 # --- Encapsulated State ---
 class rGlobal:
     disable = False

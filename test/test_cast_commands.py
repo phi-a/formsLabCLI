@@ -77,16 +77,20 @@ def test_laco_apply_understands_every_command_request(laco):
 
 
 @pytest.mark.parametrize("typed, message", [
-    ("platen 500", "outside"),          # profile limit 200 C
-    ("platen hot", "not a number"),
-    ("pump open", "expected on or off"),
-    ("recipe 99", "outside"),
-    ("teleport", "unknown hvc command"),
-    ("", "hvc <command>"),
+    ("platen 500", "hvc platen: 500 is outside -180..200 C"),     # profile limit 200 C
+    ("shroud 150", "outside -180..120 C"),                        # each zone its own limits
+    ("platen hot", "expected <C> (-180..200 C), on, off, rate or range after 'hvc platen', got 'hot'"),
+    ("pump open", "expected on or off after 'hvc pump', got 'open'"),
+    ("recipe 99", "outside 1..20"),
+    ("vacuum -5", "must be >= 0"),                                # was a TypeError
+    ("teleport", "after 'hvc', got 'teleport'"),
+    ("vnt open", "did you mean 'vent'?"),
+    ("", "incomplete: expected one of platen"),
 ])
 def test_laco_refuses_what_it_cannot_send(typed, message):
-    with pytest.raises(cast.CastUsage, match=message):
+    with pytest.raises(cast.GrammarError) as e:
         cast.request("hvc", typed.split())
+    assert message in str(e.value)
 
 
 @pytest.mark.parametrize("label, typed, expected", [
@@ -114,8 +118,82 @@ def test_instrument_commands(label, typed, expected):
     ("psu1", "ch4 on"), ("psu1", "ch1 set 40 1"), ("cryo", "ccv 25"), ("tc", "anything"),
 ])
 def test_instrument_commands_refuse_bad_input(label, typed):
-    with pytest.raises(cast.CastUsage):
+    with pytest.raises(cast.GrammarError):
         cast.request(label, typed.split())
+
+
+def test_a_read_only_label_says_so():
+    with pytest.raises(cast.GrammarError, match="tc takes no commands"):
+        cast.request("tc", ["anything"])
+
+
+def test_an_unknown_label_suggests_one():
+    with pytest.raises(cast.GrammarError, match="did you mean 'hvc'"):
+        cast.request("hcv", ["stop"])
+
+
+def test_labels_and_keywords_ignore_case():
+    assert cast.request("HVC", ["Vent", "OPEN"]) == {"vent": "open"}
+    assert cast.request("psu1", ["CH2", "On"]) == {"2": {"on": True}}
+
+
+def test_complete_is_what_a_dropdown_lists():
+    first = [o.text for o in cast.complete([])]
+    assert {"hvc", "psu1", "psu2", "cryo", "slta"} <= set(first) and "tc" not in first
+    after = cast.complete(["hvc", "platen"])
+    assert str(after[0]) == "<C> (-180..200 C)"
+    assert [o.text for o in after[1:]] == ["on", "off", "rate", "range"]
+    assert [o.text for o in cast.complete(["psu1", "ch1", "set"])] == ["V"]
+
+
+def _declared(script):
+    labels, _ = cast.owners()
+    module = next(m for m in labels.values() if cast.script_name(m) == script)
+    return dict(cast.variables(module))
+
+
+def test_rlaco_declares_what_it_publishes(laco):
+    """Every value rLACO publishes off a real reading is in its VARIABLES, with
+    the same unit -- a plan's `until` is checked against that list."""
+    import importlib.util
+    from formslab.rscripts import Run
+    path = next(d / "rLACO.py" for d in rscripts.search_dirs() if (d / "rLACO.py").exists())
+    spec = importlib.util.spec_from_file_location("rLACO_publish_check", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    laco.apply({"platen": 25.0})
+    run = Run()
+    module._publish(run, laco, laco.status())
+    declared = _declared("rLACO")
+    assert run.names() and set(run.names()) <= set(declared)
+    assert all(declared[n] == run.variable(n).unit for n in run.names())
+
+
+def test_every_other_script_declares_its_published_names():
+    psu = _declared("rPSU")
+    assert psu["PSU1_CH1_V"] == "V" and psu["PSU2_CH3_I"] == "A" and psu["PSU1_CH2_ON"] is None
+    tc = _declared("rSMTC08")
+    assert list(tc) == [f"TC{i:02d}" for i in range(1, 17)] and set(tc.values()) == {"K"}
+    assert _declared("rCryoBoard") == {} and _declared("rSLTA") == {}
+
+
+def test_reading_the_declarations_touches_nothing(tmp_path, monkeypatch):
+    """The console imports every rScript to read its commands: no threads, no
+    files, no hardware. Only building rLACO's list reads (and seeds) the profile."""
+    import threading
+    from formslab import config
+    cast._cache.clear()
+    threads = threading.active_count()
+    labels, errors = cast.owners()
+    assert errors == {} and threading.active_count() == threads
+    assert list(config.config_dir().iterdir()) == [] and list(config.output_dir().iterdir()) == []
+
+
+def test_the_shipped_commands_are_unambiguous():
+    """Every command in the tables parses to exactly one meaning (a zone named
+    like a keyword would make two match)."""
+    for typed in HVC:
+        cast.request("hvc", typed.split())
 
 
 def test_every_label_has_an_owner_and_a_cast_block():
@@ -133,6 +211,12 @@ def test_the_tab_writes_the_request_and_says_so():
     assert ReadCommand("hvc") == {"vent": "open"}
 
 
+def test_the_tab_lists_what_can_come_next():
+    text = castcli.execute_command(["hvc", "pump", "?"]).content.plain
+    assert "on" in text and "off" in text and "A pump" in text
+    assert ReadCommand("hvc") == {}
+
+
 def test_the_tab_reports_usage_without_writing():
     result = castcli.execute_command(["hvc", "platen", "900"])
     assert "outside" in result.content.plain
@@ -141,6 +225,6 @@ def test_the_tab_reports_usage_without_writing():
 
 def test_help_lists_every_scripts_commands():
     text = castcli.help_panel().content.plain
-    for usage in ("hvc platen <C>", "hvc stop", "psu1|psu2 ch<n> set <V> <A>",
-                  "cryo ccv <V>", "slta image"):
+    for usage in ("hvc platen <C>", "hvc stop", "psu1|psu2 <ch> set <V> <A>",
+                  "cryo ccv <V>", "slta image", "hvc <valve> open|close"):
         assert usage in text

@@ -8,8 +8,8 @@
 #   {"1": {"ovp": 6.0, "ocp": 0.2, "protect": true}}
 #   {"update": true}                            refresh the status now
 #
-# PSU1 is read every PSU1_POLL_INTERVAL s and published as scalars
-# PSU1_CH<n>_V / _I / _ON, so a run's CSV has the supply beside everything else.
+# Each supply's readings are published as PSU<n>_CH<c>_V / _I / _ON, so a
+# run's CSV has the supplies beside everything else.
 # On host stop, rShutdown turns off every channel this run switched on.
 # Supplies disabled in usbmap.json are not opened.
 import math
@@ -20,39 +20,23 @@ from formslab.console.cast.castutils import ReadCommand, UpdateStatus
 from formslab.devices.dp832a.config import enabled_psu_labels
 from formslab.devices.dp832a.service import get_psu
 from formslab.rscripts import RScriptControl
-from formslab.rscripts.cast import CastUsage, choice, integer, number
 
 # --- console commands (see formslab.rscripts.cast) ---------------------------------
 
 CAST_LABELS = ("psu1", "psu2")
-CAST_HELP = [
-    ("psu1|psu2 ch<n> set <V> <A>", "Channel setpoints: volts and current limit"),
-    ("psu1|psu2 ch<n> on|off", "Channel output"),
-    ("psu1|psu2 ch<n> protect <OVP V> <OCP A>", "Over-voltage / over-current protection on"),
-    ("psu1|psu2 ch<n> protect off", "Protection off"),
-    ("psu1|psu2 update", "Read the supply now"),
+_CH = "<ch:ch1|ch2|ch3>"
+COMMANDS = [
+    (f"{_CH} set <V:number 0..32 V> <A:number 0..3.2 A>", "Channel setpoints: volts and current limit",
+     lambda ch, v, a: {ch[2:]: {"voltage": v, "current": a}}),
+    (f"{_CH} on|off", "Channel output", lambda ch, s: {ch[2:]: {"on": s == "on"}}),
+    (f"{_CH} protect <OVP:number 0.01..33 V> <OCP:number 0.001..3.3 A>",
+     "Over-voltage / over-current protection on",
+     lambda ch, v, a: {ch[2:]: {"ovp": v, "ocp": a, "protect": True}}),
+    (f"{_CH} protect off", "Protection off", lambda ch: {ch[2:]: {"protect": False}}),
+    ("update", "Read the supply now", {"update": True}),
 ]
-
-
-def cast_request(label, words):
-    usage = f"{label} ch<1-3> set <V> <A> | on | off | protect <V> <A> | protect off; {label} update"
-    if words == ["update"]:
-        return {"update": True}
-    if len(words) < 2 or not words[0].lower().startswith("ch"):
-        raise CastUsage(usage)
-    ch = str(integer(words[0][2:], "channel", 1, 3))
-    verb, args = words[1].lower(), words[2:]
-    if verb in ("on", "off") and not args:
-        return {ch: {"on": verb == "on"}}
-    if verb == "set" and len(args) == 2:
-        return {ch: {"voltage": number(args[0], "voltage V", 0, 32),
-                     "current": number(args[1], "current A", 0, 3.2)}}
-    if verb == "protect" and args == ["off"]:
-        return {ch: {"protect": False}}
-    if verb == "protect" and len(args) == 2:
-        return {ch: {"ovp": number(args[0], "OVP V", 0.01, 33),
-                     "ocp": number(args[1], "OCP A", 0.001, 3.3), "protect": True}}
-    raise CastUsage(usage)
+VARIABLES = [(f"PSU{n}_CH{c}_{q}", unit) for n in (1, 2) for c in (1, 2, 3)
+             for q, unit in (("V", "V"), ("I", "A"), ("ON", None))]
 
 
 name = os.path.splitext(os.path.basename(__file__))[0]

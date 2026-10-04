@@ -6,10 +6,12 @@
     help                   every command the rScripts declare
     init                   regenerate a clean castfile.json
 
+    <label> <words...> ?   what can come next, e.g. `hvc platen ?`
+
 The commands are not defined here. Each rScript declares its own (CAST_LABELS,
-CAST_HELP, cast_request -- see formslab.rscripts.cast); this tab turns the words
-into that script's request and writes it to CAST, where the script, running in
-the host, applies it. With no host running a request waits, shown as pending.
+COMMANDS -- see formslab.rscripts.cast); this tab turns the words into that
+script's request and writes it to CAST, where the script, running in the host,
+applies it. With no host running a request waits, shown as pending.
 """
 import json
 import time
@@ -173,6 +175,22 @@ def status_panel(label: str = None) -> CLIResult:
 
 # --- commands -----------------------------------------------------------------------
 
+def _next_words(words: list[str]) -> CLIResult:
+    """What can follow `words`: the console's hint, and what a GUI would list."""
+    try:
+        options = cast.complete(words)
+    except Exception as e:
+        return CLIResult(Text(f"✗ {type(e).__name__}: {e}", style=ERROR))
+    if not options:
+        return CLIResult(Text(f"✗ nothing can follow {' '.join(words)!r}", style=ERROR))
+    r = Text()
+    r.append(f"after {' '.join(words) or 'nothing'}:\n" if words else "a command starts with:\n", HEADER)
+    for o in options:
+        r.append(f"  {str(o):<28}", LABEL)
+        r.append((o.help or "") + "\n", TEXT)
+    return CLIResult(r)
+
+
 def execute_command(args: list[str]) -> CLIResult:
     if not args:
         return help_panel()
@@ -185,9 +203,11 @@ def execute_command(args: list[str]) -> CLIResult:
     if cmd == "status":
         return status_panel(args[1] if len(args) > 1 else None)
 
+    if args[-1] == "?":
+        return _next_words(args[:-1])
     try:
         request = cast.request(cmd, args[1:])
-    except cast.CastUsage as e:
+    except cast.GrammarError as e:
         return CLIResult(Text(f"✗ {e}", style=ERROR))
     except Exception as e:                      # a broken rScript must not crash the tab
         return CLIResult(Text(f"✗ {cmd}: {type(e).__name__}: {e}", style=ERROR))

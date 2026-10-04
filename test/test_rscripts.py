@@ -278,7 +278,7 @@ def test_tvac_plan_runs_until_end(chamber, tmp_path, monkeypatch):
 
 
 def test_a_cast_command_reaches_the_chamber_through_the_host(chamber, tmp_path, monkeypatch):
-    """The whole path: cast tab words -> rLACO's cast_request -> CAST -> rLACO
+    """The whole path: cast tab words -> rLACO's COMMANDS -> CAST -> rLACO
     in the host -> LACO.apply -> the controller."""
     from formslab.console.cast import castcli
     from formslab.host import sequence
