@@ -137,8 +137,8 @@ thing is:
 | Location | Holds | Override |
 |---|---|---|
 | package | code, command tables, Pico firmware, shipped defaults | — |
-| config | live `usbmap.json`, CTRL command table, CAST device state | `$FORMSLAB_CONFIG_DIR` (default `~/.formslab`) |
-| output | logs, captured frames, temperature histories | `$FORMSLAB_OUTPUT_DIR` (default `<cwd>/outputs`) |
+| config | live `usbmap.json`, CTRL command table, CAST device state, and in `.run/` the running host's lock, event log and `host.log` | `$FORMSLAB_CONFIG_DIR` (default `~/.formslab`) |
+| output | CSV histories, captured frames, instrument logs | `$FORMSLAB_OUTPUT_DIR` (default `<cwd>/outputs`) |
 
 `usbmap.json` is the hardware map: instrument VISA addresses and USB VID/PIDs,
 hub locations, the PowerSwitch host, and the cryo board's I2C pins and firmware

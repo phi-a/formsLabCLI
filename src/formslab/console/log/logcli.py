@@ -3,7 +3,7 @@ import sys, re, json
 from pathlib import Path
 from rich.text import Text
 from formslab.console.sessions.base import CLIResult
-from formslab.config import output_dir
+from formslab.config import run_dir
 from formslab.console.style import console, TEXT, ERROR
 
 # Paths
@@ -17,7 +17,7 @@ def log_path() -> Path:
     when it launches, and this tab reads it back. Previously the two computed it
     from different roots, so the tab could tail a file nothing was writing.
     """
-    return output_dir() / "host.log"
+    return run_dir() / "host.log"
 
 
 # Load command definitions from logfile.json

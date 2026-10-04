@@ -53,6 +53,16 @@ class TestOutputDirectory:
         monkeypatch.chdir(tmp_path)
         assert config.output_dir() == tmp_path / "outputs"
 
+    def test_run_state_is_per_machine_not_per_folder(self, tmp_path, monkeypatch):
+        """The host's lock and log sit in the config dir, so `status` from
+        another folder (or an SSH session in ~) still finds the run."""
+        monkeypatch.delenv(config.OUTPUT_ENV, raising=False)
+        monkeypatch.chdir(tmp_path)
+        first = config.run_dir()
+        (tmp_path / "elsewhere").mkdir()
+        monkeypatch.chdir(tmp_path / "elsewhere")
+        assert config.run_dir() == first == config.config_dir() / ".run"
+
 
 class TestUsbmapSeeding:
 

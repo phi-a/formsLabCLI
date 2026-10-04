@@ -13,9 +13,10 @@ on its own thread at the same rate (rscripts.workers), so a slow instrument
 does not hold up the others or the plan. A plan ends after its last step; one
 that holds "until end" (plans/tvac.plan) runs until ctrl `end`.
 
-The lock file (`<output>/.run/sequence.lock`) names the running host: its
-process id, plan and start time. The console's ctrl tab reads it to find, show
-and stop the run, however it was started.
+The lock file (`<config>/.run/sequence.lock`, one per machine) names the
+running host: its process id, plan, start time and the folder its CSV goes to.
+The console's ctrl tab reads it to find, show and stop the run, however and
+from wherever it was started.
 
 However a run ends, each loaded rScript's ``rShutdown`` runs before the process
 exits. Only one host runs at a time: two would fight over the same instruments.
@@ -34,7 +35,7 @@ from pathlib import Path
 import psutil
 
 from formslab import rscripts
-from formslab.config import run_dir
+from formslab.config import output_dir, run_dir
 from formslab.console.cast.castutils import ResetJson
 from formslab.console.ctrl.ctrlutils import ReadCommand, ResetCtrlState
 from formslab.rscripts.workers import Workers
@@ -75,15 +76,16 @@ def is_host(pid: int) -> bool:
 
 
 def read_lock() -> dict | None:
-    """The lock's {pid, plan, started} -- the last host that took it, alive
-    or not (see `is_host`). None when there is no lock."""
+    """The lock's {pid, plan, started, output} -- the last host that took it,
+    alive or not (see `is_host`). None when there is no lock."""
     try:
         lines = lock_path().read_text(encoding="utf-8").splitlines()
         pid = int(lines[0])
     except (OSError, ValueError, IndexError):
         return None
     return {"pid": pid, "plan": lines[1] if len(lines) > 1 else "?",
-            "started": lines[2] if len(lines) > 2 else "?"}
+            "started": lines[2] if len(lines) > 2 else "?",
+            "output": lines[3] if len(lines) > 3 else "?"}
 
 
 def _acquire_lock(emit, plan: str) -> bool:
@@ -103,7 +105,7 @@ def _acquire_lock(emit, plan: str) -> bool:
             path.unlink(missing_ok=True)       # stale: its process is gone
             continue
         started = datetime.now(timezone.utc).isoformat(timespec="seconds")
-        os.write(fd, f"{os.getpid()}\n{plan}\n{started}\n".encode())
+        os.write(fd, f"{os.getpid()}\n{plan}\n{started}\n{output_dir()}\n".encode())
         os.close(fd)
         return True
     emit("Could not take the sequence lock.")

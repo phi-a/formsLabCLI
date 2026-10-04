@@ -60,8 +60,10 @@ def output_dir() -> Path:
 
 
 def run_dir() -> Path:
-    """Where the running host keeps its lock and event log: ``<output>/.run``."""
-    path = output_dir() / ".run"
+    """What is running on this machine: the host's lock, event log and output,
+    in ``<config>/.run``. Per machine, not per working directory, so `status`
+    and `end` find the host from any folder or SSH session."""
+    path = config_dir() / ".run"
     path.mkdir(parents=True, exist_ok=True)
     return path
 

@@ -64,6 +64,7 @@ channels the run switched on; rLACO ends pumping the run started (rough valve
 closed, pump off) and releases the controller; rSMTC08 and rCryoBoard release
 their ports.
 
-The host writes `outputs/.run/sequence.events.jsonl`: `sequence_started` (with
+The host writes `~/.formslab/.run/sequence.events.jsonl` (one per machine,
+beside its lock and `host.log`): `sequence_started` (with
 the plan's manifest), `segment_started`, `progress`, `segment_finished`,
 `sequence_finished` (with `error` when the plan stopped).

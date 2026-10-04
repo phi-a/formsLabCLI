@@ -1,6 +1,6 @@
 """The lab sequence's event stream.
 
-Written to ``<output>/.run/sequence.events.jsonl``: ``sequence_started``
+Written to ``<config>/.run/sequence.events.jsonl``: ``sequence_started``
 (carrying the manifest), ``segment_started``, ``progress``, ``segment_finished``,
 ``sequence_finished`` (with ``error`` when the plan stopped). Times are
 wall-clock seconds.
