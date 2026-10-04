@@ -119,6 +119,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._error(HTTPStatus.UNAUTHORIZED, "login required")
         try:
             self._api_get(path, query, user)
+        except api.ApiError as e:
+            self._error(e.code, str(e))
         except Exception as e:                    # a bad request must not kill the server
             self._error(HTTPStatus.INTERNAL_SERVER_ERROR, f"{type(e).__name__}: {e}")
 
@@ -132,6 +134,13 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, api.status(int(arg("log", 40))))
         if path == "/api/plans":
             return self._json(200, {"plans": api.list_plans()})
+        if path.startswith("/api/plans/"):
+            name = path[len("/api/plans/"):]
+            if not _NAME.match(name):
+                return self._error(HTTPStatus.BAD_REQUEST, "bad plan name")
+            return self._json(200, api.plan_read(name))
+        if path == "/api/rscripts":
+            return self._json(200, {"rscripts": api.rscripts_available()})
         if path == "/api/complete":
             return self._json(200, {"options": api.complete((arg("words") or "").split())})
         if path == "/api/runs":
@@ -191,7 +200,9 @@ class Handler(BaseHTTPRequestHandler):
             self._error(HTTPStatus.INTERNAL_SERVER_ERROR, f"{type(e).__name__}: {e}")
 
     def _control(self, path: str, body: dict, user: str) -> None:
-        """The actions that change something. Each is noted in gui.log."""
+        """The actions that change something, noted in gui.log, and the editor's
+        read-only queries (check, line options), which are POSTs only because they
+        carry text."""
         if path == "/api/run":
             name = str(body.get("plan", ""))
             result = api.start_run(name)
@@ -202,6 +213,18 @@ class Handler(BaseHTTPRequestHandler):
         elif path in ("/api/pause", "/api/resume"):
             result = api.ctrl(path[len("/api/"):])
             audit(user, path[len("/api/"):])
+        elif path == "/api/plan/check":
+            return self._json(200, {"errors": api.plan_check(str(body.get("text", "")))})
+        elif path == "/api/plan/line":
+            scripts, words = body.get("scripts", []), body.get("words", [])
+            if not all(isinstance(w, str) for w in [*scripts, *words]):
+                return self._error(HTTPStatus.BAD_REQUEST, "scripts and words are lists of strings")
+            return self._json(200, api.plan_line(scripts, words))
+        elif path == "/api/plan/save":
+            name = str(body.get("name", ""))
+            result = api.plan_save(name, str(body.get("text", "")), body.get("base_hash"),
+                                   bool(body.get("as_new")))
+            audit(user, f"save plan {name}" + (" (new)" if body.get("as_new") else ""))
         elif path == "/api/cast":
             line = str(body.get("line", ""))
             result = api.send_command(line)

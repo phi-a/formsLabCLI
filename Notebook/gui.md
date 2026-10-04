@@ -1,10 +1,11 @@
 # GUI: architecture and requirements
 
-Status: **Stages 0-2 built** (shared-file locking; login, status, plots and control:
-`labcli gui`, docs/GUI.md); the rest is still planning. Written 2026-10-03, after step 2 (declared commands,
+Status: **Stages 0-3 built** (shared-file locking; login, status, plots, control and
+the plan editor: `labcli gui`, docs/GUI.md); the rest is still planning. Written 2026-10-03, after step 2 (declared commands,
 one-line plans, `labcli <command>`). Built so far: shared-file locking (Stage 0),
 read-only server with login, status and plots (Stage 1), start/end/pause/resume and
-commands with live suggestions (Stage 2). Next: plan editor, TVAC viewer.
+commands with live suggestions (Stage 2), plan editor with cascading dropdowns (Stage 3).
+Next: TVAC viewer.
 
 ## What it is
 

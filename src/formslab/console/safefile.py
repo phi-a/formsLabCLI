@@ -66,7 +66,7 @@ def atomic_write_text(path: Path, text: str, timeout: float = REPLACE_TIMEOUT_S)
     while a reader holds the file; raises OSError if it still cannot."""
     tmp = path.with_name(f"{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
     try:
-        with tmp.open("w", encoding="utf-8") as f:
+        with tmp.open("w", encoding="utf-8", newline="\n") as f:      # exactly `text`, on Windows too
             f.write(text)
         deadline = time.monotonic() + timeout
         while True:

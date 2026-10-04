@@ -11,6 +11,8 @@
     return e;
   };
 
+  window.App = { api: (...a) => api(...a), el, $ };    // for editor.js, loaded next
+
   const state = {
     view: "status", timer: null, runs: [], run: null, selected: new Set(), data: null,
     x0: null, x1: null, hoverT: null, drag: null, tempUnit: "C", plotTimer: null, frame: 0,
@@ -46,7 +48,8 @@
     $("#login").hidden = true;
     $("#app").hidden = false;
     $("#who").textContent = user;
-    show(location.hash.slice(1) === "plots" ? "plots" : "status");
+    const wanted = location.hash.slice(1);
+    show(["plots", "plans"].includes(wanted) ? wanted : "status");
   }
 
   $("#login-form").addEventListener("submit", async (ev) => {
@@ -72,10 +75,12 @@
     location.hash = view;
     for (const b of document.querySelectorAll("#nav button")) b.classList.toggle("active", b.dataset.view === view);
     $("#view-status").hidden = view !== "status";
+    $("#view-plans").hidden = view !== "plans";
     $("#view-plots").hidden = view !== "plots";
     stopTimers();
-    if (view === "status") pollStatus();
+    if (view === "status") { state.plansLoaded = false; pollStatus(); }     // plans may have been saved since
     if (view === "plots") loadRuns();
+    if (view === "plans" && window.App.editor) window.App.editor.open();
   }
   for (const b of document.querySelectorAll("#nav button")) b.addEventListener("click", () => show(b.dataset.view));
 

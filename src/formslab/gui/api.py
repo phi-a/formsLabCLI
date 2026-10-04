@@ -18,12 +18,13 @@ from formslab.console.cast import castutils
 from formslab.console.ctrl import ctrlcli, ctrlutils
 from formslab.console.log.logcli import log_path
 from formslab.console.safefile import read_json
-from formslab.gui import runs
+from formslab.gui import plans, runs
 from formslab.host.sequence import is_host, read_lock
 from formslab import rscripts
 from formslab.rscripts import cast
 from formslab.rscripts.grammar import GrammarError
 from formslab.sequence import PlanError, discover, load_plan
+from formslab.sequence.plan import available_rscripts, check_text, line_options
 from formslab.state import cast_state_path
 
 # How often each block is republished while its owner runs (seconds). A block
@@ -179,10 +180,10 @@ def list_plans() -> list[dict]:
             try:
                 plan = load_plan(path)
             except PlanError as e:
-                out.append({"name": path.stem, "error": str(e)})
+                out.append({"name": path.stem, "error": str(e), "editable": plans.is_editable(path)})
                 continue
             out.append({"name": path.stem, "rscripts": list(plan.rscripts),
-                        "steps": len(plan.sequence.segments),
+                        "steps": len(plan.sequence.segments), "editable": plans.is_editable(path),
                         "open_ended": any(s.verb == "hold" and s.params["seconds"] is None
                                           for s in plan.sequence.segments)})
     return out
@@ -299,3 +300,40 @@ def send_command(line: str) -> dict:
             return {"label": label, "request": request, "taken": False}
         time.sleep(0.1)
     return {"label": label, "request": request, "taken": True}
+
+
+# --- the plan editor ---------------------------------------------------------------------
+
+def _plan_call(fn, *args):
+    """A plans.py call, its refusals turned into API errors."""
+    try:
+        return fn(*args)
+    except plans.PlanFileError as e:
+        raise ApiError(e.code, str(e))
+
+
+def plan_read(name: str) -> dict:
+    with _lock:
+        return _plan_call(plans.read, name)
+
+
+def plan_save(name: str, text: str, base_hash: str | None, as_new: bool) -> dict:
+    with _lock:
+        return _plan_call(plans.save, name, text, base_hash, as_new)
+
+
+def plan_check(text: str) -> list[dict]:
+    """Every problem in the plan text, each with its line (0: the whole file)."""
+    with _lock:
+        return [{"line": n, "message": m} for n, m in check_text(text)]
+
+
+def plan_line(scripts: list[str], words: list[str]) -> dict:
+    """What can come at each position of a step line, for the editor's dropdowns."""
+    with _lock:
+        return line_options(scripts, words)
+
+
+def rscripts_available() -> list[str]:
+    with _lock:
+        return available_rscripts()

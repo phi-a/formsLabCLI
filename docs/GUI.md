@@ -58,6 +58,27 @@ it recently (is its rScript in the plan's `load` line?), or the chamber says it
 is not connected. A block that is not live is greyed with its age; its numbers
 are the last ones seen, not current readings.
 
+**Plans.** A plan editor for people who do not want to remember the words.
+Pick a plan on the left; a plan you open is shown line by line:
+
+- the `load` line is a row of checkboxes, one per rScript;
+- `record every` is a number and a unit;
+- every step is a chain of dropdowns. Choosing `hvc` narrows the next choice to
+  hvc's commands, choosing `platen` makes the next box a number with its limits
+  and unit (`<C -180..200 C>`), and a value that does not fit is flagged under
+  the row with what would. The choices come from the same declarations the cast
+  tab and `labcli check` use, so they cannot disagree;
+- comments and blank lines are kept, and rows can be moved, inserted and deleted.
+  *Edit as text* shows the plain file for pasting or fine changes.
+
+Plans that ship with formsLabCLI (and anything in the folder you started from)
+are read-only here. *Save as...* makes your own copy in
+`~/.formslab/plans/`, which never changes what `run <name>` does for anyone
+else, and a name already taken by any plan is refused. Saving writes the file
+in one step and refuses to overwrite a plan that changed on disk since you
+opened it. A draft with mistakes can be saved; it is listed as "cannot run"
+until they are fixed. A saved plan appears in the Start list on the Status tab.
+
 **Plots.** Pick a recorded run and any of its variables; each unit gets its own
 chart. Wheel zooms, drag pans, double-click resets, hovering reads values.
 Kelvin variables can be shown in Celsius. *Follow the run live* refreshes every
@@ -70,7 +91,7 @@ Older files in the output folder with other layouts are not listed.
 
 ## What is not here yet
 
-The plan editor, the chamber diagram and the space-environment view are planned
+The chamber diagram and the space-environment view are planned
 (`Notebook/gui.md`).
 
 ## Safeguards

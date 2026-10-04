@@ -232,7 +232,7 @@ def test_no_gui_module_imports_a_driver():
 
 
 def test_the_page_never_puts_server_text_in_innerhtml():
-    for name in ("app.js", "chart.js"):
+    for name in ("app.js", "chart.js", "editor.js"):
         assert "innerHTML" not in (GUI / "static" / name).read_text(encoding="utf-8")
 
 

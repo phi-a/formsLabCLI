@@ -40,7 +40,7 @@ import re
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from formslab.config import PACKAGE_ROOT
+from formslab.config import PACKAGE_ROOT, config_dir
 from formslab.rscripts.grammar import Grammar, GrammarError
 from formslab.sequence.spec import Segment, Sequence
 
@@ -54,7 +54,21 @@ _GLUED = re.compile(r"^\d+(\.\d+)?(s|min|h)$", re.IGNORECASE)
 
 
 class PlanError(ValueError):
-    """The document is not a runnable lab plan. The message says where and why."""
+    """The document is not a runnable lab plan. The message says where and why
+    for the first problem; `errors` lists every one found as (line, message),
+    line 0 meaning the document as a whole."""
+
+    def __init__(self, message: str, errors: list[tuple[int, str]] | None = None) -> None:
+        super().__init__(message)
+        self.errors = errors if errors is not None else [(0, message)]
+
+
+class _LineError(Exception):
+    """A problem on one line; the line is skipped and reading goes on."""
+
+    def __init__(self, line: int, message: str) -> None:
+        super().__init__(message)
+        self.line, self.message = line, message
 
 
 @dataclass(frozen=True)
@@ -69,14 +83,21 @@ class Plan:
 
 # --- finding plans -----------------------------------------------------------
 
+def user_plans_dir() -> Path:
+    """This machine's own plans (the GUI saves here): ``<config>/plans``."""
+    return config_dir() / "plans"
+
+
 def search_dirs() -> list[Path]:
     """``$FORMSLAB_PLANS_DIR``, then ``<cwd>/plans``, then the checkout's
-    ``plans/`` -- the same order rScripts are found in."""
+    ``plans/`` -- the same order rScripts are found in -- and last this
+    machine's own folder, so a plan of the same name as a shipped one never
+    changes what `run <name>` does for everyone."""
     dirs: list[Path] = []
     env = os.environ.get(ENV)
     if env:
         dirs += [Path(p).expanduser() for p in env.split(os.pathsep) if p]
-    dirs += [Path.cwd() / "plans", PACKAGE_ROOT.parents[1] / "plans"]
+    dirs += [Path.cwd() / "plans", PACKAGE_ROOT.parents[1] / "plans", user_plans_dir()]
     out, seen = [], set()
     for d in dirs:
         if d.is_dir() and (key := str(d.resolve())) not in seen:
@@ -116,19 +137,36 @@ def load_plan(path) -> Plan:
 
 
 def parse_plan(source: str, *, path: Path | None = None) -> Plan:
+    """The plan in `source`. Every problem found is in `PlanError.errors` (the
+    editor shows them all); the message is the first."""
     where = path.name if path else "<plan>"
     name = path.stem if path else "plan"
+    errors: list[tuple[int, str]] = []
 
     def fail(n, message):
-        raise PlanError(f"{where}:{n}: {message}")
+        raise _LineError(n, message)
+
+    def attempt(fn, *args):
+        """fn(*args), or None with the problem noted when it raises _LineError."""
+        try:
+            return fn(*args)
+        except _LineError as e:
+            errors.append((e.line, e.message))
+
+    def done():
+        if errors:
+            errors.sort(key=lambda e: e[0])
+            n, message = errors[0]
+            raise PlanError(f"{where}:{n}: {message}" if n else f"{where}: {message}", list(errors))
 
     if "sequence.operations" in source:
-        raise PlanError(f"{where}: this is the old plan format (sequence.operations = [...]); "
-                        "a plan is now one step per line -- see docs/SEQUENCE.md")
+        errors.append((0, "this is the old plan format (sequence.operations = [...]); "
+                          "a plan is now one step per line -- see docs/SEQUENCE.md"))
+        done()
     lines = [(n, line.strip()) for n, line in enumerate(source.splitlines(), 1)]
     lines = [(n, t) for n, t in lines if t and not t.startswith("#")]
 
-    for n, t in lines:
+    def forms_check(n, t):
         first = t.split()[0]
         if re.match(r"[A-Za-z_]\w*\.\w+\s*=", t):
             fail(n, f"`{t.split('=')[0].strip()}` is FORMS mission configuration. A plan runs on "
@@ -139,35 +177,46 @@ def parse_plan(source: str, *, path: Path | None = None) -> Plan:
             fail(n, f"`{first}` is a FORMS mission operation; a plan's steps are commands, "
                     "hold, until and log")
 
-    scripts, record, steps = None, (10.0, "seconds"), []
     for n, t in lines:
+        attempt(forms_check, n, t)
+    flagged = {n for n, _ in errors}
+    lines = [(n, t) for n, t in lines if n not in flagged]
+
+    state = {"scripts": None, "record": (10.0, "seconds"), "steps": []}
+
+    def classify(n, t):
         words = t.split()
         head = words[0].lower()
-        if head in ("load", "record") and steps:
+        if head in ("load", "record") and state["steps"]:
             fail(n, f"`{head}` goes before the first step")
         if head == "load":
-            if scripts is not None:
+            if state["scripts"] is not None:
                 fail(n, "`load` appears twice; name every rScript on one line")
             if len(words) < 2:
                 fail(n, "load names the rScripts to run, e.g. `load rLACO rSMTC08`")
-            scripts = tuple(words[1:])
+            state["scripts"] = tuple(words[1:])
         elif head == "record":
-            record = _parse(fail, n, _RECORD, words)
+            state["record"] = _parse(fail, n, _RECORD, words)
         else:
             if head != "log" and "#" in t:
                 fail(n, "comments go on their own line")
-            steps.append((n, words))
-    if scripts is None:
-        raise PlanError(f"{where}: a plan starts with `load <rScript> ...`, the rScripts that "
-                        "own its instruments")
-    if not steps:
-        raise PlanError(f"{where}: the plan has no steps")
+            state["steps"].append((n, words))
+
+    for n, t in lines:
+        attempt(classify, n, t)
+    scripts, steps, record = state["scripts"], state["steps"], state["record"]
+    if scripts is None:                      # no grammar without it: stop here
+        errors.append((0, "a plan starts with `load <rScript> ...`, the rScripts that "
+                          "own its instruments"))
+        done()
+    if not steps and not errors:             # (a flagged line already explains an empty plan)
+        errors.append((0, "the plan has no steps"))
 
     from formslab.rscripts import cast
 
     grammar, owner, published = _grammar(scripts)
-    segments = []
-    for n, words in steps:
+
+    def check_step(n, words):
         head = words[0].lower()
         if module := owner.get(head):
             if cast.script_name(module) not in scripts:
@@ -182,12 +231,75 @@ def parse_plan(source: str, *, path: Path | None = None) -> Plan:
                     fail(n, "no loaded rScript publishes a value to wait on")
             if "timeout" not in (w.lower() for w in words):
                 fail(n, "until needs `timeout <n> s|min|h`: a wait on hardware always has a limit")
-        segment = _parse(fail, n, grammar, words)
-        segments.append(replace(segment, label=" ".join(words)))
+        return replace(_parse(fail, n, grammar, words), label=" ".join(words))
+
+    segments = [seg for n, words in steps if (seg := attempt(check_step, n, words)) is not None]
+    done()
 
     interval, unit = record
     return Plan(name=name, path=path, rscripts=scripts, record_interval=interval, record_unit=unit,
                 sequence=Sequence(name=name, segments=tuple(segments), rscripts=scripts))
+
+
+def check_text(text: str) -> list[tuple[int, str]]:
+    """Every problem in plan `text` as (line, message), line 0 for the document
+    as a whole; [] for a plan that can run. Also notes rScripts on the `load`
+    line that cannot be found, which reading alone does not mind."""
+    try:
+        plan = parse_plan(text)
+        errors: list[tuple[int, str]] = []
+    except PlanError as e:
+        plan, errors = None, list(e.errors)
+    from formslab import rscripts
+
+    for n, line in enumerate(text.splitlines(), 1):
+        words = line.split()
+        if words and words[0].lower() == "load":
+            errors += [(n, f"rScript {w} not found") for w in words[1:] if rscripts.find(w) is None]
+    return sorted(errors, key=lambda e: e[0])
+
+
+def available_rscripts() -> list[str]:
+    """The rScripts a plan can `load`: every ``r*.py`` on the search path."""
+    from formslab.rscripts import loader
+
+    return sorted({p.stem for d in loader.search_dirs() for p in d.glob("r*.py")})
+
+
+def line_options(scripts, words) -> dict:
+    """For the plan editor: what can come at each position of a step line.
+
+    {'positions': [options before word 0, before word 1, ..., after the last],
+     'complete': the words are a whole step, 'error': why not, or None}. Each
+    option is {kind, text, help, lo, hi, unit}. A line that is merely unfinished
+    has no error: it is a valid start."""
+    from formslab.rscripts import cast
+
+    scripts, words = tuple(scripts), list(words)
+    grammar, owner, _ = _grammar(scripts)
+    positions = [[_option(o) for o in grammar.complete(words[:k])] for k in range(len(words) + 1)]
+    result = {"positions": positions, "complete": False, "error": None}
+    if not words:
+        return result
+    module = owner.get(words[0].lower())
+    if module is not None and cast.script_name(module) not in scripts:
+        result["error"] = f"{words[0].lower()} is declared by {cast.script_name(module)}; add it to `load`"
+        return result
+    try:
+        grammar.parse(words)
+        result["complete"] = True
+    except GrammarError as e:
+        if not positions[-1]:                                   # not even a valid start
+            message = str(e)
+            if glued := next((w for w in words if _GLUED.match(w)), None):
+                number, unit = re.match(r"([\d.]+)(\D+)", glued).groups()
+                message += f" (write `{number} {unit}`, with a space)"
+            result["error"] = message
+    return result
+
+
+def _option(o) -> dict:
+    return {"kind": o.kind, "text": o.text, "help": o.help, "lo": o.lo, "hi": o.hi, "unit": o.unit}
 
 
 def _parse(fail, n, grammar, words):

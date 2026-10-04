@@ -23,6 +23,7 @@
       <h1>formsLabCLI</h1>
       <nav id="nav">
         <button data-view="status">Status</button>
+        <button data-view="plans">Plans</button>
         <button data-view="plots">Plots</button>
       </nav>
       <span class="spacer"></span>
@@ -56,6 +57,30 @@
         <pre id="log"></pre>
       </section>
 
+      <section id="view-plans" hidden>
+        <div class="plans">
+          <aside>
+            <div id="plan-list"></div>
+            <button id="plan-new">New plan</button>
+          </aside>
+          <section>
+            <div class="plan-head">
+              <strong id="plan-title">No plan open</strong>
+              <span id="plan-badge" class="badge"></span>
+              <span class="spacer"></span>
+              <button id="plan-save">Save</button>
+              <button id="plan-saveas">Save as...</button>
+              <button id="plan-revert">Revert</button>
+              <button id="plan-raw">Edit as text</button>
+            </div>
+            <div id="plan-msg" class="note" role="status"></div>
+            <div id="plan-doc-errors" class="error"></div>
+            <div id="plan-rows"></div>
+            <textarea id="plan-text" spellcheck="false" hidden aria-label="Plan text"></textarea>
+          </section>
+        </div>
+      </section>
+
       <section id="view-plots" hidden>
         <div class="plots">
           <aside>
@@ -84,5 +109,6 @@
 
   <script src="/static/chart.js"></script>
   <script src="/static/app.js"></script>
+  <script src="/static/editor.js"></script>
 </body>
 </html>

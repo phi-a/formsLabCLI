@@ -4,11 +4,14 @@ A lab plan is a hardware test sequence in a `.plan` file, one step per line:
 which rScripts own the instruments, then what to do, in order.
 
 ```
-# PSU1 CH1 on for a minute while the thermocouples record
-load rPSU rSMTC08            # the routines that own the instruments (first line)
-record every 2 s             # CSV of every value: outputs/<plan>_<UTC>.csv (default 10 s)
+# PSU1 CH1 on for a minute while the thermocouples record.
+# load: the routines that own the instruments (first line).
+load rPSU rSMTC08
+# record: a CSV of every value, outputs/<plan>_<UTC>.csv (default every 10 s).
+record every 2 s
 
-psu1 ch1 set 1.0 0.1         # a command: the same words as the cast tab
+# A command is the same words as the cast tab.
+psu1 ch1 set 1.0 0.1
 psu1 ch1 on
 hold 60 s
 until TC01 above 30 C timeout 10 min
@@ -24,7 +27,8 @@ log done
 | `until <value> above\|below <n> [C\|K] timeout <n> s\|min\|h` | runs until a published value crosses a limit; `C`/`K` converts from the value's own unit | not met by the timeout (required: a wait on hardware always has a limit) |
 | `log <text>` | one line in the run log | — |
 
-`#` starts a comment on its own line. Words and value names ignore case.
+`#` starts a comment, on a line of its own (a `#` after a step is an error,
+since `log` text may contain one). Words and value names ignore case.
 
 The commands and value names come from what the loaded routines declare
 (`COMMANDS`, `VARIABLES`; see rScripts/README.md), and the plan is checked
