@@ -68,6 +68,7 @@
 
   async function startApp(user) {
     clearTimeout(state.headerTimer);
+    showDemo();
     pollHeader();
     $("#login").hidden = true;
     $("#app").hidden = false;
@@ -533,6 +534,17 @@
   });
 
   // --- start -------------------------------------------------------------------------
+
+  // Is this the demo server? Asked before login, so the login page can say so.
+  async function showDemo() {
+    try {
+      const { demo } = await (await fetch("/api/info")).json();
+      $("#demo-bar").hidden = !demo;
+      $("#login-demo").hidden = !demo;
+      if (demo) document.title = "DEMO - formsLabCLI";
+    } catch (e) { /* the page works without it */ }
+  }
+  showDemo();
 
   api("/api/me").then((r) => startApp(r.user)).catch(() => showLogin());
 })();

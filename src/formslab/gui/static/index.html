@@ -8,9 +8,12 @@
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+  <div id="demo-bar" hidden>DEMO: a simulated chamber, not the bench. Its login is demo / demo.</div>
   <section id="login" hidden>
     <form id="login-form" autocomplete="on">
       <h1>formsLabCLI</h1>
+      <p id="login-demo" class="demo-note" hidden>This is the <strong>demo</strong> server. Log in as <code>demo</code> / <code>demo</code>.
+        Your own login works on <code>labcli gui</code> (port 8080), not here.</p>
       <label>User <input id="login-user" name="username" autocomplete="username" required autofocus></label>
       <label>Password <input id="login-password" name="password" type="password" autocomplete="current-password" required></label>
       <button type="submit">Log in</button>

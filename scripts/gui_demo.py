@@ -1,10 +1,11 @@
 """Try the web GUI without touching the bench.
 
-    python scripts/gui_demo.py            # then open http://localhost:8080/
+    python scripts/gui_demo.py            # then open http://localhost:8088/
 
 A simulated HVC-3500 chamber, a throwaway config folder and a login (user
 `demo`, password `demo`) are made for the session and deleted when you press
-Ctrl+C. Your own ~/.formslab, your login, your plans and your instruments are
+Ctrl+C. The page says DEMO on its login screen and in an orange bar, and it uses
+port 8088, so it is not mistaken for `labcli gui` (8080). Your own ~/.formslab, your login, your plans and your instruments are
 not used. Start a plan (`tvac` holds until you end it; `pump_demo` runs and
 finishes), send `hvc vent open`, watch the Chamber tab, build a plan on the
 Plans tab.
@@ -21,7 +22,8 @@ from pathlib import Path
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--port", type=int, default=8080)
+    # Not 8080, which is where `labcli gui` listens: the two must not be confused.
+    ap.add_argument("--port", type=int, default=8088)
     args = ap.parse_args()
 
     root = Path(tempfile.mkdtemp(prefix="formslab-gui-demo-"))
@@ -29,7 +31,7 @@ def main() -> int:
         (root / sub).mkdir()
     # Set before formslab reads them: everything below uses the throwaway folder.
     os.environ.update(FORMSLAB_CONFIG_DIR=str(root / "config"), FORMSLAB_OUTPUT_DIR=str(root / "out"),
-                      FORMSLAB_PLANS_DIR=str(root / "plans"))
+                      FORMSLAB_PLANS_DIR=str(root / "plans"), FORMSLAB_GUI_DEMO="1")
     os.chdir(root)
 
     from formslab import config

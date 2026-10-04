@@ -205,3 +205,6 @@ button.danger-outline:hover { background: color-mix(in srgb, var(--bad) 10%, tra
 .tok[data-fam="flow"] { --fam: var(--fam-flow); }  .tok[data-fam="hvc"] { --fam: var(--fam-hvc); }
 .tok[data-fam="psu"] { --fam: var(--fam-psu); }    .tok[data-fam="cryo"] { --fam: var(--fam-cryo); }
 .tok[data-fam="slta"] { --fam: var(--fam-slta); }  .tok[data-fam="tc"] { --fam: var(--fam-tc); }
+
+#demo-bar { background: #bc4c00; color: #fff; text-align: center; padding: 4px 10px; font-size: 13px; font-weight: 600; position: sticky; top: 0; z-index: 5; }
+.demo-note { background: color-mix(in srgb, #bc4c00 14%, transparent); border: 1px solid #bc4c00; border-radius: 6px; padding: 8px 10px; font-size: 13px; margin: 0 0 10px; }

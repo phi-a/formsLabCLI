@@ -112,6 +112,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._static("index.html")
         if path.startswith("/static/"):
             return self._static(path[len("/static/"):])
+        if path == "/api/info":                       # no login: the login page says which server this is
+            return self._json(200, {"demo": self.server.demo})
         if not path.startswith("/api/"):
             return self._error(HTTPStatus.NOT_FOUND, "not found")
         user = self._user()
@@ -129,7 +131,7 @@ class Handler(BaseHTTPRequestHandler):
             return query.get(name, [default])[0]
 
         if path == "/api/me":
-            return self._json(200, {"user": user})
+            return self._json(200, {"user": user, "demo": self.server.demo})
         if path == "/api/status":
             return self._json(200, api.status(int(arg("log", 40))))
         if path == "/api/plans":
@@ -258,6 +260,8 @@ class Server(ThreadingHTTPServer):
     def __init__(self, address, sessions: auth.Sessions | None = None) -> None:
         super().__init__(address, Handler)
         self.sessions = sessions or auth.Sessions()
+        # scripts/gui_demo.py sets this: a demo must never be mistaken for the bench's own GUI
+        self.demo = os.environ.get("FORMSLAB_GUI_DEMO") == "1"
         host, port = self.server_address[:2]
         self.allowed_hosts = (
             {f"{h}:{port}" for h in ("localhost", "127.0.0.1", "[::1]")}
