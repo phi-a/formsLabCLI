@@ -58,6 +58,20 @@ it recently (is its rScript in the plan's `load` line?), or the chamber says it
 is not connected. A block that is not live is greyed with its age; its numbers
 are the last ones seen, not current readings.
 
+**Chamber.** The HVC-3500's own Manual screen, redrawn live: the chamber with
+its pressure and the three zone blocks (platen, shroud, t2) with temperature
+and setpoint, the vent, fill, gate, vacuum (rough) and foreline valves, the
+vacuum and turbo pumps (a green check is open or on, a red cross closed or
+off), the fault banner, and every other thermocouple below. Temperatures can
+be shown in Celsius or Kelvin. It follows the same rule as the Status cards:
+when no run is going, or the chamber is not connected, the drawing is greyed
+and says why, because those are the last values seen, not current readings.
+
+Some things on the controller's own screen are not available to formsLabCLI
+and are drawn as "n/a" rather than guessed: heater output %, turbo speed %,
+foreline pressure, and each zone's own on/off (the controller reports one
+chamber-wide "holding temperature" state).
+
 **Plans.** A plan editor for people who do not want to remember the words.
 Pick a plan on the left; a plan you open is shown line by line:
 
@@ -91,8 +105,9 @@ Older files in the output folder with other layouts are not listed.
 
 ## What is not here yet
 
-The chamber diagram and the space-environment view are planned
-(`Notebook/gui.md`).
+The space-environment view (orbit, eclipse, view factors and environment
+temperature) is planned (`Notebook/gui.md`); it needs the `orbit` extra and
+its own plan.
 
 ## Safeguards
 

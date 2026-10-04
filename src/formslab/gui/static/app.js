@@ -36,7 +36,20 @@
 
   // --- login -------------------------------------------------------------------------
 
+  // The header's End button must be right on every tab, so it has its own slow poll.
+  async function pollHeader() {
+    try {
+      if (!document.hidden) {
+        const s = await api("/api/status?log=1");
+        $("#end").hidden = !s.host;
+        $("#end").disabled = Boolean(s.action);
+      }
+    } catch (e) { /* the login screen takes over on a 401 */ }
+    state.headerTimer = setTimeout(pollHeader, 2000);
+  }
+
   function showLogin() {
+    clearTimeout(state.headerTimer);
     stopTimers();
     state.plansLoaded = false;
     $("#app").hidden = true;
@@ -45,11 +58,13 @@
   }
 
   async function startApp(user) {
+    clearTimeout(state.headerTimer);
+    pollHeader();
     $("#login").hidden = true;
     $("#app").hidden = false;
     $("#who").textContent = user;
     const wanted = location.hash.slice(1);
-    show(["plots", "plans"].includes(wanted) ? wanted : "status");
+    show(["plots", "plans", "tvac"].includes(wanted) ? wanted : "status");
   }
 
   $("#login-form").addEventListener("submit", async (ev) => {
@@ -76,11 +91,13 @@
     for (const b of document.querySelectorAll("#nav button")) b.classList.toggle("active", b.dataset.view === view);
     $("#view-status").hidden = view !== "status";
     $("#view-plans").hidden = view !== "plans";
+    $("#view-tvac").hidden = view !== "tvac";
     $("#view-plots").hidden = view !== "plots";
     stopTimers();
     if (view === "status") { state.plansLoaded = false; pollStatus(); }     // plans may have been saved since
     if (view === "plots") loadRuns();
     if (view === "plans" && window.App.editor) window.App.editor.open();
+    if (view === "tvac") pollTvac();
   }
   for (const b of document.querySelectorAll("#nav button")) b.addEventListener("click", () => show(b.dataset.view));
 
@@ -267,6 +284,39 @@
     } catch (e) { /* login screen takes over on a 401; otherwise try again */ }
     if (state.view === "status") state.timer = setTimeout(pollStatus, 1000);
   }
+
+  // --- the chamber -------------------------------------------------------------------
+
+  function renderTvac(s) {
+    const T = window.TvacView, b = s.blocks.hvc;
+    const banner = $("#tvac-banner");
+    if (!b) { banner.className = "banner stopped"; banner.textContent = "No chamber data yet: the hvc block is missing."; return; }
+    const vm = T.viewModel(b.status, $("#tvac-unit").value);
+    banner.className = "banner " + (b.live ? "running" : "stopped");
+    banner.textContent = b.live
+      ? `Chamber live, updated ${fmtAge(b.age_s)} ago.` + (vm.mode ? ` Mode ${vm.mode}.` : "") + (vm.testStatus ? ` ${vm.testStatus}.` : "")
+      : `Not live (${b.reason}). Showing the last values seen, ${fmtAge(b.age_s)} old, not current readings.`;
+    $("#tvac-fault").textContent = vm.faults ? `Fault${vm.severity && vm.severity !== "N" ? " (severity " + vm.severity + ")" : ""}: ${vm.faults}` : "";
+    $("#tvac-info").textContent = (vm.recipe !== null ? `Recipe ${vm.recipe}${vm.recipeStep ? ", step " + vm.recipeStep : ""}. ` : "")
+      + "Heater output, turbo speed, foreline pressure and each zone's own on/off are not reported by the controller.";
+    T.render($("#tvac-svg"), vm, b.live);
+    const box = $("#tvac-sensors");
+    box.className = "sensors" + (b.live ? "" : " stale");
+    box.replaceChildren(...vm.sensors.map((x) => {
+      const d = el("div");
+      d.append(el("span", {}, x.name), el("span", {}, T.fmtTemp(x.value, vm.unit)));
+      return d;
+    }));
+  }
+
+  async function pollTvac() {
+    if (state.view !== "tvac") return;
+    try {
+      if (!document.hidden) renderTvac(await api("/api/status?log=1"));
+    } catch (e) { /* the login screen takes over on a 401; otherwise try again */ }
+    if (state.view === "tvac") state.timer = setTimeout(pollTvac, 1000);
+  }
+  $("#tvac-unit").addEventListener("change", () => { clearTimeout(state.timer); pollTvac(); });
 
   // --- plots -------------------------------------------------------------------------
 

@@ -23,6 +23,7 @@
       <h1>formsLabCLI</h1>
       <nav id="nav">
         <button data-view="status">Status</button>
+        <button data-view="tvac">Chamber</button>
         <button data-view="plans">Plans</button>
         <button data-view="plots">Plots</button>
       </nav>
@@ -55,6 +56,20 @@
         <div id="cards" class="cards"></div>
         <h2>Host log</h2>
         <pre id="log"></pre>
+      </section>
+
+      <section id="view-tvac" hidden>
+        <div id="tvac-banner" class="banner"></div>
+        <div id="tvac-fault" class="error"></div>
+        <div class="tvac-tools">
+          <label>Temperature
+            <select id="tvac-unit"><option value="C">Celsius</option><option value="K">Kelvin</option></select>
+          </label>
+          <span id="tvac-info" class="note"></span>
+        </div>
+        <svg id="tvac-svg" viewBox="0 0 800 500" role="img" aria-label="Chamber valves, pumps and temperatures"></svg>
+        <h2>Thermocouples</h2>
+        <div id="tvac-sensors" class="sensors"></div>
       </section>
 
       <section id="view-plans" hidden>
@@ -108,6 +123,7 @@
   </div>
 
   <script src="/static/chart.js"></script>
+  <script src="/static/tvac.js"></script>
   <script src="/static/app.js"></script>
   <script src="/static/editor.js"></script>
 </body>

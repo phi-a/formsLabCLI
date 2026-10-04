@@ -1,11 +1,12 @@
 # GUI: architecture and requirements
 
-Status: **Stages 0-3 built** (shared-file locking; login, status, plots, control and
-the plan editor: `labcli gui`, docs/GUI.md); the rest is still planning. Written 2026-10-03, after step 2 (declared commands,
+Status: **Stages 0-4 built** (shared-file locking; login, status, plots, control, the
+plan editor and the chamber view: `labcli gui`, docs/GUI.md). Only the space-environment
+view is still planning. Written 2026-10-03, after step 2 (declared commands,
 one-line plans, `labcli <command>`). Built so far: shared-file locking (Stage 0),
 read-only server with login, status and plots (Stage 1), start/end/pause/resume and
 commands with live suggestions (Stage 2), plan editor with cascading dropdowns (Stage 3).
-Next: TVAC viewer.
+TVAC viewer (Stage 4). Next: the space-environment view, as its own plan.
 
 ## What it is
 
@@ -128,7 +129,7 @@ What each item on the screen is in our software, and whether we can show it toda
 | "Vacuum Valve" | `rough` (`!OR`) | yes |
 | Vacuum Pump, Turbo Pump | `pump`, `turbo` (`!OP/OT`) | yes, on or off |
 | Zone temperatures (19.5, 19.8, 19.7 C) | `<zone> C`, thermocouples T2, T3, T4 | yes |
-| Zone ON/OFF | `thermal_control` | yes |
+| Zone ON/OFF | `thermal_control` | no: one chamber-wide "holding temperature" flag, not per zone; drawn as such |
 | Zone setpoint | `<zone> setpoint C` | yes |
 | Side readouts (Cntrl P, ot1-ptn, ...) | named thermocouples `HVC_...` | yes. The HMI labels both lower rows "ot1-ptn"; the profile maps T0 and T1 to `ot1_ptn` and `ot2_shd`, so the second is presumably `ot2-shd` |
 | Fault banner | `faults`, `fault_severity` | yes |
