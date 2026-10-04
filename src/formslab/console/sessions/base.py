@@ -13,6 +13,8 @@ class CLIResult:
     suppress_prompt: bool = False
     # Optional structured data carried alongside the rendered content.
     data: Optional[dict] = None
+    # False when the command failed or was refused: `labcli <command>` exits 1.
+    ok: bool = True
 
 class ConsoleSession(ABC):
     """Base class for a console tab session."""

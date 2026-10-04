@@ -33,7 +33,7 @@ END_TAKE_S = 15.0
 END_FINISH_S = 30.0
 
 
-def _running():
+def running():
     """The lock of the live host, or None."""
     lock = read_lock()
     return lock if lock and is_host(lock["pid"]) else None
@@ -43,7 +43,7 @@ def _launch_sequence(plan_path: str) -> CLIResult:
     """Start `python -m formslab.host.sequence <plan>`, output to the log tab's
     file, in this working directory. On Windows it is detached from the
     console, so closing the console window does not kill a run."""
-    host = _running()
+    host = running()
     if host:
         return CLIResult(f"✔ sequence host already running (pid {host['pid']}, "
                          f"plan {host['plan']})")
@@ -56,7 +56,7 @@ def _launch_sequence(plan_path: str) -> CLIResult:
                      stdin=subprocess.DEVNULL, **flags)
     deadline = time.monotonic() + 5.0                 # the host writes its lock at start
     while time.monotonic() < deadline:
-        host = _running()
+        host = running()
         if host:
             return CLIResult(f"🟢 sequence host started (pid {host['pid']}, plan {host['plan']})",
                              clear=False)
@@ -67,10 +67,10 @@ def _launch_sequence(plan_path: str) -> CLIResult:
 
 def run_sequence(args=None) -> CLIResult:
     if not args:
-        return CLIResult("✗ run what? A plan name, e.g. `run tvac` (see `plans`)", clear=False)
+        return CLIResult("✗ run what? A plan name, e.g. `run tvac` (see `plans`)", clear=False, ok=False)
     plan = find_plan(args[0])
     if plan is None:
-        return CLIResult(f"✗ No plan '{args[0]}'. Use 'plans' to list them.", clear=False)
+        return CLIResult(f"✗ No plan '{args[0]}'. Use 'plans' to list them.", clear=False, ok=False)
     return _launch_sequence(str(plan.resolve()))
 
 
@@ -102,7 +102,7 @@ def plans_command() -> CLIResult:
 
 
 def status_panel() -> CLIResult:
-    host = _running()
+    host = running()
     if host:
         return CLIResult(f"● sequence host running: plan {host['plan']} (pid {host['pid']}, "
                          f"since {host['started']})\n  CSV in {host['output']}")
@@ -111,8 +111,8 @@ def status_panel() -> CLIResult:
         return CLIResult(Text(f"⚠ sequence host not running -- the last run (plan "
                               f"{stale['plan']}, pid {stale['pid']}) ended without cleanup; "
                               "its instruments may be as it left them.", style=WARNING),
-                         clear=False)
-    return CLIResult("✗ sequence host not running.", clear=False)
+                         clear=False, ok=False)
+    return CLIResult("✗ sequence host not running.", clear=False, ok=False)
 
 
 def _host_processes() -> list[psutil.Process]:
@@ -168,7 +168,7 @@ def end_sequence(take_s: float = END_TAKE_S, finish_s: float = END_FINISH_S) -> 
     plan's PSU outputs go off, pumping it started stops). A host that takes
     the request is left to finish its cleanup; only one that never takes it
     (hung) is killed -- and then rShutdown has not run."""
-    host = _running()
+    host = running()
     if host is None:
         return status_panel()
     pid = host["pid"]
@@ -182,7 +182,7 @@ def end_sequence(take_s: float = END_TAKE_S, finish_s: float = END_FINISH_S) -> 
         _kill_tree(pid)
         return CLIResult(Text(f"⚠ sequence host (pid {pid}) did not take `end` in {take_s:g} s "
                               "and was killed; rShutdown did not run. Check the instruments.",
-                              style=ERROR))
+                              style=ERROR), ok=False)
     deadline = time.monotonic() + finish_s
     while time.monotonic() < deadline and is_host(pid):
         time.sleep(0.2)

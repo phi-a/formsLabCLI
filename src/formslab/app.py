@@ -345,6 +345,11 @@ def capture_stdout(func, *args, **kwargs):
 
 def main():
     global current_tab
+    # `labcli <command>` runs one command and exits (SSH, scripts); a bare
+    # `labcli` or a `--<tab>` flag opens the console.
+    if len(sys.argv) > 1 and not sys.argv[1].startswith("--"):
+        from formslab.cli import main as one_command
+        sys.exit(one_command(sys.argv[1:]))
     # The CTRL command table and CAST device state are regenerated from code
     # defaults when absent. `setenv.setup_environment()` used to do this at
     # import; an installed console does it on the way into the REPL instead.

@@ -79,10 +79,10 @@ def test_complete_cascades():
     assert TOY.complete(["nonsense"]) == []
 
 
-def test_only_a_completing_option_carries_help():
+def test_an_option_leading_to_one_command_carries_its_help():
     helps = {o.text: o.help for o in TOY.complete([])}
-    assert helps.pop("closeall") == "Close every valve"         # one word: it completes
-    assert set(helps.values()) == {""}
+    assert helps["platen"] == ""                     # a setpoint or thermal control: two commands
+    assert helps["vacuum"] == "Vacuum setpoint" and helps["closeall"] == "Close every valve"
 
 
 def test_a_named_choice_may_have_one_member():

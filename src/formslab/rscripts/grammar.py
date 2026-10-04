@@ -32,7 +32,7 @@ import copy
 import difflib
 import math
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Callable, Iterable, Sequence
 
 TYPES = ("number", "integer", "text", "rest")
@@ -53,7 +53,7 @@ class Option:
     """One thing that can come next: a keyword, or a slot to fill."""
     kind: str                   # "word", or a slot type
     text: str                   # the keyword, or the slot's name
-    help: str = ""              # set when this option completes a command
+    help: str = ""              # set when this option leads to one command
     lo: float | None = None
     hi: float | None = None
     unit: str = ""
@@ -228,17 +228,17 @@ class Grammar:
     def complete(self, words: Sequence[str]) -> list[Option]:
         """Everything that can come after `words` (each a whole typed word).
         A caller filters by the prefix of a word still being typed."""
-        out: dict[tuple, Option] = {}
+        found: dict[tuple, tuple[Option, set]] = {}
         for cmd in self._commands:
             kind, i, el = self._walk(cmd, words)
             if kind != "short" or i != len(words):
                 continue
-            leaf = i == len(cmd.elements) - 1
-            for opt in el.options(cmd.help if leaf else ""):
+            for opt in el.options():
                 key = (opt.kind, opt.text.lower(), opt.lo, opt.hi, opt.unit)
-                if key not in out or (opt.help and not out[key].help):
-                    out[key] = opt
-        return list(out.values())
+                found.setdefault(key, (opt, set()))[1].add(cmd.help)
+        # An option that leads to one command carries that command's help.
+        return [replace(opt, help=next(iter(helps))) if len(helps) == 1 else opt
+                for opt, helps in found.values()]
 
     def parse(self, words: Sequence[str]):
         """What `words` mean: the matching command's builder result."""

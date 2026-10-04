@@ -148,14 +148,14 @@ def status_panel(label: str = None) -> CLIResult:
     try:
         data = _load_cast()
     except FileNotFoundError:
-        return CLIResult(Text("castfile.json not found — run init to generate", style=ERROR), clear=True)
+        return CLIResult(Text("castfile.json not found — run init to generate", style=ERROR), clear=True, ok=False)
     except (json.JSONDecodeError, ValueError) as e:
-        return CLIResult(Text(f"castfile.json is corrupted — run init to regenerate\n({e})", style=ERROR), clear=True)
+        return CLIResult(Text(f"castfile.json is corrupted — run init to regenerate\n({e})", style=ERROR), clear=True, ok=False)
 
     if label:
         key = {k.lower(): k for k in data}.get(label.lower())
         if not key or not isinstance(data[key], dict):
-            return CLIResult(Text(f"No data for label: {label}", style=ERROR), clear=True)
+            return CLIResult(Text(f"No data for label: {label}", style=ERROR), clear=True, ok=False)
         render = _render_psu if key.lower().startswith("psu") else _render_generic
         return CLIResult(render(key, data[key]), clear=True)
 
@@ -180,9 +180,9 @@ def _next_words(words: list[str]) -> CLIResult:
     try:
         options = cast.complete(words)
     except Exception as e:
-        return CLIResult(Text(f"✗ {type(e).__name__}: {e}", style=ERROR))
+        return CLIResult(Text(f"✗ {type(e).__name__}: {e}", style=ERROR), ok=False)
     if not options:
-        return CLIResult(Text(f"✗ nothing can follow {' '.join(words)!r}", style=ERROR))
+        return CLIResult(Text(f"✗ nothing can follow {' '.join(words)!r}", style=ERROR), ok=False)
     r = Text()
     r.append(f"after {' '.join(words) or 'nothing'}:\n" if words else "a command starts with:\n", HEADER)
     for o in options:
@@ -208,9 +208,9 @@ def execute_command(args: list[str]) -> CLIResult:
     try:
         request = cast.request(cmd, args[1:])
     except cast.GrammarError as e:
-        return CLIResult(Text(f"✗ {e}", style=ERROR))
+        return CLIResult(Text(f"✗ {e}", style=ERROR), ok=False)
     except Exception as e:                      # a broken rScript must not crash the tab
-        return CLIResult(Text(f"✗ {cmd}: {type(e).__name__}: {e}", style=ERROR))
+        return CLIResult(Text(f"✗ {cmd}: {type(e).__name__}: {e}", style=ERROR), ok=False)
     WriteCommand(request, cmd)
     r = Text()
     r.append("✔ ", SUCCESS)

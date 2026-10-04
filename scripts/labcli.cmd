@@ -24,6 +24,7 @@ cd /d "%REPO%"
 "%LABCLI%" %*
 set "RC=%ERRORLEVEL%"
 
-rem A clean `exit` closes the window; a crash stays up long enough to read.
-if not "%RC%"=="0" pause
+rem A clean `exit` closes the window; a crash of the console stays up long
+rem enough to read. A one-off command (`labcli status`) never waits.
+if not "%RC%"=="0" if "%~1"=="" pause
 exit /b %RC%

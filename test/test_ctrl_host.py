@@ -17,7 +17,7 @@ HOST = {"pid": 4321, "plan": "tvac", "started": "2026-10-02T21:35:02+00:00"}
 class Launch(unittest.TestCase):
 
     def _launch(self, *args, running=(None, HOST)):
-        with mock.patch.object(ctrlcli, "_running", side_effect=list(running)), \
+        with mock.patch.object(ctrlcli, "running", side_effect=list(running)), \
                 mock.patch.object(ctrlcli.subprocess, "Popen") as popen:
             result = ctrlcli.run_sequence(list(args))
         return popen, result
@@ -98,7 +98,7 @@ class End(unittest.TestCase):
 
     def test_end_asks_the_host_and_waits_for_it(self):
         alive = iter([True, True, False])
-        with mock.patch.object(ctrlcli, "_running", return_value=HOST), \
+        with mock.patch.object(ctrlcli, "running", return_value=HOST), \
                 mock.patch.object(ctrlcli, "WriteCommand") as write, \
                 mock.patch.object(ctrlcli, "LoadCommands", return_value={"end": {"processed": True}}), \
                 mock.patch.object(ctrlcli, "is_host", side_effect=lambda pid: next(alive, False)), \
@@ -109,7 +109,7 @@ class End(unittest.TestCase):
         self.assertIn("stopped cleanly", result.content)
 
     def test_a_host_still_cleaning_up_is_left_alone(self):
-        with mock.patch.object(ctrlcli, "_running", return_value=HOST), \
+        with mock.patch.object(ctrlcli, "running", return_value=HOST), \
                 mock.patch.object(ctrlcli, "WriteCommand"), \
                 mock.patch.object(ctrlcli, "LoadCommands", return_value={"end": {"processed": True}}), \
                 mock.patch.object(ctrlcli, "is_host", return_value=True), \
@@ -119,7 +119,7 @@ class End(unittest.TestCase):
         self.assertIn("still cleaning up", result.content)
 
     def test_a_host_that_never_takes_end_is_killed_with_its_launcher(self):
-        with mock.patch.object(ctrlcli, "_running", return_value=HOST), \
+        with mock.patch.object(ctrlcli, "running", return_value=HOST), \
                 mock.patch.object(ctrlcli, "WriteCommand"), \
                 mock.patch.object(ctrlcli, "LoadCommands", return_value={"end": {"processed": False}}), \
                 mock.patch.object(ctrlcli, "is_host", return_value=True), \
