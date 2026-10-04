@@ -1,16 +1,27 @@
+from contextlib import contextmanager
 from pathlib import Path
 import json
+import shutil
+import sys
 import time
-import traceback
 import threading
 from typing import Tuple
 
+from formslab.console.safefile import atomic_write_text, file_lock, read_json
 from formslab.state import build_default_cast_state, cast_state_path
 
 _KNOWN_CAST_LABELS = set(build_default_cast_state())
 
-# --- File lock for all castfile.json read-modify-write operations ---
+# Every read-modify-write of castfile.json holds this thread lock (the threads
+# of one process) and the cross-process lock (the console, the host and the
+# web GUI are separate processes), so no process's change overwrites another's.
 _cast_lock = threading.Lock()
+
+
+@contextmanager
+def _locked(path: Path):
+    with _cast_lock, file_lock(path):
+        yield
 
 
 def _normalize_label(label: str) -> str:
@@ -69,47 +80,31 @@ def _get_or_create_block(data: dict, label: str) -> Tuple[str, dict, bool]:
     return normalized, data[normalized], changed
 
 def _safe_read_json(path: Path) -> dict:
-    """Read and parse JSON with fallback on decode errors."""
+    """The file's blocks. A missing file is `{}`.
+
+    Writes are atomic and a read-modify-write holds the lock, so a file that
+    will not parse is damaged, not mid-write. Callers write what they read
+    back, so handing them `{}` would wipe every other block: keep the damaged
+    file as ``<name>.bad`` and start from the defaults instead. A file that
+    cannot be *read* (OSError) raises, and the caller tries again next time."""
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, ValueError):
-        # File was mid-write or corrupted — retry once after brief pause
-        time.sleep(0.02)
-        try:
-            return json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
-            return {}  # Return empty rather than crash the caller
+        return read_json(path)
     except FileNotFoundError:
         return {}
-
-def AtomicJsonWrite(data: dict, path: Path, retries: int = 3):
-    """
-    Atomically write JSON data to a file.
-    Uses retry logic to handle Windows file locking issues when other
-    processes (like the Tauri GUI) are reading the file.
-    """
-    tmp_path = path.with_suffix(".tmp")
-
-    # Write to temp file
-    with tmp_path.open("w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
-
-    # Try to rename with retries for file contention (cross-process)
-    for attempt in range(retries):
+    except ValueError:
         try:
-            tmp_path.replace(path)
-            return  # Success
+            shutil.copyfile(path, path.with_name(path.name + ".bad"))
         except OSError:
-            if attempt < retries - 1:
-                time.sleep(0.01)  # Brief pause, then retry
-            else:
-                # Final attempt: try direct write instead of atomic rename
-                try:
-                    with path.open("w", encoding="utf-8") as f:
-                        json.dump(data, f, indent=2)
-                    tmp_path.unlink(missing_ok=True)
-                except Exception:
-                    raise  # Re-raise if even direct write fails
+            pass
+        print(f"✗ {path.name} was damaged; kept as {path.name}.bad and regenerated from defaults",
+              file=sys.stderr)
+        return build_default_cast_state()
+
+def AtomicJsonWrite(data: dict, path: Path):
+    """Replace `path` with `data` in one step; retried while a reader has the
+    file open, and it raises rather than ever writing in place (a reader would
+    see half a file)."""
+    atomic_write_text(path, json.dumps(data, indent=2))
 
 def ReadAllCommands(labels: list, path: Path = None) -> dict:
     """
@@ -127,7 +122,7 @@ def ReadAllCommands(labels: list, path: Path = None) -> dict:
     """
     if path is None:
         path = cast_state_path()
-    with _cast_lock:
+    with _locked(path):
         data = _safe_read_json(path)   # single read
         results = {}
         changed = False
@@ -151,7 +146,7 @@ def ReadAllCommands(labels: list, path: Path = None) -> dict:
 def ReadCommand(label: str, path: Path = None) -> dict:
     if path is None:
         path = cast_state_path()
-    with _cast_lock:
+    with _locked(path):
         data  = _safe_read_json(path)
         _, block, changed = _get_or_create_block(data, label)
         request = block.get("request") or {}
@@ -167,7 +162,7 @@ def ReadCommand(label: str, path: Path = None) -> dict:
 def WriteCommand(request: dict, label: str, path: Path = None):
     if path is None or not path.exists():
         path = cast_state_path()
-    with _cast_lock:
+    with _locked(path):
         data = _safe_read_json(path)
         _, block, _ = _get_or_create_block(data, label)
         # Merge into any existing unprocessed request instead of replacing
@@ -185,7 +180,7 @@ def CommandPending(label: str, path: Path = None) -> bool:
     reader. Looks without consuming, unlike `ReadCommand`."""
     if path is None or not path.exists():
         path = cast_state_path()
-    with _cast_lock:
+    with _locked(path):
         data = _safe_read_json(path)
         _, block, _ = _get_or_create_block(data, label)
     return bool(block.get("request")) and not block.get("processed", True)
@@ -193,7 +188,7 @@ def CommandPending(label: str, path: Path = None) -> bool:
 def ReadStatus(label: str, path: Path = None) -> dict:
     if path is None or not path.exists():
         path = cast_state_path()
-    with _cast_lock:
+    with _locked(path):
         data = _safe_read_json(path)
         _, block, changed = _get_or_create_block(data, label)
         if changed:
@@ -203,7 +198,7 @@ def ReadStatus(label: str, path: Path = None) -> dict:
 def UpdateStatus(label: str, status: dict, path: Path = None):
     if path is None or not path.exists():
         path = cast_state_path()
-    with _cast_lock:
+    with _locked(path):
         data = _safe_read_json(path)
         _, block, _ = _get_or_create_block(data, label)
         block['status'] = status
@@ -213,24 +208,20 @@ def UpdateStatus(label: str, status: dict, path: Path = None):
 def ResetJson(path: Path = None):
     if path is None or not path.exists():
         path = cast_state_path()
-    with _cast_lock:
-        try:
-            data = _safe_read_json(path)
-            now = time.time()
-            for block in data.values():
-                if isinstance(block, dict):
-                    block['request'] = {}
-                    block['processed'] = True
-                    block['timestamp'] = now
-            AtomicJsonWrite(data, path)
-        except Exception as e:
-            print("✗ ResetJson failed:", e)
-            traceback.print_exc()
+    with _locked(path):
+        data = _safe_read_json(path)
+        now = time.time()
+        for block in data.values():
+            if isinstance(block, dict):
+                block['request'] = {}
+                block['processed'] = True
+                block['timestamp'] = now
+        AtomicJsonWrite(data, path)
 
 def GenerateCleanCast(path: Path = None):
     if path is None:
         path = cast_state_path()
     template = build_default_cast_state()
-    with _cast_lock:
+    with _locked(path):
         AtomicJsonWrite(template, path)
     return template

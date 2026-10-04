@@ -34,6 +34,18 @@ grammar (`rscripts/grammar.py`), so the cast tab, a plan and the routine always
 agree on what a command means, and the same declarations answer "what can come
 next" for completion.
 
+### The shared files
+
+`castfile.json` and `ctrlfile.json` (in the config dir) are written by several
+processes at once: the console, the host and, later, the web GUI. Every change
+is a read-modify-write under a cross-process lock (`console/safefile.py`, a
+`<name>.lock` sidecar the OS releases if its holder dies), and a write replaces
+the file in one step, retried while a reader has it open and never done in
+place. A file that will not parse is kept as `<name>.bad` and regenerated from
+the defaults, rather than read as empty and written back over every other
+block. `end` is sent again while the console waits for a host that is starting,
+because a starting host clears the ctrl file after it takes its lock.
+
 ## Everything is a plan
 
 Every run is a plan (`plans/*.plan`). Manual chamber operation is the plan

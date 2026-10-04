@@ -37,7 +37,7 @@ import psutil
 from formslab import rscripts
 from formslab.config import output_dir, run_dir
 from formslab.console.cast.castutils import ResetJson
-from formslab.console.ctrl.ctrlutils import ReadCommand, ResetCtrlState
+from formslab.console.ctrl.ctrlutils import ReadCommands, ResetCtrlState
 from formslab.rscripts.workers import Workers
 from formslab.sequence import (
     JsonlEventSink, LabSequenceRunner, PlanError, SequenceError, find_plan, load_plan,
@@ -126,8 +126,9 @@ def _release_lock() -> None:
 def check_ctrl_commands(run) -> None:
     """Apply ctrl requests: end, pause, resume, reset (clears pending CAST requests)."""
     global paused
+    pending = ReadCommands(_CTRL_LABELS)            # one read, one write
     for label in _CTRL_LABELS:
-        if ReadCommand(label) is None:
+        if label not in pending:
             continue
         run.log(f"ctrl command received: {label}", component=COMPONENT)
         if label == "end":

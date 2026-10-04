@@ -28,7 +28,7 @@ class TestCastCommandMerging(unittest.TestCase):
         tmp_root = Path(__file__).resolve().parent
         cast_path = tmp_root / f"_cast_test_{uuid4().hex}.json"
         self.addCleanup(lambda: cast_path.unlink(missing_ok=True))
-        self.addCleanup(lambda: cast_path.with_suffix(".tmp").unlink(missing_ok=True))
+        self.addCleanup(lambda: [q.unlink(missing_ok=True) for q in cast_path.parent.glob(cast_path.name + ".*")])
         GenerateCleanCast(cast_path)
 
         WriteCommand({"1": {"voltage": 12.0, "current": 2.0}}, "psu2", path=cast_path)

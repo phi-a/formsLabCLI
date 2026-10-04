@@ -31,6 +31,9 @@ from formslab.sequence import discover as discover_plans, find_plan
 # `end`: how long the host gets to take the request, then to finish cleanup.
 END_TAKE_S = 15.0
 END_FINISH_S = 30.0
+# A host that is just starting clears the ctrl file after it takes its lock, which
+# can erase an `end` sent in that window; so `end` is sent again while it waits.
+END_RESEND_S = 3.0
 
 
 def running():
@@ -163,6 +166,13 @@ def _kill_tree(pid: int) -> None:
     psutil.wait_procs(victims, timeout=5)
 
 
+def _end_pending() -> bool:
+    """`end` is written and not yet taken. An unreadable table counts as not
+    taken: only the host's own read-and-clear marks it taken."""
+    cmds = LoadCommands()
+    return cmds is None or cmds.get("end", {}).get("processed") is False
+
+
 def end_sequence(take_s: float = END_TAKE_S, finish_s: float = END_FINISH_S) -> CLIResult:
     """Ask the host to stop through ctrl, so its rScripts' rShutdown runs (a
     plan's PSU outputs go off, pumping it started stops). A host that takes
@@ -172,19 +182,37 @@ def end_sequence(take_s: float = END_TAKE_S, finish_s: float = END_FINISH_S) -> 
     if host is None:
         return status_panel()
     pid = host["pid"]
-    WriteCommand("end")
+    try:
+        WriteCommand("end")
+    except (OSError, ValueError) as e:
+        return CLIResult(Text(f"✗ could not send `end`: {e}", style=ERROR), ok=False)
+    resend_at = time.monotonic() + END_RESEND_S
+
+    def resend_if_due() -> None:
+        # The start-up reset erases an `end` and marks it "processed", which looks
+        # exactly like the host having taken it -- so keep sending while it lives.
+        nonlocal resend_at
+        if time.monotonic() >= resend_at:
+            resend_at += END_RESEND_S
+            try:
+                WriteCommand("end")
+            except (OSError, ValueError):
+                pass                                  # the next pass tries again
+
     deadline = time.monotonic() + take_s
-    while time.monotonic() < deadline and LoadCommands().get("end", {}).get("processed") is False:
+    while time.monotonic() < deadline and _end_pending():
         if not is_host(pid):
             break
+        resend_if_due()
         time.sleep(0.2)
-    if is_host(pid) and LoadCommands().get("end", {}).get("processed") is False:
+    if is_host(pid) and _end_pending():
         _kill_tree(pid)
         return CLIResult(Text(f"⚠ sequence host (pid {pid}) did not take `end` in {take_s:g} s "
                               "and was killed; rShutdown did not run. Check the instruments.",
                               style=ERROR), ok=False)
     deadline = time.monotonic() + finish_s
     while time.monotonic() < deadline and is_host(pid):
+        resend_if_due()
         time.sleep(0.2)
     if is_host(pid):
         return CLIResult(f"… host (pid {pid}) took `end` and is still cleaning up; "
