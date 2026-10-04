@@ -13,6 +13,10 @@ labcli gui                 # then open http://localhost:8080/
 `--port N` changes the port. Stop it with Ctrl+C. Runs started from the console
 or over SSH keep running either way.
 
+To try it without the bench (a simulated chamber, a throwaway login and config, nothing real
+touched): `python scripts/gui_demo.py`, then open `http://localhost:8080/` (user `demo`,
+password `demo`).
+
 ## From another machine
 
 The server listens on this machine only. Reach it through an SSH tunnel:
