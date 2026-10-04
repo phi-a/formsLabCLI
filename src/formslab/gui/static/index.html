@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>formsLabCLI</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <section id="login" hidden>
+    <form id="login-form" autocomplete="on">
+      <h1>formsLabCLI</h1>
+      <label>User <input id="login-user" name="username" autocomplete="username" required autofocus></label>
+      <label>Password <input id="login-password" name="password" type="password" autocomplete="current-password" required></label>
+      <button type="submit">Log in</button>
+      <p id="login-error" class="error" role="alert"></p>
+    </form>
+  </section>
+
+  <div id="app" hidden>
+    <header>
+      <h1>formsLabCLI</h1>
+      <nav id="nav">
+        <button data-view="status">Status</button>
+        <button data-view="plots">Plots</button>
+      </nav>
+      <span class="spacer"></span>
+      <span id="who"></span>
+      <button id="logout">Log out</button>
+    </header>
+
+    <main>
+      <section id="view-status">
+        <div id="run-banner" class="banner"></div>
+        <div id="cards" class="cards"></div>
+        <h2>Host log</h2>
+        <pre id="log"></pre>
+      </section>
+
+      <section id="view-plots" hidden>
+        <div class="plots">
+          <aside>
+            <label>Run <select id="run"></select></label>
+            <p id="run-info" class="note"></p>
+            <label>Temperature
+              <select id="tempunit"><option value="C">Celsius</option><option value="K">Kelvin</option></select>
+            </label>
+            <label class="inline"><input type="checkbox" id="live"> Follow the run live</label>
+            <input id="var-filter" placeholder="Filter variables" aria-label="Filter variables">
+            <div id="vars"></div>
+            <div class="buttons">
+              <button id="reset">Reset zoom</button>
+              <button id="png">PNG</button>
+              <button id="csv">CSV</button>
+            </div>
+            <p id="unsupported" class="note"></p>
+          </aside>
+          <section id="charts">
+            <p class="note">Pick variables on the left. Wheel zooms, drag pans, double-click resets.</p>
+          </section>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/static/chart.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,7 +1,10 @@
 # GUI: architecture and requirements
 
-Status: **planning only. Nothing is built.** Written 2026-10-03, after step 2
-(declared commands, one-line plans, `labcli <command>`).
+Status: **Stage 1 built** (login, status view, plot viewer: `labcli gui`, docs/GUI.md);
+the rest is still planning. Written 2026-10-03, after step 2 (declared commands,
+one-line plans, `labcli <command>`). Built so far: shared-file locking (Stage 0),
+read-only server with login, status and plots (Stage 1). Next: control, plan editor,
+TVAC viewer.
 
 ## What it is
 
@@ -182,8 +185,9 @@ Other needs:
   default is localhost behind an SSH tunnel.
 - Listening beyond `127.0.0.1` is an explicit option (`labcli gui --listen`), off by
   default.
-- GUI actions are logged to the host log as `gui:<user> ...`, so commands carry a name
-  (the console cannot do this today).
+- GUI logins and actions are logged to `~/.formslab/.run/gui.log` with the user name
+  (the host owns its own log, so the GUI cannot write there; per-command names inside
+  the host would need a change to the CAST request format).
 - Note: the password chosen is also the PowerSwitch fallback password. Fine for a
   locked lab, but worth separating later.
 - Writes are limited to the plans folder; the server cannot save elsewhere.

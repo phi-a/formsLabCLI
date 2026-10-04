@@ -60,6 +60,7 @@ formslab = [
     "console/**/*.json",
     "devices/cryocooler/pico_board_control.py",
     "defaults/*",
+    "gui/static/*",
 ]
 
 [tool.pytest.ini_options]

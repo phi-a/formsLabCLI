@@ -123,6 +123,7 @@ src/formslab/
 ├── rscripts/    the rScripts runtime: loader, gates, the `Run` each script receives
 ├── sequence/    lab plans: test sequences, read and run
 ├── host/        the process that runs a plan
+├── gui/         the web GUI (`labcli gui`; docs/GUI.md)
 └── orbit/       orbit, view-factor and environment models ([orbit] extra; nothing above imports it)
 rScripts/        the routines that own the instruments during a run
 plans/           lab plans, e.g. psu1_smtc08_first.plan
@@ -211,6 +212,9 @@ labcli end
 
 `labcli cast` refuses when no run is going: nothing would apply the command.
 `labcli help` lists every command.
+
+`labcli gui` starts a small web GUI on this machine (status of every instrument,
+plots of recorded runs); see [docs/GUI.md](docs/GUI.md).
 
 ## Windows and Linux (Raspberry Pi)
 

@@ -12,6 +12,8 @@
     labcli cast <label> <words>     a command to an instrument, e.g. cast hvc platen 20;
                                     waits until the rScript that owns it takes it
     labcli cast <label> <words> ?   what can come next ('?' quoted in bash/zsh)
+    labcli gui [--port N] [--listen]  the web GUI on this machine (http://localhost:8080/)
+    labcli gui --set-login          set the GUI's user name and password
 
 Exit status: 0 done, 1 refused or failed, 2 usage. The run state is per
 machine, so these work from any folder or SSH session.
@@ -43,6 +45,10 @@ def main(argv: list[str]) -> int:
         out.print(__doc__.strip(), markup=False)
         return 0
     verb, args = argv[0].lower(), argv[1:]
+
+    if verb == "gui":
+        from formslab.gui.server import main as gui_main
+        return gui_main(args)
 
     from formslab.console.cast import castcli
     from formslab.console.ctrl import ctrlcli
