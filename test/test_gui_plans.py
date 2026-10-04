@@ -294,3 +294,87 @@ def test_the_example_in_the_plan_docs_is_a_plan_that_checks_clean():
     assert block.lstrip().startswith("# PSU1 CH1") and "load rPSU rSMTC08" in block
     assert check_text(block) == []
     assert parse_plan(block).rscripts == ("rPSU", "rSMTC08")
+
+
+# --- each word's role, for drawing the grammar -------------------------------------------------------
+
+def roles(text):
+    from formslab.sequence.plan import tokens
+    return [[(t["text"], t["role"]) for t in line] for line in tokens(text)]
+
+
+def test_every_word_gets_its_role_in_the_grammar():
+    got = roles("# pump down\nload rLACO rNope\nrecord every 5 s\n\nhvc pump on\nhold 15 s\n"
+                "until platenT above 10 C timeout 30 s\nlog pumpdown done: closed\n")
+    assert got == [
+        [("# pump down", "comment")],
+        [("load", "verb"), ("rLACO", "script"), ("rNope", "bad")],
+        [("record", "verb"), ("every", "kw"), ("5", "value"), ("s", "kw")],
+        [],
+        [("hvc", "verb"), ("pump", "kw"), ("on", "kw")],
+        [("hold", "verb"), ("15", "value"), ("s", "kw")],
+        [("until", "verb"), ("platenT", "kw"), ("above", "kw"), ("10", "value"), ("C", "kw"),
+         ("timeout", "kw"), ("30", "value"), ("s", "kw")],
+        [("log", "verb"), ("pumpdown", "text"), ("done:", "text"), ("closed", "text")],
+    ]
+
+
+def test_what_does_not_fit_is_marked_bad():
+    got = roles("load rLACO\nhvc platen 900\nhvc teleport now\npsu1 ch1 on\nhvc platen 25\n")
+    assert got[1] == [("hvc", "verb"), ("platen", "kw"), ("900", "bad")]          # out of range
+    assert got[2] == [("hvc", "verb"), ("teleport", "bad"), ("now", "bad")]       # and all after it
+    assert got[3] == [("psu1", "bad"), ("ch1", "bad"), ("on", "bad")]             # rPSU not loaded
+    assert got[4] == [("hvc", "verb"), ("platen", "kw"), ("25", "value")]
+
+
+@pytest.mark.parametrize("name", SHIPPED)
+def test_a_shipped_plan_has_no_bad_words(name):
+    flat = [r for line in roles(find_plan(name).read_text(encoding="utf-8")) for _, r in line]
+    assert "bad" not in flat and "verb" in flat
+
+
+# --- delete ----------------------------------------------------------------------------------------------
+
+def test_deleting_your_plan_moves_it_to_the_trash():
+    saved = plans.save("mine", "load rSMTC08\nhold 1 s\n", None, as_new=True)
+    out = plans.delete("mine", saved["hash"])
+    trashed = Path(out["trash"])
+    assert out["deleted"] == "mine" and trashed.parent == plans.trash_dir()
+    assert trashed.read_text(encoding="utf-8") == "load rSMTC08\nhold 1 s\n"           # kept, not erased
+    assert not (user_plans_dir() / "mine.plan").exists() and find_plan("mine") is None
+    assert "mine" not in {p.stem for p in discover()}                                   # the trash is not searched
+
+
+def test_a_shipped_plan_cannot_be_deleted():
+    before = find_plan("tvac").read_bytes()
+    with pytest.raises(plans.PlanFileError) as e:
+        plans.delete("tvac", sha(find_plan("tvac")))
+    assert e.value.code == 403 and find_plan("tvac").read_bytes() == before
+
+
+def test_a_plan_changed_since_it_was_opened_is_not_deleted():
+    plans.save("mine", "load rSMTC08\nhold 1 s\n", None, as_new=True)
+    with pytest.raises(plans.PlanFileError, match="changed on disk") as e:
+        plans.delete("mine", "stale-hash")
+    assert e.value.code == 409 and (user_plans_dir() / "mine.plan").exists()
+
+
+def test_deleting_an_unknown_or_path_like_name_is_a_404():
+    for name in ("nope", "../tvac", "", "tvac.plan"):
+        with pytest.raises(plans.PlanFileError) as e:
+            plans.delete(name, "x")
+        assert e.value.code == 404
+
+
+def test_delete_and_tokens_over_http(client, monkeypatch):
+    saved = plans.save("mine", "load rSMTC08\nhold 1 s\n", None, as_new=True)
+    assert client.json("POST", "/api/plan/delete", {"name": "tvac", "base_hash": "x"})[0] == 403
+    monkeypatch.setattr(api, "host", lambda: {"pid": 1, "plan": "mine", "started": "t", "output": "/x"})
+    code, body = client.json("POST", "/api/plan/delete", {"name": "mine", "base_hash": saved["hash"]})
+    assert code == 409 and "is running" in body["error"]                                # not the plan running
+    monkeypatch.setattr(api, "host", lambda: None)
+    code, body = client.json("POST", "/api/plan/delete", {"name": "mine", "base_hash": saved["hash"]})
+    assert code == 200 and body["deleted"] == "mine"
+    assert "tester delete plan mine" in (config.run_dir() / "gui.log").read_text(encoding="utf-8")
+    code, body = client.json("POST", "/api/plan/tokens", {"text": "load rLACO\nhvc vent open\n"})
+    assert code == 200 and [t["role"] for t in body["lines"][1]] == ["verb", "kw", "kw"]

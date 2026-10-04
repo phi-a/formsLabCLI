@@ -24,7 +24,7 @@ from formslab import rscripts
 from formslab.rscripts import cast
 from formslab.rscripts.grammar import GrammarError
 from formslab.sequence import PlanError, discover, load_plan
-from formslab.sequence.plan import available_rscripts, check_text, line_options
+from formslab.sequence.plan import available_rscripts, check_text, line_options, tokens
 from formslab.state import cast_state_path
 
 # How often each block is republished while its owner runs (seconds). A block
@@ -337,3 +337,18 @@ def plan_line(scripts: list[str], words: list[str]) -> dict:
 def rscripts_available() -> list[str]:
     with _lock:
         return available_rscripts()
+
+
+def plan_delete(name: str, base_hash: str | None) -> dict:
+    """Move one of your plans to the trash; not while it is the plan running."""
+    running = host()
+    if running and running.get("plan") == name:
+        raise ApiError(409, f"{name!r} is running; end the run first")
+    with _lock:
+        return _plan_call(plans.delete, name, base_hash)
+
+
+def plan_tokens(text: str) -> list[list[dict]]:
+    """Each line's words with their role in the grammar, for drawing it."""
+    with _lock:
+        return tokens(text)

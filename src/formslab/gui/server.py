@@ -220,6 +220,12 @@ class Handler(BaseHTTPRequestHandler):
             if not all(isinstance(w, str) for w in [*scripts, *words]):
                 return self._error(HTTPStatus.BAD_REQUEST, "scripts and words are lists of strings")
             return self._json(200, api.plan_line(scripts, words))
+        elif path == "/api/plan/tokens":
+            return self._json(200, {"lines": api.plan_tokens(str(body.get("text", "")))})
+        elif path == "/api/plan/delete":
+            name = str(body.get("name", ""))
+            result = api.plan_delete(name, body.get("base_hash"))
+            audit(user, f"delete plan {name} (moved to {result['trash']})")
         elif path == "/api/plan/save":
             name = str(body.get("name", ""))
             result = api.plan_save(name, str(body.get("text", "")), body.get("base_hash"),

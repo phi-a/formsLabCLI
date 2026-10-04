@@ -124,3 +124,84 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 #plan-text { width: 100%; min-height: 55vh; font: 13px/1.45 ui-monospace, Consolas, monospace; background: var(--bg);
              color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
 @media (max-width: 820px) { .plans { grid-template-columns: 1fr; } }
+
+/* ---- the grammar, drawn -------------------------------------------------------------
+   Four shapes, always meaning the same thing, wherever a command or a step appears:
+     .tok.verb   the first word -- a step or an instrument: a solid block in its colour
+     .tok.kw     a fixed keyword: a tinted pill in the same colour, so a command reads as one phrase
+     .tok.value  something you type -- a number, a name: a shaded, inset box, its unit inside
+     .tok.text   free text (a log message): no box, a dashed underline
+   plus .tok.bad (does not fit: red), .tok.comment (muted, italic), .tok.script (a load-line chip).
+   Colour comes from the step or instrument the phrase starts with (data-fam). */
+:root {
+  --fam-flow: #57606a; --fam-hvc: #0969da; --fam-psu: #bc4c00; --fam-cryo: #1b7c83;
+  --fam-slta: #8250df; --fam-tc: #1a7f37; --fam-other: #6e7781;
+  --value-bg: #fff8e1; --value-line: #d4a72c; --value-fg: #1f2328;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --fam-flow: #8b949e; --fam-hvc: #4493f8; --fam-psu: #f0883e; --fam-cryo: #39c5cf;
+    --fam-slta: #ab7df8; --fam-tc: #3fb950; --fam-other: #8b949e;
+    --value-bg: #2b2410; --value-line: #9e6a03; --value-fg: #e6edf3;
+  }
+}
+:root[data-theme="dark"] {
+  --fam-flow: #8b949e; --fam-hvc: #4493f8; --fam-psu: #f0883e; --fam-cryo: #39c5cf;
+  --fam-slta: #ab7df8; --fam-tc: #3fb950; --fam-other: #8b949e;
+  --value-bg: #2b2410; --value-line: #9e6a03; --value-fg: #e6edf3;
+}
+[data-fam="flow"] { --fam: var(--fam-flow); }   [data-fam="hvc"] { --fam: var(--fam-hvc); }
+[data-fam="psu"] { --fam: var(--fam-psu); }     [data-fam="cryo"] { --fam: var(--fam-cryo); }
+[data-fam="slta"] { --fam: var(--fam-slta); }   [data-fam="tc"] { --fam: var(--fam-tc); }
+[data-fam="other"] { --fam: var(--fam-other); }
+
+.tok { --fam: var(--fam-other); display: inline-flex; align-items: center; gap: 4px; box-sizing: border-box;
+       font: 13px/20px ui-monospace, Consolas, monospace; border-radius: 5px; padding: 2px 9px;
+       border: 1px solid transparent; min-height: 26px; width: auto; min-width: 0; }
+select.tok, button.tok { appearance: none; -webkit-appearance: none; cursor: pointer; }
+select.tok { padding-right: 22px;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 12px) 55%, calc(100% - 7px) 55%; background-size: 5px 5px; background-repeat: no-repeat; }
+.tok.verb { background-color: var(--fam); color: #fff; font-weight: 600; border-color: var(--fam); }
+.tok.verb.empty { background-color: transparent; color: var(--muted); border: 1px dashed var(--line); font-weight: 400; }
+.tok.kw { background-color: color-mix(in srgb, var(--fam) 13%, transparent); color: var(--fam);
+          border-color: color-mix(in srgb, var(--fam) 45%, transparent); }
+.tok.value { background-color: var(--value-bg); color: var(--value-fg); border-color: var(--value-line);
+             box-shadow: inset 0 1px 2px rgba(0, 0, 0, .12); }
+.tok.value input { border: 0; background: transparent; color: inherit; font: inherit; padding: 0; width: 7ch; min-width: 3ch; outline: none; }
+.tok.value .unit { color: var(--muted); font-size: 11px; }
+.tok.text { background: transparent; border: 0; border-bottom: 1px dashed var(--muted); border-radius: 0; font-style: italic; padding-left: 2px; }
+.tok.text input { border: 0; background: transparent; color: inherit; font: inherit; width: min(420px, 60vw); outline: none; }
+.tok.bad, .tok.value.bad { background-color: color-mix(in srgb, var(--bad) 12%, transparent); color: var(--bad); border-color: var(--bad); }
+.tok.comment { color: var(--muted); font-style: italic; padding-left: 0; }
+.tok.script { background-color: transparent; color: var(--fam-flow); border: 1px dashed var(--line); cursor: pointer; margin: 0; }
+.tok.script:has(input:checked) { background-color: color-mix(in srgb, var(--fam-flow) 15%, transparent); border: 1px solid var(--fam-flow); color: var(--fg); }
+.tok.script input { margin: 0; }
+.tok:focus-visible, .tok input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.legend { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); margin: 0 0 8px; }
+.legend .tok { cursor: default; }
+.tokline { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 3px 0; }
+#cmd-hints .tok { font-size: 12.5px; min-height: 24px; padding: 1px 9px; }
+.tok.kw input { border: 0; background: transparent; color: inherit; font: inherit; padding: 0; width: 7ch; outline: none; }
+.tok.bad input { border: 0; background: transparent; color: inherit; font: inherit; padding: 0; width: 9ch; outline: none; }
+.prow input.tok.comment { width: 100%; border: 1px dashed transparent; background: transparent; }
+.prow input.tok.comment:hover, .prow input.tok.comment:focus { border-color: var(--line); }
+button.danger-outline { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 55%, transparent); }
+button.danger-outline:hover { background: color-mix(in srgb, var(--bad) 10%, transparent); border-color: var(--bad); }
+/* tokens size to what they hold (where the browser can), and the older .chain sizing stays out of them */
+.tok, .tok input, select.tok { field-sizing: content; }
+.chain .tok input, .chain select.tok { min-width: 2ch; padding-top: 0; padding-bottom: 0; }
+.chain select.tok { min-width: 0; padding: 2px 22px 2px 9px; }
+.chain .tok input[type=checkbox] { min-width: 0; width: auto; }
+.tok.value input { min-width: 3ch; }
+/* compact rows: a comment or a blank line takes a line, not a step's height */
+.prow.comment, .prow.blank { padding: 0; }
+.prow.comment .no, .prow.blank .no { padding-top: 3px; }
+.tokline { padding: 1px 0; }
+.tok.comment { min-height: 0; padding: 1px 0; }
+.prow input.tok.comment { min-height: 0; padding: 1px 4px; }
+.prow.blank .body { padding-top: 2px; font-size: 11px; }
+/* the instrument's colour must beat .tok's default: same specificity, so name both */
+.tok[data-fam="flow"] { --fam: var(--fam-flow); }  .tok[data-fam="hvc"] { --fam: var(--fam-hvc); }
+.tok[data-fam="psu"] { --fam: var(--fam-psu); }    .tok[data-fam="cryo"] { --fam: var(--fam-cryo); }
+.tok[data-fam="slta"] { --fam: var(--fam-slta); }  .tok[data-fam="tc"] { --fam: var(--fam-tc); }

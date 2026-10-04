@@ -89,13 +89,29 @@ Pick a plan on the left; a plan you open is shown line by line:
 - comments and blank lines are kept, and rows can be moved, inserted and deleted.
   *Edit as text* shows the plain file for pasting or fine changes.
 
+Every step is drawn in the same four shapes, in the editor, in a read-only
+plan and in the command box's suggestions, so the grammar can be seen:
+
+| Shape | Means | Example |
+|---|---|---|
+| solid block, in the instrument's colour | the first word: an instrument (`hvc` blue, `psu1`/`psu2` amber, `cryo` teal, `slta` violet, `tc` green) or a step (`hold`, `until`, `log`, `load`, `record`, slate) | `hvc` |
+| tinted pill, same colour | a fixed keyword, so a command reads as one phrase | `platen`, `on`, `timeout` |
+| shaded box, its unit inside | a value you type | `25 °C`, `30` |
+| dashed underline | free text | a `log` message |
+
+A word that does not fit (an unknown keyword, a number out of range, an
+instrument whose rScript is not loaded) turns red, and the reason is under the
+row. A legend above the plan shows the four shapes.
+
 Plans that ship with formsLabCLI (and anything in the folder you started from)
 are read-only here. *Save as...* makes your own copy in
 `~/.formslab/plans/`, which never changes what `run <name>` does for anyone
 else, and a name already taken by any plan is refused. Saving writes the file
 in one step and refuses to overwrite a plan that changed on disk since you
 opened it. A draft with mistakes can be saved; it is listed as "cannot run"
-until they are fixed. A saved plan appears in the Start list on the Status tab.
+until they are fixed. A saved plan appears in the Start list on the Status tab. *Delete* (your own plans only, and not
+the plan that is running) moves the file to `~/.formslab/plans/.trash`, where it
+is kept with the time it was deleted; move it back to restore it.
 
 **Plots.** Pick a recorded run and any of its variables; each unit gets its own
 chart. Wheel zooms, drag pans, double-click resets, hovering reads values.

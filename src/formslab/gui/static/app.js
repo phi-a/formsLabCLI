@@ -11,7 +11,16 @@
     return e;
   };
 
-  window.App = { api: (...a) => api(...a), el, $ };    // for editor.js, loaded next
+  // The colour family of a phrase is the step or instrument it starts with.
+  const FAMILY = { hvc: "hvc", psu1: "psu", psu2: "psu", cryo: "cryo", slta: "slta", tc: "tc" };
+  const STEP_WORDS = ["hold", "until", "log", "load", "record"];
+  const famOf = (word) => {
+    const w = (word || "").toLowerCase();
+    return FAMILY[w] || (STEP_WORDS.includes(w) ? "flow" : "other");
+  };
+  const unitText = (u) => (u === "C" ? "\u00b0C" : u || "");
+
+  window.App = { api: (...a) => api(...a), el, $, famOf, unitText };    // for editor.js, loaded next
 
   const state = {
     view: "status", timer: null, runs: [], run: null, selected: new Set(), data: null,
@@ -244,7 +253,8 @@
     const options = r.options.filter((o) => o.kind !== "word" || o.text.toLowerCase().startsWith(prefix));
     for (const o of options.slice(0, 40)) {
       if (o.kind === "word") {
-        const b = el("button", { type: "button", title: o.help || "" }, o.text);
+        const b = el("button", { type: "button", title: o.help || "", class: "tok " + (done.length ? "kw" : "verb"),
+                                 "data-fam": famOf(done.length ? done[0] : o.text) }, o.text);
         b.addEventListener("click", () => {
           $("#cmd").value = done.concat(o.text).join(" ") + " ";
           $("#cmd").focus();
@@ -253,7 +263,7 @@
         box.append(b);
       } else {
         const lim = o.lo !== null || o.hi !== null ? ` ${o.lo ?? ""}..${o.hi ?? ""}` : "";
-        box.append(el("span", { class: "slot", title: o.help || "" }, `<${o.text}${lim}${o.unit ? " " + o.unit : ""}>`));
+        box.append(el("span", { class: "tok value", title: o.help || "" }, `${o.text}${lim}${o.unit ? " " + unitText(o.unit) : ""}`));
       }
     }
     if (!options.length && done.length) box.append(el("span", { class: "note" }, "Nothing more to add: press Send."));

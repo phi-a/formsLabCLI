@@ -7,13 +7,13 @@
 // truth; the dropdowns only edit it. Server text goes on the page as text only.
 (function () {
   "use strict";
-  const { api, el, $ } = window.App;
+  const { api, el, $, famOf, unitText } = window.App;
   // el(tag, attrs, "text") makes a text element; h(tag, attrs, ...children) one with children.
   const h = (tag, attrs, ...kids) => { const e = el(tag, attrs); for (const k of kids) e.append(k); return e; };
 
   const S = {
     plans: [], name: null, editable: false, hash: null, original: "", lines: [], raw: false,
-    errors: [], available: [], cache: new Map(), checkTimer: null, rows: [], busy: false,
+    errors: [], available: [], cache: new Map(), checkTimer: null, rows: [], busy: false, tokStamp: 0,
     fresh: -1,     // the line just inserted as a step: empty, so it shows the step chooser, not a blank
   };
 
@@ -118,6 +118,7 @@
       S.rows.push({ row, body });
       renderLine(i);
     });
+    if (!S.editable) paintTokens();
     if (S.editable) {
       const add = el("button", { type: "button" }, "+ Add a step");
       add.addEventListener("click", () => insert(S.lines.length, ""));
@@ -129,13 +130,49 @@
     const { body } = S.rows[i];
     const line = S.lines[i], kind = kindOf(line);
     body.replaceChildren();
-    if (!S.editable) { body.append(el("pre", { class: "line" }, line || " ")); return; }
+    if (!S.editable) { body.append(el("pre", { class: "line" }, line || " ")); return; }   // painted by paintTokens
     if (kind === "blank" && i === S.fresh) renderStep(i, body);
     else if (kind === "blank") body.append(el("span", {}, "(blank line)"));
     else if (kind === "comment") renderComment(i, body);
     else if (kind === "load") renderLoad(i, body);
     else if (kind === "record") renderRecord(i, body);
     else renderStep(i, body);
+  }
+
+  // A read-only plan is drawn with the same tokens, from the server's reading of it.
+  async function paintTokens() {
+    const stamp = ++S.tokStamp;
+    let r;
+    try { r = await api("/api/plan/tokens", { text: text() }); } catch (e) { return; }
+    if (stamp !== S.tokStamp) return;
+    r.lines.forEach((toks, i) => { if (S.rows[i]) S.rows[i].body.replaceChildren(tokenLine(toks)); });
+  }
+
+  function tokenLine(toks) {
+    const line = el("div", { class: "tokline" });
+    if (!toks.length) { line.append(el("span", { class: "note" }, " ")); return line; }
+    const fam = famOf(toks[0].text);
+    let text = null;
+    for (const t of toks) {
+      if (t.role === "text") {                         // a run of free text is one underlined phrase
+        if (!text) { text = el("span", { class: "tok text" }, t.text); line.append(text); }
+        else text.textContent += " " + t.text;
+        continue;
+      }
+      text = null;
+      line.append(el("span", { class: "tok " + t.role, "data-fam": t.role === "script" ? "flow" : fam }, t.text));
+    }
+    return line;
+  }
+
+  function legend() {
+    const box = $("#plan-legend");
+    box.replaceChildren(el("span", {}, "Reading a step:"),
+      el("span", { class: "tok verb", "data-fam": "hvc" }, "hvc"), el("span", {}, "instrument or step"),
+      el("span", { class: "tok kw", "data-fam": "hvc" }, "platen"), el("span", {}, "keyword"),
+      el("span", { class: "tok value" }, "25 \u00b0C"), el("span", {}, "a value you type"),
+      el("span", { class: "tok text" }, "a log message"), el("span", {}, "free text"),
+      el("span", { class: "tok bad" }, "900"), el("span", {}, "does not fit"));
   }
 
   function setLine(i, value, rerender) {
@@ -146,7 +183,7 @@
   }
 
   function renderComment(i, body) {
-    const input = el("input", { class: "comment", value: S.lines[i], "aria-label": "Comment" });
+    const input = el("input", { class: "tok comment", value: S.lines[i], "aria-label": "Comment" });
     input.addEventListener("input", () => setLine(i, input.value, false));
     input.addEventListener("change", () => renderLine(i));
     body.append(input);
@@ -155,9 +192,9 @@
   function renderLoad(i, body) {
     const chosen = new Set(splitWords(S.lines[i]).slice(1));
     const names = [...S.available, ...[...chosen].filter((n) => !S.available.includes(n))];
-    const box = h("div", { class: "scripts" }, el("span", { class: "tag" }, "load"));
+    const box = h("div", { class: "chain" }, el("span", { class: "tok verb", "data-fam": "flow" }, "load"));
     for (const n of names) {
-      const label = el("label"), cb = el("input", { type: "checkbox" });
+      const label = el("label", { class: "tok script" + (S.available.includes(n) ? "" : " bad") }), cb = el("input", { type: "checkbox" });
       cb.checked = chosen.has(n);
       cb.addEventListener("change", () => {
         if (cb.checked) chosen.add(n); else chosen.delete(n);
@@ -174,14 +211,15 @@
   function renderRecord(i, body) {
     const m = /^\s*record\s+every\s+([0-9.]+)\s+(s|min|h)\s*$/i.exec(S.lines[i]);
     if (!m) { renderStep(i, body, true); return; }
-    const n = el("input", { class: "slot", value: m[1], inputmode: "decimal", "aria-label": "Record every" });
-    const unit = el("select", { "aria-label": "Unit" });
+    const n = el("input", { value: m[1], inputmode: "decimal", "aria-label": "Record every" });
+    const unit = el("select", { "aria-label": "Unit", class: "tok kw", "data-fam": "flow" });
     for (const u of ["s", "min", "h"]) unit.append(el("option", { value: u }, u));
     unit.value = m[2].toLowerCase();
     const upd = () => setLine(i, `record every ${n.value.trim() || "0"} ${unit.value}`, false);
     n.addEventListener("input", upd);
     unit.addEventListener("change", upd);
-    body.append(h("div", { class: "chain" }, el("span", { class: "tag" }, "record every"), n, unit));
+    body.append(h("div", { class: "chain" }, el("span", { class: "tok verb", "data-fam": "flow" }, "record"),
+      el("span", { class: "tok kw", "data-fam": "flow" }, "every"), h("span", { class: "tok value" }, n), unit));
   }
 
   const limitsOf = (o) => {
@@ -209,22 +247,24 @@
       const opts = r.positions[k] || [];
       if (!opts.length) {
         if (k < words.length) {                              // a word that fits nothing: show it, flagged
-          const bad = el("input", { class: "slot bad", value: words[k], "aria-label": "Word " + (k + 1) });
+          const bad = el("input", { value: words[k], "aria-label": "Word " + (k + 1) });
           bad.addEventListener("change", () => apply(words.slice(0, k).concat(splitWords(bad.value)).concat(words.slice(k + 1))));
-          chain.append(bad);
+          chain.append(h("span", { class: "tok bad", title: "This word does not fit here" }, bad));
         }
         continue;
       }
       const current = words[k];
       if (opts.some((o) => o.kind === "rest")) {              // the rest of the line is free text
-        const rest = el("input", { class: "rest", value: words.slice(k).join(" "), placeholder: limitsOf(opts[0]) });
+        const rest = el("input", { value: words.slice(k).join(" "), placeholder: "message", "aria-label": "Message" });
         rest.addEventListener("input", () => { S.lines[i] = words.slice(0, k).concat(splitWords(rest.value)).join(" "); scheduleCheck(); updateButtons(); });
-        chain.append(rest);
+        chain.append(h("span", { class: "tok text" }, rest));
         break;
       }
       const wordOpts = opts.filter((o) => o.kind === "word"), slot = opts.find((o) => o.kind !== "word");
       if (!slot) {                                            // only fixed words: a dropdown
-        const sel = el("select", { "aria-label": "Choice " + (k + 1) });
+        const sel = el("select", { "aria-label": "Choice " + (k + 1),
+          class: "tok " + (k === 0 ? "verb" : "kw") + (k === 0 && current === undefined ? " empty" : ""),
+          "data-fam": famOf(k === 0 ? current : words[0]) });
         if (current === undefined) sel.append(el("option", { value: "" }, k === 0 ? "add a step..." : "..."));
         const seen = new Set();
         for (const o of wordOpts) {
@@ -243,8 +283,12 @@
         chain.append(sel);
       } else {                                                // a value to type, maybe also fixed words
         const listId = `dl-${i}-${k}`;
-        const input = el("input", { class: "slot", value: current ?? "", placeholder: limitsOf(slot),
-                                    "aria-label": limitsOf(slot), title: slot.help || "" });
+        const isWord = current !== undefined && wordOpts.some((o) => o.text.toLowerCase() === current.toLowerCase());
+        const lim = slot.lo !== null || slot.hi !== null ? `${slot.lo ?? ""}..${slot.hi ?? ""}` : slot.text;
+        const input = el("input", { value: current ?? "", placeholder: lim, size: Math.max(4, lim.length),
+                                    "aria-label": limitsOf(slot), title: (slot.help || "") + (wordOpts.length ? " -- or pick a word from the list" : "") });
+        const box = h("span", { class: "tok " + (isWord ? "kw" : "value"), "data-fam": famOf(words[0]) }, input);
+        if (!isWord && slot.unit) box.append(el("span", { class: "unit" }, unitText(slot.unit)));
         if (wordOpts.length) {
           input.setAttribute("list", listId);
           const dl = el("datalist", { id: listId });
@@ -258,10 +302,11 @@
           else if (v === "") apply(words.slice(0, k));
           else { const next = words.slice(); next[k] = v; apply(next); }   // a value: the words after it stay
         });
-        chain.append(input);
+        chain.append(box);
       }
     }
-    if (forceRaw) chain.prepend(el("span", { class: "tag" }, "record"));
+    if (r.error) [...chain.querySelectorAll(".tok")].pop()?.classList.add("bad");   // errors sit at the farthest point
+    if (forceRaw) chain.prepend(el("span", { class: "tok verb", "data-fam": "flow" }, "record"));
     body.append(chain);
     body.parentElement.querySelector(".rowerr").dataset.stepError = r.error || "";
     showErrors();
@@ -308,6 +353,8 @@
     $("#plan-revert").disabled = !S.name || !dirty();
     $("#plan-saveas").disabled = !S.name;
     $("#plan-raw").disabled = !S.name;
+    $("#plan-delete").disabled = !S.name || !S.editable || S.busy;
+    $("#plan-delete").hidden = !S.editable;
     const d = dirty() ? " (unsaved changes)" : "";
     $("#plan-title").textContent = (S.name || "No plan open") + d;
   }
@@ -336,6 +383,17 @@
   }
 
   $("#plan-save").addEventListener("click", () => save(false));
+  $("#plan-delete").addEventListener("click", async () => {
+    if (!confirm(`Delete the plan "${S.name}"? It is moved to the trash folder (~/.formslab/plans/.trash), not erased.`)) return;
+    try {
+      const r = await api("/api/plan/delete", { name: S.name, base_hash: S.hash });
+      S.name = null; S.lines = []; S.original = text();
+      await loadList();
+      const next = S.plans.find((p) => p.editable) || S.plans[0];
+      if (next) await openPlan(next.name); else renderAll();
+      say(`Deleted "${r.deleted}". It is kept in the trash folder if you need it back.`);
+    } catch (e) { say(e.message, true); }
+  });
   $("#plan-saveas").addEventListener("click", () => {
     const name = prompt("Name for your copy (letters, digits, - and _):", S.name ? S.name + "_copy" : "");
     if (name) save(true, name.trim());
@@ -379,6 +437,7 @@
     async open() {
       try {
         S.available = (await api("/api/rscripts")).rscripts;
+        legend();
         await loadList();
         if (!S.name && S.plans.length) await openPlan(S.plans.find((p) => p.editable)?.name || S.plans[0].name);
         else renderAll();

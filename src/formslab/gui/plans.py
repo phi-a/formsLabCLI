@@ -9,13 +9,16 @@ change what `run <name>` does for everyone, and a name already taken by any plan
 is refused.
 
 Saving writes the file in one step and refuses to overwrite a file that changed
-since it was opened (compared by a hash of its contents).
+since it was opened (compared by a hash of its contents). Deleting moves the file
+into ``<config>/plans/.trash`` rather than erasing it.
 """
 from __future__ import annotations
 
 import hashlib
 import os
 import re
+import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 
 from formslab.console.safefile import atomic_write_text
@@ -93,3 +96,25 @@ def save(name: str, text: str, base_hash: str | None, as_new: bool) -> dict:
     atomic_write_text(target, text)
     return {"name": name, "hash": content_hash(text.encode("utf-8")), "editable": True,
             "errors": [{"line": n, "message": m} for n, m in check_text(text)]}
+
+
+def trash_dir() -> Path:
+    return user_plans_dir() / ".trash"
+
+
+def delete(name: str, base_hash: str | None) -> dict:
+    """Move an editable plan to the trash (never a shipped one), if it is
+    unchanged since `base_hash`. It is kept as ``<name>_<UTC>.plan`` there and
+    can be put back by moving it out again."""
+    path = find(name) if NAME.match(name or "") else None
+    if path is None:
+        raise PlanFileError(404, f"no plan {name!r}")
+    if not is_editable(path):
+        raise PlanFileError(403, f"{name!r} ships with formsLabCLI and cannot be deleted here")
+    if base_hash != content_hash(path.read_bytes()):
+        raise PlanFileError(409, f"{name!r} changed on disk since you opened it; reload it first")
+    trash_dir().mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    target = trash_dir() / f"{name}_{stamp}{SUFFIX}"
+    shutil.move(str(path), str(target))
+    return {"deleted": name, "trash": str(target)}

@@ -298,6 +298,66 @@ def line_options(scripts, words) -> dict:
     return result
 
 
+# What each word of a plan is, so the GUI can draw the grammar. A role is one of
+#   verb     the first word: a step (hold, until, log, load, record) or an instrument
+#   kw       a fixed keyword after it (platen, on, rate, every, s, min...)
+#   value    a number or a one-word value typed in a slot
+#   text     free text (a log message)
+#   script   an rScript named on the load line ("bad" when it cannot be found)
+#   comment  a whole comment line
+#   bad      a word that fits nothing here (it, and every word after it)
+def tokens(text: str) -> list[list[dict]]:
+    """Every line of plan `text` as [{text, role}, ...]; [] for a blank line."""
+    from formslab import rscripts
+
+    lines = text.splitlines()
+    load = next((ln.split() for ln in lines if ln.split()[:1] and ln.split()[0].lower() == "load"), [])
+    grammar = _grammar(tuple(load[1:]))[0]
+    out = []
+    for line in lines:
+        t = line.strip()
+        words = t.split()
+        if not words:
+            out.append([])
+        elif t.startswith("#"):
+            out.append([{"text": t, "role": "comment"}])
+        elif words[0].lower() == "load":
+            out.append([{"text": words[0], "role": "verb"}]
+                       + [{"text": w, "role": "script" if rscripts.find(w) else "bad"} for w in words[1:]])
+        else:
+            g = _RECORD if words[0].lower() == "record" else grammar
+            out.append([{"text": w, "role": r} for w, r in zip(words, _roles(g, words))])
+    return out
+
+
+def _roles(grammar, words) -> list[str]:
+    roles: list[str] = []
+    for k, word in enumerate(words):
+        options = grammar.complete(words[:k])
+        if any(o.kind == "rest" for o in options):
+            return roles + ["text"] * (len(words) - k)
+        if any(o.kind == "word" and o.text.lower() == word.lower() for o in options):
+            roles.append("verb" if k == 0 else "kw")
+        elif any(o.kind in ("number", "integer") for o in options) and _is_number(word):
+            v = float(word)
+            fits = any(o.kind in ("number", "integer") and (o.lo is None or v >= o.lo)
+                       and (o.hi is None or v <= o.hi) for o in options)
+            roles.append("value" if fits else "bad")             # out of range: flagged, the rest still read
+        elif any(o.kind == "text" for o in options):
+            roles.append("value")
+        else:
+            return roles + ["bad"] * (len(words) - k)
+    return roles
+
+
+def _is_number(word: str) -> bool:
+    try:
+        float(word)
+    except ValueError:
+        return False
+    return True
+
+
 def _option(o) -> dict:
     return {"kind": o.kind, "text": o.text, "help": o.help, "lo": o.lo, "hi": o.hi, "unit": o.unit}
 
