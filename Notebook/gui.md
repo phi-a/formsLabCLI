@@ -96,15 +96,56 @@ instrument.
 - Live CAST blocks for `hvc`, `tc`, `psu1`, `psu2`, `cryo`, `slta`.
 
 ### 3. TVAC viewer (valves and conditions)
-- A schematic of the chamber: valves (`rough`, `vent`, `fill`, `foreline`, `gate`),
-  pumps (`pump`, `turbo`), pressure, platen and shroud temperatures and setpoints,
-  mode, faults.
-- **Data already there:** the CAST `hvc` block carries all of it (`pressure`, `<zone> C`,
-  `<zone> setpoint C`, the device states, `faults`, thermocouples by name).
-- **Needs:** an SVG of the plumbing. Whether it is drawn from `docs/HVC3500.md` or from
-  a diagram you supply is open (see questions).
-- Shows "no run" or "chamber unreachable" instead of stale numbers; every value carries
-  its age.
+
+Follow the controller's own Manual screen so operators see the picture they already
+know: [Notebook/tvac-chamber.md](tvac-chamber.md) has the screenshot and the
+chamber's description.
+
+![HMI Manual screen](img/hmi-manual-screen.png)
+
+Layout to reproduce (one SVG, values filled in from CAST):
+
+- **Chamber box**, large, with the pressure reading on it.
+- **Gas side, left:** Vent Valve and Fill Valve into the chamber.
+- **Vacuum side, right:** Gate Valve to the Turbo Pump, Vacuum (rough) Valve to the
+  Vacuum Pump, and the Foreline Valve between them.
+- **Three zone blocks inside:** Cntrl P (platen), Cntrl S (shroud), t2 (zone 3,
+  monitor only), each with temperature, a heater output percentage, and an ON/OFF
+  indicator.
+- **Side readouts:** the named thermocouples, and the LN2 dewar label.
+- **Banner:** faults (the screen shows "Pressure High" by the foreline).
+
+What each item on the screen is in our software, and whether we can show it today:
+
+| On the screen | Our name / source | Available now? |
+|---|---|---|
+| Chamber pressure (82.26 Torr) | `pressure`, `?VP` | yes |
+| Vent, Fill, Foreline, Gate valves | `vent`, `fill`, `foreline`, `gate` (`!OV/OF/O4/OG`) | yes, open or closed |
+| "Vacuum Valve" | `rough` (`!OR`) | yes |
+| Vacuum Pump, Turbo Pump | `pump`, `turbo` (`!OP/OT`) | yes, on or off |
+| Zone temperatures (19.5, 19.8, 19.7 C) | `<zone> C`, thermocouples T2, T3, T4 | yes |
+| Zone ON/OFF | `thermal_control` | yes |
+| Zone setpoint | `<zone> setpoint C` | yes |
+| Side readouts (Cntrl P, ot1-ptn, ...) | named thermocouples `HVC_...` | yes. The HMI labels both lower rows "ot1-ptn"; the profile maps T0 and T1 to `ot1_ptn` and `ot2_shd`, so the second is presumably `ot2-shd` |
+| Fault banner | `faults`, `fault_severity` | yes |
+| **Heater output %** (0.0 % per zone) | no documented query | **not read** |
+| **Turbo speed %** (0.1 %) | no documented query | **not read** |
+| **Foreline pressure** (3.875 torr) | a fault code exists (25), no query known | **not read** |
+| LED Light, Manual Heat, Trend | HMI-only controls | no; Trend is replaced by the Plot viewer |
+
+So the viewer can be built now with the first group, and the three "not read" items
+are shown as unavailable until we find where the controller exposes them (an ASCII
+query, or one of the temperature or register inputs). Finding them is a small
+commissioning task, not GUI work.
+
+Icon states on the screen (red X versus the pale pink icons) need decoding against
+live observation: the screenshot shows everything closed or off, with some icons
+drawn faded.
+
+Other needs:
+
+- Shows "no run" or "chamber unreachable" instead of stale numbers; every value
+  carries its age.
 
 ### 4. Space environment and orbit viewer
 - Orbit geometry, beta angle and eclipse timeline, view factors over the orbit, and
@@ -188,10 +229,12 @@ Non-functional
 
 ## Open questions
 
-1. Is the chamber schematic drawn from the HVC-3500 manual, or do you have a diagram?
+1. ~~Chamber schematic~~ -- settled 2026-10-03: follow the HMI Manual screen (section 3).
 2. Orbit view: 2D only at first, or is 3D needed from the start?
 3. Should a plan be able to *replay* an orbit profile against the chamber (a new plan
    step), and should the orbit screen then show the run's position in it?
 4. Two people editing the same plan: warn on conflicting saves, or last save wins?
 5. Celsius or Kelvin as the default display? (Values are published in K internally.)
 6. Do students need to *start* runs from the GUI, or only edit plans and watch?
+7. Heater output %, turbo speed % and foreline pressure are on the HMI but not read by our
+   software: worth finding where the controller exposes them?
