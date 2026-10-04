@@ -61,7 +61,7 @@ UTF-8, because the default OEM codepage mangles the box-drawing characters.
 | Tab | What it drives |
 |---|---|
 | `ctrl` | Runs: `plans`, `run <plan|tvac>`, pause, resume, end |
-| `cast` | Instrument status, and commands to them (`hvc vent open`, `psu1 ch1 on`, `help`) |
+| `cast` | Instrument status, and commands to them (`hvc vent open`, `psu1 ch1 on`, `hvc platen ?`, `help`) |
 | `psu` | Rigol supplies and PowerSwitch outlets |
 | `log` | Tail the run log |
 
@@ -163,12 +163,21 @@ else runs against fakes and passes on a bare install with nothing plugged in.
 
 ## Running a test
 
-A lab plan is a hardware test sequence: which rScripts own the instruments,
-and an ordered list of steps (`command`, `hold`, `until`, `log`). The grammar
-is in [docs/SEQUENCE.md](docs/SEQUENCE.md).
+A lab plan is a hardware test sequence, one step per line: `load` names the
+rScripts that own the instruments, then commands (the cast tab's words),
+`hold`, `until` and `log`. See [docs/SEQUENCE.md](docs/SEQUENCE.md).
 
 ```
-python -m formslab.sequence psu1_smtc08_first     # check a plan; touches no hardware
+load rLACO
+hvc pump on
+hold 15 s
+hvc rough open
+until chamberP below 5 timeout 20 min
+hvc stop
+```
+
+```
+labcli check psu1_smtc08_first                     # read a plan; touches no hardware
 labcli --ctrl
 ctrl> plans                                        # lab plans; tvac runs until end
 ctrl> run tvac                                     # manual operation: then the cast tab
@@ -181,6 +190,25 @@ log>  tail 50                                      # the host's output
 outputs go off, pumping the run started stops) before it exits. `tvac` runs
 the bench's rScripts until `end` while you operate from the cast tab; a plan
 ends by itself. Every run writes a CSV of its variables to `outputs/`.
+
+## One command at a time (SSH, scripts)
+
+`labcli` with a command runs it and exits, with an exit status (0 done, 1
+refused or failed, 2 usage). What is running is kept per machine in
+`~/.formslab/.run`, so this works from any folder or an SSH session:
+
+```
+labcli status                       # is a run going (exit 1 if not)
+labcli run tvac                     # start one; it keeps running after you log out
+labcli cast hvc platen 20           # waits until rLACO has taken it
+labcli cast hvc platen '?'          # what can come next
+labcli status hvc                   # one instrument's readings
+labcli log 50                       # the host's output
+labcli end
+```
+
+`labcli cast` refuses when no run is going: nothing would apply the command.
+`labcli help` lists every command.
 
 ## Windows and Linux (Raspberry Pi)
 

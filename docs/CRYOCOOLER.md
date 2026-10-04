@@ -38,7 +38,7 @@ one class with those three methods — nothing above it changes.
 | `rScripts/rCryoBoard.py` | The only owner of a live `CryoBoard`. |
 
 Nothing else touches `CryoBoard`. The console and lab plans command the board
-through CAST, as `cryo ...` in the cast tab or `{"cast": "cryo on"}` in a plan;
+through CAST, as `cryo ...` in the cast tab or the same words (`cryo on`) in a plan;
 rCryoBoard applies it.
 
 ## Supply, and a channel conflict

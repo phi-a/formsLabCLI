@@ -1,7 +1,7 @@
 # rScripts — the routines that own the instruments
 
 An rScript is a file `<name>.py` with a module-level `def rScript(run):`. The
-host loads the ones the plan names (`rscripts.load`) and runs each in its
+host loads the ones the plan names (`load`) and runs each in its
 own thread at 10 Hz. A routine owns its instruments for the run: it applies CAST
 requests for them, publishes readings as variables on `run` and as a CAST
 status block, and leaves them safe in `rShutdown(run)`, which the host calls

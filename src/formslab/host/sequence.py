@@ -1,6 +1,6 @@
 """The sequence host: the process that runs rScripts against the bench.
 
-Started by the console's ctrl tab (`run <plan>`), or directly:
+Started by the console's ctrl tab or `labcli run <plan>`, or directly:
 
     python -m formslab.host.sequence tvac              # manual operation, until `end`
     python -m formslab.host.sequence plans/psu1_smtc08_first.plan

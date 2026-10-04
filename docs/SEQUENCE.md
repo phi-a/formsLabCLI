@@ -1,36 +1,44 @@
 # Lab plans
 
-A lab plan is a hardware test sequence: the rScripts that own the instruments,
-and an ordered list of steps. It is a `.plan` file that formsLabCLI reads
-statically (literal assignments only, nothing executed).
+A lab plan is a hardware test sequence in a `.plan` file, one step per line:
+which rScripts own the instruments, then what to do, in order.
 
-```python
-mission.name = "psu1_smtc08_first"
-rscripts.load = ["rPSU", "rSMTC08"]      # the routines that own the instruments
-recording.interval = 2                   # CSV of every variable: outputs/<name>_<UTC>.csv
-recording.unit = "seconds"
+```
+# PSU1 CH1 on for a minute while the thermocouples record
+load rPSU rSMTC08            # the routines that own the instruments (first line)
+record every 2 s             # CSV of every value: outputs/<plan>_<UTC>.csv (default 10 s)
 
-sequence.operations = [
-    {"command": "psu1", "request": {"1": {"voltage": 1.0, "current": 0.1}}},
-    {"command": "psu1", "request": {"1": {"on": True}}},
-    {"hold": 60, "units": "seconds"},
-    {"until": "TC01", "above": 30.0, "unit": "C", "timeout_s": 600},
-    {"command": "psu1", "request": {"1": {"on": False}}},
-    {"log": "done"},
-]
+psu1 ch1 set 1.0 0.1         # a command: the same words as the cast tab
+psu1 ch1 on
+hold 60 s
+until TC01 above 30 C timeout 10 min
+psu1 ch1 off
+log done
 ```
 
 | step | does | fails the plan when |
 |---|---|---|
-| `hold` | runs the routines for a duration (`units`: seconds, minutes, hours), or `"until end"`: until ctrl `end` (`tvac.plan`) | — |
-| `command` | writes a CAST request to an instrument label and waits until the routine that owns it has taken it | not taken within `timeout_s` (default 10) |
-| `cast` | the same, as the cast tab's words: `{"cast": "hvc pump on"}` -- checked against the routine's grammar when the plan is read | as `command` |
-| `until` | runs until a variable is `above` / `below` a value; `unit` converts C/K | not met within `timeout_s` (required: a wait on hardware always has a limit) |
-| `log` | one line in the run log | — |
+| `<label> <words>` | a command to the routine that owns the label (`hvc vent open`, `psu1 ch1 on`, `cryo ccv 14`) -- the cast tab's words; waits until the routine has taken it | not taken within 10 s |
+| `hold <n> s\|min\|h` | runs the routines for a while | — |
+| `hold until end` | runs until ctrl `end` (`tvac.plan`: manual operation) | — |
+| `until <value> above\|below <n> [C\|K] timeout <n> s\|min\|h` | runs until a published value crosses a limit; `C`/`K` converts from the value's own unit | not met by the timeout (required: a wait on hardware always has a limit) |
+| `log <text>` | one line in the run log | — |
 
-The request grammar of each label is its routine's; `cast` steps use the cast
-tab's words instead, which is usually easier to read. `help` in the cast tab
-lists them all; `LACO.apply` documents the `hvc` dict grammar.
+`#` starts a comment on its own line. Words and value names ignore case.
+
+The commands and value names come from what the loaded routines declare
+(`COMMANDS`, `VARIABLES`; see rScripts/README.md), and the plan is checked
+against them when it is read, before anything runs. A mistake is reported with
+its line number and what would fit:
+
+```
+tvac.plan:7: expected on or off after 'hvc pump', got 'onn'; did you mean 'on'?
+tvac.plan:9: TC01 is published by rSMTC08; add it to `load`
+tvac.plan:4: expected s, min or h after 'hold 30', got 'sec'; did you mean 's'?
+```
+
+To see what can follow some words, end them with `?` in the cast tab
+(`hvc platen ?`) or `labcli cast hvc platen ?`.
 
 Shipped plans: `tvac` (manual operation from the cast tab, until `end`),
 `psu1_smtc08_first` (PSU1 + thermocouples), `laco_pumpdown`
@@ -38,14 +46,15 @@ Shipped plans: `tvac` (manual operation from the cast tab, until `end`),
 guards, vent valve open, until atmosphere).
 
 Orbit content (`orbit.*`, `propagate`, `@procedure`) is refused: that is FORMS'
-part, done offline (see ARCHITECTURE.md).
+part, done offline (see ARCHITECTURE.md). A file in the old format
+(`sequence.operations = [...]`) is refused with a pointer here.
 
 ## Running
 
 ```
-python -m formslab.sequence <plan>              # check: scripts found, steps listed
-labcli --ctrl  ->  run <plan>                    # or:
-python -m formslab.host.sequence <plan>
+labcli check <plan>                              # read it: steps listed, errors by line
+labcli run <plan>                                # or in the console: ctrl> run <plan>
+labcli status / end
 ```
 
 Plans are found by path, or by name in `$FORMSLAB_PLANS_DIR`, `<cwd>/plans`,

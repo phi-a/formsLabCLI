@@ -4,7 +4,7 @@ formsLabCLI controls thermal-vacuum test benches from the terminal and runs
 hardware test sequences against them. Running those sequences is its central job.
 
 ```
- labcli (console)                         sequence host (one process per run)
+ labcli (console, or `labcli <command>`)  sequence host (one process per run)
  ┌──────────────────────┐                 ┌───────────────────────────────────┐
  │ ctrl  run/pause/end  │── ctrlfile ───▶ │ poll ctrl                          │
  │ cast  status, cmds   │── castfile ◀──▶ │ tick every rScript ─▶ devices/*     │
@@ -20,7 +20,8 @@ hardware test sequences against them. Running those sequences is its central job
 |---|---|---|
 | Drivers | `formslab.devices` | One folder per instrument (`hvc3500`, `dp832a`, `smtc08`, `cryocooler`, `slta`, `powerswitch`), plus device objects (`hvc3500.LACO`). Opens ports, speaks protocols; knows nothing about runs. |
 | Routines | `rScripts/*.py` on `formslab.rscripts` | The instrument during a run: apply CAST requests for it, publish its readings as variables, leave it safe in `rShutdown`. One owner per instrument. |
-| Sequences | `formslab.sequence` | Lab plans: which routines run, and the ordered steps of a test. Steps talk to routines through CAST, never to a driver. |
+| Grammar | `formslab.rscripts.grammar`, `cast` | The commands each routine declares, as data: parses a cast-tab line or a plan step, lists what can come next (completion, a future GUI), and builds the help. |
+| Sequences | `formslab.sequence` | Lab plans, one step per line: which routines run, and the ordered steps of a test. Steps talk to routines through CAST, never to a driver. |
 | Host | `formslab.host` | One run of one plan. Lock, ctrl, pacing, recording, shutdown. |
 | Console | `formslab.console`, `formslab.app` | The operator: start and stop runs, watch and command instruments. |
 
@@ -36,8 +37,9 @@ next" for completion.
 ## Everything is a plan
 
 Every run is a plan (`plans/*.plan`). Manual chamber operation is the plan
-`tvac`: it loads rLACO, rSMTC08 and rPSU and holds "until end", while the
-operator works from the cast tab. Pumpdown, vent, a soak, a test are plans with
+`tvac`: it loads rLACO, rSMTC08 and rPSU and holds until `end`, while the
+operator works from the cast tab or `labcli cast` over SSH. The running host's
+lock, events and log are kept per machine (`~/.formslab/.run`). Pumpdown, vent, a soak, a test are plans with
 steps and an end. A computer with different instruments keeps its own copy of
 a plan in `$FORMSLAB_PLANS_DIR`, which is searched before the checkout.
 
