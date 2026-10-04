@@ -152,7 +152,8 @@ def _compile(pattern: str) -> tuple:
     if not tokens:
         raise GrammarError("empty pattern")
     for i, tok in enumerate(tokens):
-        if tok.startswith("<") and (m := re.fullmatch(r"<\s*(\w+):([^\s|>]+(?:\|[^\s|>]+)+)\s*>", tok)):
+        if (tok.startswith("<") and (m := re.fullmatch(r"<\s*(\w+):([^\s|>]+(?:\|[^\s|>]+)*)\s*>", tok))
+                and m.group(2) not in TYPES):        # <name:a|b>, or <name:a> -- one member is a choice too
             elements.append(_Choice(m.group(2).split("|"), m.group(1)))
         elif tok.startswith("<"):
             m = re.fullmatch(r"<\s*(\w+):(\w+)(?:\s+([-+\d.eE]*\.\.[-+\d.eE]*))?(?:\s+(\S+))?\s*>", tok)

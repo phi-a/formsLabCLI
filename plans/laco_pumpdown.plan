@@ -12,16 +12,12 @@
 #
 # Typical: 743 -> 3.4 Torr in about 6 min (2026-10-01).
 
-mission.name = "laco_pumpdown"
-rscripts.load = ["rLACO"]
-recording.interval = 5
-recording.unit = "seconds"
+load rLACO
+record every 5 s
 
-sequence.operations = [
-    {"cast": "hvc pump on"},
-    {"hold": 15, "units": "seconds"},
-    {"cast": "hvc rough open"},
-    {"until": "chamberP", "below": 5.0, "timeout_s": 1200},
-    {"cast": "hvc stop"},
-    {"log": "pumpdown done: rough valve closed, pump off"},
-]
+hvc pump on
+hold 15 s
+hvc rough open
+until chamberP below 5 timeout 20 min
+hvc stop
+log pumpdown done: rough valve closed, pump off

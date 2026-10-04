@@ -1,75 +1,56 @@
 """Lab plans: `.plan` files that run rScripts against the bench.
 
-A plan is literal ``block.field = value`` assignments (the style FORMS missions
-use), an explicit ``sequence.operations`` list, and ``rscripts.load``, the
-scripts that own the instruments. Reading is static: the file is parsed, never
-executed.
+One step per line. ``load`` names the rScripts that own the instruments;
+``record`` sets the CSV cadence; every other line is a step:
 
-    mission.name = "psu1_smtc08_first"
-    rscripts.load = ["rPSU", "rSMTC08"]
-    recording.interval = 2
-    recording.unit = "seconds"
-    sequence.operations = [
-        {"command": "psu1", "request": {"1": {"voltage": 1.0, "current": 0.1}}},
-        {"command": "psu1", "request": {"1": {"on": True}}},
-        {"hold": 60, "units": "seconds"},
-        {"until": "TC01", "above": 30.0, "unit": "C", "timeout_s": 600},
-        {"log": "done"},
-    ]
+    # PSU1 CH1 on for a minute, thermocouples recording
+    load rPSU rSMTC08
+    record every 2 s
 
-Operations, one verb each:
+    psu1 ch1 set 1.0 0.1
+    psu1 ch1 on
+    hold 60 s
+    until TC01 above 30 C timeout 10 min
+    psu1 ch1 off
+    log done
 
-    hold      run the loaded rScripts for a duration (``units``: seconds,
-              minutes, hours), or ``"until end"``: until the operator's ctrl
-              `end` (plans/tvac.plan is one -- manual operation)
-    command   write a CAST request to a label and wait (``timeout_s``, default
-              10) until the rScript that owns the label takes it
-    cast      the same, written as the cast tab's words: {"cast": "hvc pump on"}
-              (the owning rScript's grammar builds and checks the request)
-    until     run until a variable is above/below a value, or fail after
-              ``timeout_s`` (required: a wait on hardware always has a limit).
-              ``unit`` converts between C and K when it differs from the
-              variable's own
-    log       one line in the run log
+Steps:
 
-Anything that needs an orbit (``propagate``, ``orbit.*``, ``@procedure``...) is
-refused with a pointer to FORMS: a lab plan runs on the wall clock.
+    <label> <words>     a command to the rScript that owns the label -- the same
+                        words as the cast tab (``hvc vent open``). Sent and
+                        awaited until that rScript takes it (10 s limit)
+    hold <n> s|min|h    run the loaded rScripts for a while
+    hold until end      until the operator's ctrl `end` (plans/tvac.plan)
+    until <variable> above|below <value> [C|K] timeout <n> s|min|h
+                        run until a published value crosses a limit, or fail
+                        at the timeout (required: a wait on hardware always has
+                        a limit). C or K converts from the variable's own unit
+    log <text>          one line in the run log
+
+``#`` starts a comment on its own line. Commands and variable names come from
+what the loaded rScripts declare (COMMANDS, VARIABLES), checked while the plan
+is read; a mistake is reported with its line number before anything runs.
+Orbit content (``orbit.*``, ``propagate``, ``@procedure``) is FORMS': a plan
+runs on the wall clock.
 """
 from __future__ import annotations
 
-import ast
-import math
 import os
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from formslab.config import PACKAGE_ROOT
+from formslab.rscripts.grammar import Grammar, GrammarError
 from formslab.sequence.spec import Segment, Sequence
 
 ENV = "FORMSLAB_PLANS_DIR"
 SUFFIX = ".plan"
-
-_FIELDS = {
-    "mission": {"name", "format", "description"},
-    "rscripts": {"load"},
-    "recording": {"interval", "unit"},
-    "sequence": {"operations"},
-}
-# Blocks that only mean something with an orbit behind them.
-_FORMS_BLOCKS = {
-    "orbit", "time", "propagator", "satellite", "environment", "attitude",
-    "numerics", "procedures", "dynamics", "triggers", "report", "requirements",
-    "routines", "planet",
-}
-_UNITS = {"seconds": 1.0, "minutes": 60.0, "hours": 3600.0}
-_VERBS = {
-    "hold": {"hold", "units"},
-    "command": {"command", "request", "timeout_s"},
-    "cast": {"cast", "timeout_s"},
-    "until": {"until", "above", "below", "unit", "timeout_s"},
-    "log": {"log"},
-}
 COMMAND_TIMEOUT_S = 10.0
+_SECONDS = {"s": 1.0, "min": 60.0, "h": 3600.0}
+_RECORD_UNIT = {"s": "seconds", "min": "minutes", "h": "hours"}
+_FORMS_VERBS = ("propagate", "call", "observe")
+_GLUED = re.compile(r"^\d+(\.\d+)?(s|min|h)$", re.IGNORECASE)
 
 
 class PlanError(ValueError):
@@ -136,170 +117,156 @@ def load_plan(path) -> Plan:
 
 def parse_plan(source: str, *, path: Path | None = None) -> Plan:
     where = path.name if path else "<plan>"
-    try:
-        tree = ast.parse(source, filename=where)
-    except SyntaxError as e:
-        raise PlanError(f"{where}:{e.lineno}: {e.msg}") from None
+    name = path.stem if path else "plan"
 
-    values: dict[tuple[str, str], object] = {}
-    for node in tree.body:
-        line = f"{where}:{node.lineno}"
-        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant):
-            continue  # a docstring
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            deco = f"@{ast.unparse(node.decorator_list[0])}" if node.decorator_list else "def"
-            raise PlanError(f"{line}: `{deco} {node.name}` is FORMS mission code; "
-                            "a plan has no definitions")
-        target = _target(node) if isinstance(node, ast.Assign) else None
-        if target is None:
-            raise PlanError(f"{line}: only literal `block.field = value` assignments belong in a plan")
-        block, field = target
-        dotted = f"{block}.{field}"
-        if block in _FORMS_BLOCKS:
-            raise PlanError(f"{line}: `{dotted}` is FORMS mission configuration. A plan "
-                            "runs on the wall clock with no orbit; orbit work belongs in a "
-                            "FORMS mission")
-        if field not in _FIELDS.get(block, ()):
-            allowed = ", ".join(f"{b}.{f}" for b, fs in _FIELDS.items() for f in sorted(fs))
-            raise PlanError(f"{line}: `{dotted}` is not a lab plan field (allowed: {allowed})")
-        if target in values:
-            raise PlanError(f"{line}: `{dotted}` is assigned twice")
-        try:
-            values[target] = ast.literal_eval(node.value)
-        except ValueError:
-            raise PlanError(f"{line}: `{dotted}` must be a literal value") from None
+    def fail(n, message):
+        raise PlanError(f"{where}:{n}: {message}")
 
-    name = values.get(("mission", "name")) or (path.stem if path else "plan")
-    fmt = values.get(("mission", "format"), 1)
-    if fmt != 1:
-        raise PlanError(f"{where}: mission.format {fmt!r} is not supported (1 is)")
+    if "sequence.operations" in source:
+        raise PlanError(f"{where}: this is the old plan format (sequence.operations = [...]); "
+                        "a plan is now one step per line -- see docs/SEQUENCE.md")
+    lines = [(n, line.strip()) for n, line in enumerate(source.splitlines(), 1)]
+    lines = [(n, t) for n, t in lines if t and not t.startswith("#")]
 
-    scripts = values.get(("rscripts", "load"))
-    if not isinstance(scripts, list) or not scripts or not all(isinstance(s, str) for s in scripts):
-        raise PlanError(f"{where}: rscripts.load must be a non-empty list of rScript names")
-    scripts = tuple(s[:-3] if s.endswith(".py") else s for s in scripts)
+    for n, t in lines:
+        first = t.split()[0]
+        if re.match(r"[A-Za-z_]\w*\.\w+\s*=", t):
+            fail(n, f"`{t.split('=')[0].strip()}` is FORMS mission configuration. A plan runs on "
+                    "the wall clock with no orbit; orbit work belongs in a FORMS mission")
+        if t.startswith("@") or first == "def":
+            fail(n, f"`{first}` is FORMS mission code; a plan has no definitions")
+        if first.lower() in _FORMS_VERBS:
+            fail(n, f"`{first}` is a FORMS mission operation; a plan's steps are commands, "
+                    "hold, until and log")
 
-    interval = values.get(("recording", "interval"), 10)
-    unit = values.get(("recording", "unit"), "seconds")
-    if unit not in _UNITS:
-        raise PlanError(f"{where}: recording.unit must be one of {sorted(_UNITS)}")
-    if not _positive(interval):
-        raise PlanError(f"{where}: recording.interval must be a positive number")
+    scripts, record, steps = None, (10.0, "seconds"), []
+    for n, t in lines:
+        words = t.split()
+        head = words[0].lower()
+        if head in ("load", "record") and steps:
+            fail(n, f"`{head}` goes before the first step")
+        if head == "load":
+            if scripts is not None:
+                fail(n, "`load` appears twice; name every rScript on one line")
+            if len(words) < 2:
+                fail(n, "load names the rScripts to run, e.g. `load rLACO rSMTC08`")
+            scripts = tuple(words[1:])
+        elif head == "record":
+            record = _parse(fail, n, _RECORD, words)
+        else:
+            if head != "log" and "#" in t:
+                fail(n, "comments go on their own line")
+            steps.append((n, words))
+    if scripts is None:
+        raise PlanError(f"{where}: a plan starts with `load <rScript> ...`, the rScripts that "
+                        "own its instruments")
+    if not steps:
+        raise PlanError(f"{where}: the plan has no steps")
 
-    ops = values.get(("sequence", "operations"))
-    if not isinstance(ops, list) or not ops:
-        raise PlanError(f"{where}: sequence.operations must be a non-empty list")
-    segments = tuple(_segment(f"{where}: sequence.operations[{i}]", op) for i, op in enumerate(ops))
-
-    return Plan(name=str(name), path=path, rscripts=scripts, record_interval=float(interval),
-                record_unit=unit, sequence=Sequence(name=str(name), segments=segments,
-                                                    rscripts=scripts))
-
-
-def _target(node: ast.Assign) -> tuple[str, str] | None:
-    if len(node.targets) != 1:
-        return None
-    t = node.targets[0]
-    if isinstance(t, ast.Attribute) and isinstance(t.value, ast.Name):
-        return t.value.id, t.attr
-    return None
-
-
-def _positive(x) -> bool:
-    return isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x) and x > 0
-
-
-def _segment(where: str, op) -> Segment:
-    if not isinstance(op, dict):
-        raise PlanError(f"{where}: an operation is a dict, got {op!r}")
-    for forms_verb in ("propagate", "call", "observe"):
-        if forms_verb in op:
-            raise PlanError(f"{where}: `{forms_verb}` is a FORMS mission operation; "
-                            f"lab plans support {sorted(_VERBS)}")
-    verbs = [v for v in _VERBS if v in op]
-    if len(verbs) != 1:
-        raise PlanError(f"{where}: needs exactly one of {sorted(_VERBS)}, got {sorted(op)}")
-    verb = verbs[0]
-    extra = set(op) - _VERBS[verb]
-    if extra:
-        raise PlanError(f"{where}: `{verb}` does not take {sorted(extra)} "
-                        f"(it takes {sorted(_VERBS[verb] - {verb})})")
-    return {"hold": _hold, "command": _command, "cast": _cast, "until": _until,
-            "log": _log}[verb](where, op)
-
-
-def _hold(where, op) -> Segment:
-    if op["hold"] == "until end":
-        if "units" in op:
-            raise PlanError(f"{where}: hold \"until end\" takes no units")
-        return Segment("hold", {"seconds": None}, label="hold until end")
-    units = op.get("units", "seconds")
-    if units not in _UNITS:
-        raise PlanError(f"{where}: hold units must be one of {sorted(_UNITS)}")
-    if not _positive(op["hold"]):
-        raise PlanError(f"{where}: hold needs a positive duration, or \"until end\"")
-    seconds = float(op["hold"]) * _UNITS[units]
-    return Segment("hold", {"seconds": seconds}, label=f"hold {op['hold']:g} {units}")
-
-
-def _command(where, op) -> Segment:
-    from formslab.state import build_default_cast_state
-
-    label = op["command"]
-    labels = sorted(build_default_cast_state())
-    if label not in labels:
-        raise PlanError(f"{where}: `{label}` is not a CAST label (known: {labels})")
-    request = op.get("request")
-    if not isinstance(request, dict) or not request:
-        raise PlanError(f"{where}: command needs a non-empty `request` dict")
-    timeout = op.get("timeout_s", COMMAND_TIMEOUT_S)
-    if not _positive(timeout):
-        raise PlanError(f"{where}: timeout_s must be a positive number")
-    return Segment("command", {"label": label, "request": request, "timeout_s": float(timeout)},
-                   label=f"command {label} {request}")
-
-
-def _cast(where, op) -> Segment:
-    """A cast-tab command, e.g. "hvc pump on": the owning rScript's grammar
-    turns it into the request (checked now, while the plan is read), and it is
-    sent and awaited like `command`."""
     from formslab.rscripts import cast
 
-    words = op["cast"].split() if isinstance(op["cast"], str) else []
-    if len(words) < 1:
-        raise PlanError(f"{where}: cast takes the words typed in the cast tab, e.g. \"hvc pump on\"")
+    grammar, owner, published = _grammar(scripts)
+    segments = []
+    for n, words in steps:
+        head = words[0].lower()
+        if module := owner.get(head):
+            if cast.script_name(module) not in scripts:
+                fail(n, f"{head} is declared by {cast.script_name(module)}; add it to `load`")
+            if not cast.commands(module):
+                fail(n, f"{head} takes no commands (it only reports readings)")
+        if head == "until":
+            if len(words) > 1 and words[1].lower() not in {v.lower() for v in published}:
+                if by := _publisher(words[1], scripts):
+                    fail(n, f"{words[1]} is published by {by}; add it to `load`")
+                if not published:
+                    fail(n, "no loaded rScript publishes a value to wait on")
+            if "timeout" not in (w.lower() for w in words):
+                fail(n, "until needs `timeout <n> s|min|h`: a wait on hardware always has a limit")
+        segment = _parse(fail, n, grammar, words)
+        segments.append(replace(segment, label=" ".join(words)))
+
+    interval, unit = record
+    return Plan(name=name, path=path, rscripts=scripts, record_interval=interval, record_unit=unit,
+                sequence=Sequence(name=name, segments=tuple(segments), rscripts=scripts))
+
+
+def _parse(fail, n, grammar, words):
     try:
-        request = cast.request(words[0], words[1:])
-    except cast.GrammarError as e:
-        raise PlanError(f"{where}: {e}") from None
-    seg = _command(where, {"command": words[0], "request": request,
-                           **({"timeout_s": op["timeout_s"]} if "timeout_s" in op else {})})
-    return Segment("command", seg.params, label=f"cast {op['cast']}")
+        return grammar.parse(words)
+    except GrammarError as e:
+        message = str(e)
+        if glued := next((w for w in words if _GLUED.match(w)), None):
+            number, unit = re.match(r"([\d.]+)(\D+)", glued).groups()
+            message += f" (write `{number} {unit}`, with a space)"
+        fail(n, message)
 
 
-def _until(where, op) -> Segment:
-    var = op["until"]
-    if not isinstance(var, str) or not var:
-        raise PlanError(f"{where}: until names a variable")
-    sides = [s for s in ("above", "below") if s in op]
-    if len(sides) != 1:
-        raise PlanError(f"{where}: until needs exactly one of above / below")
-    side = sides[0]
-    value = op[side]
-    if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value):
-        raise PlanError(f"{where}: `{side}` must be a number")
-    if "timeout_s" not in op:
-        raise PlanError(f"{where}: until needs timeout_s; a wait on hardware always has a limit")
-    if not _positive(op["timeout_s"]):
-        raise PlanError(f"{where}: timeout_s must be a positive number")
-    unit = op.get("unit")
-    shown = f" {unit}" if unit else ""
-    return Segment("until", {"variable": var, "side": side, "value": float(value), "unit": unit,
-                             "timeout_s": float(op["timeout_s"])},
-                   label=f"until {var} {side} {value:g}{shown} (limit {op['timeout_s']:g} s)")
+# --- the plan's grammar --------------------------------------------------------------
+
+def _positive(what, value):
+    if value <= 0:
+        raise GrammarError(f"{what} needs a positive duration")
+    return value
 
 
-def _log(where, op) -> Segment:
-    if not isinstance(op["log"], str):
-        raise PlanError(f"{where}: log takes a string")
-    return Segment("log", {"message": op["log"]}, label=f"log {op['log']!r}")
+def _hold(n, unit):
+    return Segment("hold", {"seconds": _positive("hold", n) * _SECONDS[unit]})
+
+
+def _until(units):
+    def build(variable, side, value, *rest):
+        unit, t, t_unit = rest if len(rest) == 3 else (None, *rest)
+        own = units.get(variable)
+        if unit and own not in ("C", "K"):
+            raise GrammarError(f"{variable} is in {own or 'no unit'}; C and K only apply to temperatures")
+        return Segment("until", {"variable": variable, "side": side, "value": value, "unit": unit,
+                                 "timeout_s": _positive("timeout", t) * _SECONDS[t_unit]})
+    return build
+
+
+def _command(label, request):
+    return Segment("command", {"label": label, "request": request, "timeout_s": COMMAND_TIMEOUT_S})
+
+
+_RECORD = Grammar([("record every <n:number 0..> s|min|h", "CSV cadence",
+                    lambda n, u: (_positive("record", n), _RECORD_UNIT[u]))])
+
+
+def _grammar(scripts):
+    """The plan's grammar for these rScripts, {label: owning module} for every
+    label on the path, and {variable: unit} published by the loaded scripts."""
+    from formslab.rscripts import cast
+
+    labels, _ = cast.owners()
+    published = {}
+    for module in {id(m): m for m in labels.values()}.values():
+        if cast.script_name(module) in scripts:
+            published.update(cast.variables(module))
+    steps = [
+        ("hold <n:number 0..> s|min|h", "Run the loaded rScripts for a while", _hold),
+        ("hold until end", "Until ctrl `end` (manual operation)",
+         lambda: Segment("hold", {"seconds": None})),
+        ("log <message:rest>", "One line in the run log", lambda m: Segment("log", {"message": m})),
+    ]
+    if published:
+        var = f"<variable:{'|'.join(published)}>"
+        until = f"until {var} above|below <value:number>"
+        steps += [
+            (f"{until} timeout <t:number 0..> s|min|h", "Wait for a value, with a limit",
+             _until(published)),
+            (f"{until} C|K timeout <t:number 0..> s|min|h", "The same, the value in C or K",
+             _until(published)),
+        ]
+    return Grammar(steps + cast.label_commands(scripts, build=_command)), labels, published
+
+
+def _publisher(variable, scripts):
+    """The script not in `scripts` that declares `variable`, if any."""
+    from formslab.rscripts import cast
+
+    labels, _ = cast.owners()
+    for module in {id(m): m for m in labels.values()}.values():
+        if cast.script_name(module) not in scripts and any(
+                v.lower() == variable.lower() for v, _ in cast.variables(module)):
+            return cast.script_name(module)
+    return None

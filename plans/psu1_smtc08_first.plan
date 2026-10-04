@@ -15,25 +15,21 @@
 # Check without hardware:  python -m formslab.sequence psu1_smtc08_first
 # Run from the console:    ctrl tab -> run psu1_smtc08_first
 
-mission.name = "psu1_smtc08_first"
-rscripts.load = ["rPSU", "rSMTC08"]
-recording.interval = 2
-recording.unit = "seconds"
+load rPSU rSMTC08
+record every 2 s
 
-sequence.operations = [
-    {"log": "baseline: PSU1 CH1 off, thermocouples settling"},
-    {"command": "psu1", "request": {"1": {"on": False}}},
-    {"command": "psu1", "request": {"1": {"voltage": 1.0, "current": 0.1}}},
-    {"hold": 20, "units": "seconds"},
+log baseline: PSU1 CH1 off, thermocouples settling
+psu1 ch1 off
+psu1 ch1 set 1.0 0.1
+hold 20 s
 
-    {"log": "PSU1 CH1 on at 1.0 V / 0.10 A"},
-    {"command": "psu1", "request": {"1": {"on": True}}},
-    {"hold": 60, "units": "seconds"},
+log PSU1 CH1 on at 1.0 V / 0.10 A
+psu1 ch1 on
+hold 60 s
 
-    {"log": "PSU1 CH1 off"},
-    {"command": "psu1", "request": {"1": {"on": False}}},
-    {"hold": 20, "units": "seconds"},
-]
+log PSU1 CH1 off
+psu1 ch1 off
+hold 20 s
 
 # A heating step waits on a temperature, with a limit, like this:
-#   {"until": "TC01", "above": 30.0, "unit": "C", "timeout_s": 600},
+#   until TC01 above 30 C timeout 10 min

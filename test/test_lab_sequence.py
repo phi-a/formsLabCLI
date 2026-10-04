@@ -20,55 +20,83 @@ from formslab.rscripts import control
 from formslab.sequence import (
     LabSequenceRunner, ListSink, PlanError, SequenceError, find_plan, parse_plan,
 )
+from formslab.sequence.spec import Segment, Sequence
 from formslab.sequence.__main__ import main as check_main
 
-PLAN = '''
-mission.name = "t"
-rscripts.load = ["rA"]
-sequence.operations = [{"hold": 1, "units": "seconds"}]
-'''
+PLAN = "load rPSU rSMTC08\nhold 1 s\n"
 
 
-def plan_src(ops, extra=""):
-    return f'rscripts.load = ["rA"]\n{extra}sequence.operations = {ops!r}\n'
+def plan(*lines):
+    """A plan on the checkout's rPSU and rSMTC08, which declare psu1/psu2 and TC01..TC16."""
+    return "load rPSU rSMTC08\n" + "\n".join(lines) + "\n"
 
 
 # --- the plan grammar -----------------------------------------------------------
 
 def test_a_plan_parses_into_segments():
-    plan = parse_plan(plan_src([
-        {"log": "go"},
-        {"command": "psu1", "request": {"1": {"on": True}}},
-        {"hold": 2, "units": "minutes"},
-        {"until": "TC01", "above": 30.0, "unit": "C", "timeout_s": 60},
-    ], 'recording.interval = 5\n'))
+    p = parse_plan("# a comment\nload rPSU rSMTC08\nrecord every 5 s\n\n"
+                   "log go\npsu1 CH1 on\nhold 2 min\nuntil TC01 above 30 C timeout 1 min\n")
 
-    assert [s.verb for s in plan.sequence.segments] == ["log", "command", "hold", "until"]
-    assert plan.sequence.segments[2].params == {"seconds": 120.0}
-    assert plan.sequence.segments[1].params["timeout_s"] == 10.0
-    assert plan.rscripts == ("rA",) and plan.record_interval == 5.0
-    assert plan.sequence.to_manifest()["clock"] == "wall"
+    segs = p.sequence.segments
+    assert [s.verb for s in segs] == ["log", "command", "hold", "until"]
+    assert segs[0].params == {"message": "go"}
+    assert segs[1].params == {"label": "psu1", "request": {"1": {"on": True}}, "timeout_s": 10.0}
+    assert segs[2].params == {"seconds": 120.0}
+    assert segs[3].params == {"variable": "TC01", "side": "above", "value": 30.0, "unit": "C",
+                              "timeout_s": 60.0}
+    assert [s.label for s in segs] == ["log go", "psu1 CH1 on", "hold 2 min",
+                                       "until TC01 above 30 C timeout 1 min"]
+    assert p.rscripts == ("rPSU", "rSMTC08") and (p.record_interval, p.record_unit) == (5.0, "seconds")
+    assert p.sequence.to_manifest()["clock"] == "wall"
+
+
+def test_record_and_durations_take_s_min_h():
+    p = parse_plan("load rSMTC08\nrecord every 2 min\nhold 1.5 h\nuntil TC01 below 300 timeout 30 s\n")
+    assert (p.record_interval, p.record_unit) == (2.0, "minutes")
+    assert p.sequence.segments[0].params == {"seconds": 5400.0}
+    assert p.sequence.segments[1].params["timeout_s"] == 30.0
+    assert p.sequence.segments[1].params["unit"] is None       # the variable's own unit
 
 
 @pytest.mark.parametrize("source, needle", [
-    (PLAN + 'orbit.a = 7000\n', "FORMS mission configuration"),
-    (PLAN + '@variables\ndef declare():\n    pass\n', "FORMS mission code"),
-    (plan_src([{"propagate": 60, "units": "seconds"}]), "FORMS mission operation"),
-    (plan_src([{"until": "TC01", "above": 30}]), "a wait on hardware always has a limit"),
-    (plan_src([{"command": "psu9", "request": {"x": 1}}]), "not a CAST label"),
-    (plan_src([{"hold": 5, "command": "psu1"}]), "exactly one of"),
-    (plan_src([{"hold": 5, "for": 3}]), "does not take ['for']"),
-    (plan_src([{"hold": -1}]), "positive duration"),
-    (PLAN + 'mission.name = "again"\n', "assigned twice"),
-    (PLAN + 'x = 1\n', "block.field = value"),
-    (PLAN + 'mission.colour = "red"\n', "not a lab plan field"),
-    ('sequence.operations = [{"hold": 1}]\n', "rscripts.load must be"),
-    (plan_src([]), "non-empty list"),
+    (PLAN + "orbit.a = 7000\n", ":3: `orbit.a` is FORMS mission configuration"),
+    (PLAN + "@variables\ndef declare():\n    pass\n", "FORMS mission code"),
+    (plan("propagate 60 s"), "`propagate` is a FORMS mission operation"),
+    (plan("until TC01 above 30 C"), "a wait on hardware always has a limit"),
+    (plan("psu9 ch1 on"), "got 'psu9'"),
+    (plan("psu1 ch4 on"), "expected ch1, ch2, ch3 or update after 'psu1', got 'ch4'; did you mean 'ch3'?"),
+    (plan("hold -1 s"), "-1 must be >= 0"),
+    (plan("hold 0 s"), "hold needs a positive duration"),
+    (plan("hold 30s"), "write `30 s`, with a space"),
+    (plan("hold 30 sec"), "did you mean 's'?"),
+    (plan("hold 30 min # soak"), "comments go on their own line"),
+    (plan("hvc pump on"), "hvc is declared by rLACO; add it to `load`"),
+    (plan("tc read"), "tc takes no commands"),
+    (plan("until chamberP below 5 timeout 1 min"), "chamberP is published by rLACO; add it to `load`"),
+    (plan("until TC99 below 5 timeout 1 min"), "after 'until', got 'TC99'"),
+    ("load rLACO\nuntil chamberP below 5 C timeout 1 min\n", "chamberP is in Torr"),
+    (plan("hold 1 s", "load rLACO"), ":3: `load` goes before the first step"),
+    ("load rPSU\nload rSMTC08\nhold 1 s\n", "`load` appears twice"),
+    ("hold 1 s\n", "a plan starts with `load"),
+    ("load rPSU\n", "the plan has no steps"),
+    ("load rPSU\nrecord every 0 s\nhold 1 s\n", "record needs a positive duration"),
+    ('rscripts.load = ["rA"]\nsequence.operations = [{"hold": 1}]\n', "the old plan format"),
 ])
 def test_what_a_plan_refuses(source, needle):
-    with pytest.raises(PlanError, match=None) as err:
+    with pytest.raises(PlanError) as err:
         parse_plan(source)
     assert needle in str(err.value)
+
+
+def test_names_and_keywords_ignore_case_but_keep_their_spelling():
+    p = parse_plan(plan("HOLD 1 S", "until tc01 ABOVE 30 c TIMEOUT 1 MIN"))
+    assert p.sequence.segments[1].params["variable"] == "TC01"
+    assert p.sequence.segments[1].params["unit"] == "C"
+
+
+def test_log_text_is_kept_as_written():
+    p = parse_plan(plan("log step #2: PSU1 CH1  on"))
+    assert p.sequence.segments[0].params == {"message": "step #2: PSU1 CH1 on"}
 
 
 def test_plans_are_found_by_name_or_path(tmp_path, monkeypatch):
@@ -78,6 +106,11 @@ def test_plans_are_found_by_name_or_path(tmp_path, monkeypatch):
     assert find_plan(str(tmp_path / "mine.plan")) == tmp_path / "mine.plan"
     assert find_plan("psu1_smtc08_first").name == "psu1_smtc08_first.plan"   # the checkout's
     assert find_plan("nowhere") is None
+
+
+def test_every_shipped_plan_checks_clean(capsys):
+    for name in ("tvac", "psu1_smtc08_first", "laco_pumpdown", "laco_vent"):
+        assert check_main([name]) == 0, name
 
 
 def test_the_shipped_first_plan_checks_clean(capsys):
@@ -126,12 +159,25 @@ def write(d, name, body):
     (d / f"{name}.py").write_text(body, encoding="utf-8")
 
 
-def start(run, ops, fake_time, **kw):
-    plan = parse_plan(plan_src(ops))
+def start(run, segments, fake_time, **kw):
+    """Run segments directly: the runner's tests do not go through the parser."""
     sink = ListSink()
-    runner = LabSequenceRunner(run, plan.sequence, sink=sink, hz=4,     # 0.25 s: exact
-                               clock=fake_time.clock, sleep=fake_time.sleep, **kw)
+    runner = LabSequenceRunner(run, Sequence(name="t", segments=tuple(segments)), sink=sink,
+                               hz=4, clock=fake_time.clock, sleep=fake_time.sleep, **kw)
     return runner, sink, runner.execute
+
+
+def hold(seconds):
+    return Segment("hold", {"seconds": float(seconds)})
+
+
+def command(label, request, timeout_s=10.0):
+    return Segment("command", {"label": label, "request": request, "timeout_s": timeout_s})
+
+
+def until(variable, side, value, unit, timeout_s):
+    return Segment("until", {"variable": variable, "side": side, "value": value, "unit": unit,
+                             "timeout_s": timeout_s})
 
 
 # A stand-in owner of psu1: takes each request and publishes what it applied.
@@ -149,7 +195,7 @@ def rScript(run):
 def test_hold_runs_the_scripts_for_its_duration(run, fake_time, script_dir):
     write(script_dir, "rA", "calls = []\ndef rScript(run):\n    calls.append(1)\n")
     rscripts.load(run, ["rA"])
-    runner, sink, go = start(run, [{"hold": 2, "units": "seconds"}], fake_time)
+    runner, sink, go = start(run, [hold(2)], fake_time)
 
     result = go()
 
@@ -162,8 +208,8 @@ def test_hold_runs_the_scripts_for_its_duration(run, fake_time, script_dir):
 def test_a_command_waits_until_its_owner_takes_it(run, fake_time, script_dir):
     write(script_dir, "rA", PSU_OWNER)
     rscripts.load(run, ["rA"])
-    _, _, go = start(run, [{"command": "psu1", "request": {"1": {"on": True}}},
-                           {"command": "psu1", "request": {"1": {"on": False}}}], fake_time)
+    _, _, go = start(run, [command("psu1", {"1": {"on": True}}),
+                           command("psu1", {"1": {"on": False}})], fake_time)
 
     result = go()
 
@@ -175,8 +221,7 @@ def test_a_command_waits_until_its_owner_takes_it(run, fake_time, script_dir):
 def test_a_command_nobody_takes_fails_the_run(run, fake_time, script_dir):
     write(script_dir, "rA", "def rScript(run): pass\n")
     rscripts.load(run, ["rA"])
-    _, sink, go = start(run, [{"command": "psu1", "request": {"1": {"on": True}},
-                               "timeout_s": 1}], fake_time)
+    _, sink, go = start(run, [command("psu1", {"1": {"on": True}}, timeout_s=1)], fake_time)
 
     with pytest.raises(SequenceError, match="not taken within 1 s"):
         go()
@@ -189,8 +234,7 @@ def rScript(run):
     run.publish("TC01", (run.get("TC01") or 293.15) + 1.0, "K")
 ''')
     rscripts.load(run, ["rA"])
-    _, _, go = start(run, [{"until": "TC01", "above": 25.0, "unit": "C", "timeout_s": 60}],
-                   fake_time)
+    _, _, go = start(run, [until("TC01", "above", 25.0, "C", 60)], fake_time)
 
     go()
 
@@ -201,8 +245,7 @@ def test_until_times_out_with_the_last_value(run, fake_time, script_dir):
     write(script_dir, "rA", 'def rScript(run):\n'
                             '    run.publish("TC01", 293.15, "K")\n')
     rscripts.load(run, ["rA"])
-    _, _, go = start(run, [{"until": "TC01", "above": 25.0, "unit": "C", "timeout_s": 3}],
-                   fake_time)
+    _, _, go = start(run, [until("TC01", "above", 25.0, "C", 3)], fake_time)
 
     with pytest.raises(SequenceError, match=r"last 20 C"):
         go()
@@ -218,7 +261,7 @@ def test_paused_time_does_not_use_up_a_hold(run, fake_time, script_dir):
         if len(polls) == 1:
             fake_time.sleep(100.0)
 
-    _, _, go = start(run, [{"hold": 1}], fake_time, poll=poll)
+    _, _, go = start(run, [hold(1)], fake_time, poll=poll)
     result = go()
 
     assert result.segment_steps == [4]
@@ -392,20 +435,19 @@ def test_host_refuses_a_plan_whose_scripts_do_not_load(tmp_path, monkeypatch):
 
     monkeypatch.setenv(rscripts.ENV, str(tmp_path))
     plan = tmp_path / "p.plan"
-    plan.write_text('rscripts.load = ["rMissing"]\nsequence.operations = [{"hold": 1}]\n',
-                    encoding="utf-8")
+    plan.write_text("load rMissing\nhold 1 s\n", encoding="utf-8")
     with pytest.raises(PlanError, match="rMissing"):
         host.channel(plan_path=plan)
     assert not host.lock_path().exists()
 
 
 def test_hold_until_end_is_open_ended():
-    plan = parse_plan(plan_src([{"hold": "until end"}]))
-    assert plan.sequence.segments[0].params == {"seconds": None}
-    with pytest.raises(PlanError, match="takes no units"):
-        parse_plan(plan_src([{"hold": "until end", "units": "minutes"}]))
-    with pytest.raises(PlanError, match="until end"):
-        parse_plan(plan_src([{"hold": "forever"}]))
+    p = parse_plan(plan("hold until end"))
+    assert p.sequence.segments[0].params == {"seconds": None}
+    with pytest.raises(PlanError, match="unexpected '5' after 'hold until end'"):
+        parse_plan(plan("hold until end 5 min"))
+    with pytest.raises(PlanError, match="until"):
+        parse_plan(plan("hold forever"))
 
 
 def test_the_shipped_tvac_plan_checks_clean(capsys):

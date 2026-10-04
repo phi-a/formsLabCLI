@@ -1,9 +1,9 @@
 """Lab sequences: `.plan` files that drive the bench through rScripts.
 
-A plan names the rScripts that own the instruments (``rscripts.load``) and an
-ordered list of operations (``sequence.operations``): hold, command, until,
-log. The host runs it on a `Run` in real time; see `plan` for the
-grammar and `runner` for how a segment runs.
+A plan is one step per line: ``load`` names the rScripts that own the
+instruments, then commands (the cast tab's words), hold, until and log. The
+host runs it on a `Run` in real time; see `plan` for the syntax and `runner`
+for how a step runs.
 
     python -m formslab.sequence psu1_smtc08_first          # check, no hardware
     python -m formslab.host.sequence psu1_smtc08_first

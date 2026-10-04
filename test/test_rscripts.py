@@ -231,10 +231,7 @@ def _tvac_plan(tmp_path, monkeypatch, scripts):
     d = tmp_path / "plans"
     d.mkdir(exist_ok=True)
     (d / "tvac.plan").write_text(
-        'mission.name = "tvac"\n'
-        f"rscripts.load = {scripts!r}\n"
-        "recording.interval = 30\n"
-        'sequence.operations = [{"hold": "until end"}]\n', encoding="utf-8")
+        f"load {' '.join(scripts)}\nrecord every 30 s\nhold until end\n", encoding="utf-8")
     monkeypatch.setenv("FORMSLAB_PLANS_DIR", str(d))
     from formslab.sequence import find_plan
     return find_plan("tvac")

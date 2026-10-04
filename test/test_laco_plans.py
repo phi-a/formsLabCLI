@@ -40,14 +40,13 @@ def _quick(monkeypatch, **overrides):
     monkeypatch.setattr(sequence, "load_plan", load)
 
 
-def test_cast_step_uses_the_panel_grammar():
-    plan = parse_plan('rscripts.load = ["rLACO"]\n'
-                      'sequence.operations = [{"cast": "hvc pump on"}, {"cast": "psu1 ch1 off"}]\n')
+def test_a_step_uses_the_cast_tab_grammar():
+    plan = parse_plan("load rLACO rPSU\nhvc pump on\npsu1 ch1 off\n")
     first, second = plan.sequence.segments
     assert first.verb == "command" and first.params["request"] == {"pump": "on"}
     assert second.params == {"label": "psu1", "request": {"1": {"on": False}}, "timeout_s": 10.0}
     with pytest.raises(PlanError, match="outside"):
-        parse_plan('rscripts.load = ["rLACO"]\nsequence.operations = [{"cast": "hvc platen 900"}]\n')
+        parse_plan("load rLACO\nhvc platen 900\n")
 
 
 def test_pumpdown_plan_pumps_down_and_seals(chamber, monkeypatch):

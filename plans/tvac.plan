@@ -11,15 +11,11 @@
 # switched on, rLACO ends pumping this run started, ports are released.
 #
 # Another computer, or this one with the chamber unreachable: put a copy with
-# a different rscripts.load in a folder named by $FORMSLAB_PLANS_DIR (searched
-# before this checkout), e.g. without "rLACO".
+# a different `load` line in a folder named by $FORMSLAB_PLANS_DIR (searched
+# before this checkout), e.g. without rLACO.
 
-mission.name = "tvac"
-rscripts.load = ["rLACO", "rSMTC08", "rPSU"]
-recording.interval = 30
-recording.unit = "seconds"
+load rLACO rSMTC08 rPSU
+record every 30 s
 
-sequence.operations = [
-    {"log": "manual operation: use the cast tab; ctrl `end` to stop"},
-    {"hold": "until end"},
-]
+log manual operation: use the cast tab; ctrl `end` to stop
+hold until end

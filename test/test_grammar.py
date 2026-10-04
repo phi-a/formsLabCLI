@@ -85,6 +85,12 @@ def test_only_a_completing_option_carries_help():
     assert set(helps.values()) == {""}
 
 
+def test_a_named_choice_may_have_one_member():
+    g = Grammar([("until <variable:chamberP> below <v:number>", "", lambda var, v: (var, v))])
+    assert g.parse(["until", "CHAMBERP", "below", "5"]) == ("chamberP", 5.0)
+    assert g.rows() == [("until <variable> below <v>", "")]
+
+
 def test_two_commands_matching_one_line_is_an_error():
     g = Grammar([("vent open", "valve", {"vent": "open"}),
                  ("<x:text> open", "anything", lambda x: {x: "open"})])
@@ -99,7 +105,7 @@ def test_rows_are_the_help_table():
 
 
 @pytest.mark.parametrize("pattern", [
-    "", "<x:colour>", "<x:number 0..1> <y:rest> z", "<x:text 0..1>", "a|", "<x number>",
+    "", "<x:number 0..1 V extra>", "<x:number 0..1> <y:rest> z", "<x:text 0..1>", "a|", "<x number>",
 ])
 def test_a_malformed_pattern_is_refused(pattern):
     with pytest.raises(GrammarError):
