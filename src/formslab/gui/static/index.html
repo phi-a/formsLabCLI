@@ -26,6 +26,7 @@
         <button data-view="plots">Plots</button>
       </nav>
       <span class="spacer"></span>
+      <button id="end" class="danger" hidden title="Stop the run; every instrument's shutdown runs">End run</button>
       <span id="who"></span>
       <button id="logout">Log out</button>
     </header>
@@ -33,6 +34,23 @@
     <main>
       <section id="view-status">
         <div id="run-banner" class="banner"></div>
+        <div class="controls">
+          <span id="start-box" hidden>
+            <select id="plan" aria-label="Plan to run"></select>
+            <button id="start">Start run</button>
+          </span>
+          <span id="run-box" hidden>
+            <button id="pause">Pause</button>
+            <button id="resume">Resume</button>
+          </span>
+          <span id="action" class="note" role="status"></span>
+        </div>
+        <form id="cmd-form" class="cmd" autocomplete="off">
+          <input id="cmd" placeholder="Command, e.g.  hvc platen 20" aria-label="Command" spellcheck="false">
+          <button type="submit">Send</button>
+        </form>
+        <div id="cmd-hints" class="hints"></div>
+        <div id="cmd-result" class="note" role="status"></div>
         <div id="cards" class="cards"></div>
         <h2>Host log</h2>
         <pre id="log"></pre>

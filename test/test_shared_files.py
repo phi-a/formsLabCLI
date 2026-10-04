@@ -190,3 +190,23 @@ def test_end_reports_a_ctrl_file_it_cannot_write(monkeypatch):
             mock.patch.object(ctrlcli, "WriteCommand", side_effect=PermissionError("locked")):
         result = ctrlcli.end_sequence(take_s=0.1, finish_s=0.1)
     assert result.ok is False and "could not send `end`" in result.content.plain
+
+
+# --- what a block's timestamp means -------------------------------------------------------------
+
+def test_a_timestamp_is_when_the_owner_reported_not_when_something_else_touched_the_block():
+    """So the GUI can tell a live instrument from one a host start or a command merely touched."""
+    castutils.GenerateCleanCast()
+    castutils.UpdateStatus("tc", {"TC01 C": 20.0})
+    reported = read_json(cast_state_path())["tc"]["timestamp"]
+    time.sleep(0.05)
+
+    castutils.WriteCommand({"x": 1}, "tc")                       # a command written to the block
+    block = read_json(cast_state_path())["tc"]
+    assert block["timestamp"] == reported and block["request_timestamp"] > reported
+
+    castutils.ResetJson()                                         # a host starting
+    block = read_json(cast_state_path())["tc"]
+    assert block["timestamp"] == reported                         # still when it last reported
+    assert block["status"] == {"TC01 C": 20.0}                    # the old values stay, as old
+    assert block["request"] == {} and block["processed"] is True  # the pending command is cleared

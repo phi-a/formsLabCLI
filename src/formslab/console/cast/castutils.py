@@ -172,7 +172,10 @@ def WriteCommand(request: dict, label: str, path: Path = None):
         else:
             block['request'] = request
         block['processed'] = False
-        block['timestamp'] = time.time()
+        # `timestamp` is when the block's owner last reported; a command is not a
+        # report, so it is recorded apart (otherwise sending a command to an
+        # instrument nobody is running would make it look as if it had just spoken).
+        block['request_timestamp'] = time.time()
         AtomicJsonWrite(data, path)
 
 def CommandPending(label: str, path: Path = None) -> bool:
@@ -206,16 +209,17 @@ def UpdateStatus(label: str, status: dict, path: Path = None):
         AtomicJsonWrite(data, path)
 
 def ResetJson(path: Path = None):
+    """Clear every pending request, as a starting host does. The blocks keep
+    their last status *and the time it was reported*, so the previous run's
+    values read as old until an owner reports again, not as just updated."""
     if path is None or not path.exists():
         path = cast_state_path()
     with _locked(path):
         data = _safe_read_json(path)
-        now = time.time()
         for block in data.values():
             if isinstance(block, dict):
                 block['request'] = {}
                 block['processed'] = True
-                block['timestamp'] = now
         AtomicJsonWrite(data, path)
 
 def GenerateCleanCast(path: Path = None):

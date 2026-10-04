@@ -15,6 +15,7 @@ Every handler returns a CLIResult; nothing prints.
 """
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -55,8 +56,13 @@ def _launch_sequence(plan_path: str) -> CLIResult:
         flags = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS}
     else:
         flags = {"start_new_session": True}
-    subprocess.Popen(cmd, stdout=log_path().open("w"), stderr=subprocess.STDOUT,
-                     stdin=subprocess.DEVNULL, **flags)
+    log = log_path().open("w")
+    proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT,
+                            stdin=subprocess.DEVNULL, **flags)
+    log.close()                                       # the host has its own copy
+    # Collect the host when it exits, so a long-lived caller (the web GUI) does
+    # not leave a zombie per run on Linux.
+    threading.Thread(target=proc.wait, daemon=True).start()
     deadline = time.monotonic() + 5.0                 # the host writes its lock at start
     while time.monotonic() < deadline:
         host = running()

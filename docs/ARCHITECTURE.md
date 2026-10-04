@@ -44,7 +44,9 @@ the file in one step, retried while a reader has it open and never done in
 place. A file that will not parse is kept as `<name>.bad` and regenerated from
 the defaults, rather than read as empty and written back over every other
 block. `end` is sent again while the console waits for a host that is starting,
-because a starting host clears the ctrl file after it takes its lock.
+because a starting host clears the ctrl file after it takes its lock. A block's
+`timestamp` is when its owner last reported; a command (`request_timestamp`) or a
+host start does not change it, so old values read as old.
 
 ## Everything is a plan
 

@@ -1,5 +1,5 @@
-// formsLabCLI GUI: login, the status view, the plot viewer. No framework; every
-// value from the server is put on the page as text only.
+// formsLabCLI GUI: login, status and control, the plot viewer. No framework;
+// every value from the server is put on the page as text only.
 (function () {
   "use strict";
   const C = window.Chart2D;
@@ -14,6 +14,7 @@
   const state = {
     view: "status", timer: null, runs: [], run: null, selected: new Set(), data: null,
     x0: null, x1: null, hoverT: null, drag: null, tempUnit: "C", plotTimer: null, frame: 0,
+    plansLoaded: false,
   };
 
   // --- server calls ------------------------------------------------------------------
@@ -35,6 +36,7 @@
 
   function showLogin() {
     stopTimers();
+    state.plansLoaded = false;
     $("#app").hidden = true;
     $("#login").hidden = false;
     $("#login-password").value = "";
@@ -110,6 +112,7 @@
       ? `Running: plan ${s.host.plan} (pid ${s.host.pid}), since ${new Date(s.host.started).toLocaleString()}. CSV in ${s.host.output}`
       : "No run is going." + (s.last_run ? ` Last run: plan ${s.last_run.plan}.` : "");
     if (s.cast_unreadable) banner.textContent += " The CAST file could not be read just now.";
+    renderControls(s);
 
     const cards = $("#cards");
     cards.replaceChildren();
@@ -140,6 +143,117 @@
     log.textContent = s.log.join("\n") || "(no host log yet)";
     if (atEnd) log.scrollTop = log.scrollHeight;
   }
+
+  // --- control ---------------------------------------------------------------------
+
+  const busy = (s) => Boolean(s.action);
+
+  function renderControls(s) {
+    const running = Boolean(s.host);
+    $("#start-box").hidden = running;
+    $("#run-box").hidden = !running;
+    $("#end").hidden = !running;
+    for (const id of ["#start", "#pause", "#resume", "#end"]) $(id).disabled = busy(s);
+    const note = $("#action");
+    if (s.action === "starting") { note.className = "note"; note.textContent = "Starting the run..."; }
+    else if (s.action === "ending") { note.className = "note"; note.textContent = "Ending: each instrument's shutdown is running..."; }
+    else if (note.dataset.sticky !== "1") { note.textContent = ""; }
+    if (!running && !state.plansLoaded) loadPlans();
+  }
+
+  function say(note, text, isError) {
+    note.className = isError ? "error" : "note";
+    note.textContent = text;
+  }
+
+  async function loadPlans() {
+    state.plansLoaded = true;
+    try {
+      const r = await api("/api/plans");
+      const sel = $("#plan"), keep = sel.value;
+      sel.replaceChildren();
+      for (const p of r.plans) {
+        const o = el("option", { value: p.name },
+          p.error ? `${p.name} (cannot run)` : `${p.name} - ${p.rscripts.join(", ")}${p.open_ended ? " - until you end it" : ""}`);
+        if (p.error) { o.disabled = true; o.title = p.error; }
+        sel.append(o);
+      }
+      if (keep) sel.value = keep;
+    } catch (e) { state.plansLoaded = false; }
+  }
+
+  async function act(path, body, label) {
+    const note = $("#action");
+    note.dataset.sticky = "";
+    try {
+      await api(path, body);
+    } catch (e) {
+      note.dataset.sticky = "1";
+      say(note, `${label}: ${e.message}`, true);
+    }
+  }
+
+  $("#start").addEventListener("click", () => act("/api/run", { plan: $("#plan").value }, "Start"));
+  $("#pause").addEventListener("click", () => act("/api/pause", {}, "Pause"));
+  $("#resume").addEventListener("click", () => act("/api/resume", {}, "Resume"));
+  $("#end").addEventListener("click", () => {
+    if (confirm("End the run? Each instrument's shutdown runs (outputs off, pumping it started stopped).")) act("/api/end", {}, "End");
+  });
+
+  // The command box: the same words as the cast tab. Suggestions come from the
+  // server, which asks the instruments' own declared commands what may follow.
+  let hintSeq = 0, hintTimer = null;
+
+  function words() {
+    const text = $("#cmd").value;
+    const parts = text.trim().split(/\s+/).filter(Boolean);
+    const complete = text === "" || /\s$/.test(text);
+    return { done: complete ? parts : parts.slice(0, -1), prefix: complete ? "" : (parts[parts.length - 1] || "").toLowerCase() };
+  }
+
+  async function updateHints() {
+    const { done, prefix } = words();
+    const mine = ++hintSeq;
+    let r;
+    try { r = await api("/api/complete?words=" + encodeURIComponent(done.join(" "))); } catch (e) { return; }
+    if (mine !== hintSeq) return;
+    const box = $("#cmd-hints");
+    box.replaceChildren();
+    const options = r.options.filter((o) => o.kind !== "word" || o.text.toLowerCase().startsWith(prefix));
+    for (const o of options.slice(0, 40)) {
+      if (o.kind === "word") {
+        const b = el("button", { type: "button", title: o.help || "" }, o.text);
+        b.addEventListener("click", () => {
+          $("#cmd").value = done.concat(o.text).join(" ") + " ";
+          $("#cmd").focus();
+          updateHints();
+        });
+        box.append(b);
+      } else {
+        const lim = o.lo !== null || o.hi !== null ? ` ${o.lo ?? ""}..${o.hi ?? ""}` : "";
+        box.append(el("span", { class: "slot", title: o.help || "" }, `<${o.text}${lim}${o.unit ? " " + o.unit : ""}>`));
+      }
+    }
+    if (!options.length && done.length) box.append(el("span", { class: "note" }, "Nothing more to add: press Send."));
+  }
+
+  $("#cmd").addEventListener("input", () => { clearTimeout(hintTimer); hintTimer = setTimeout(updateHints, 150); });
+  $("#cmd").addEventListener("focus", updateHints);
+
+  $("#cmd-form").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const line = $("#cmd").value.trim();
+    const out = $("#cmd-result");
+    if (!line) return;
+    try {
+      const r = await api("/api/cast", { line });
+      say(out, `${r.label} <- ${JSON.stringify(r.request)}  ${r.taken ? "(taken)" : "(sent; not taken yet)"}`, false);
+      $("#cmd").value = "";
+      updateHints();
+    } catch (e) {
+      say(out, e.message, true);
+    }
+  });
 
   async function pollStatus() {
     if (state.view !== "status") return;

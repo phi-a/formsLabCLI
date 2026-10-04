@@ -1,20 +1,29 @@
 """What the web GUI asks of formsLabCLI, as plain functions (no sockets here).
 
-Reads only, in this stage: the host's lock, CAST status blocks, the host log
-and the recorded runs. Nothing here opens an instrument. CAST is read with one
-short read of the file and never through `ReadStatus`, which writes back.
+Nothing here opens an instrument. Reads (the host's lock, CAST status blocks, the
+host log, recorded runs) use one short read of the file, never `ReadStatus`,
+which writes back. Control goes the way the console's does: a run is started
+as the sequence host process, and `end`, `pause`, `resume` and commands are
+written to the ctrl and CAST files for the host to take.
 """
 from __future__ import annotations
 
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
 
 from formslab import config
+from formslab.console.cast import castutils
+from formslab.console.ctrl import ctrlcli, ctrlutils
 from formslab.console.log.logcli import log_path
 from formslab.console.safefile import read_json
 from formslab.gui import runs
 from formslab.host.sequence import is_host, read_lock
+from formslab import rscripts
+from formslab.rscripts import cast
+from formslab.rscripts.grammar import GrammarError
+from formslab.sequence import PlanError, discover, load_plan
 from formslab.state import cast_state_path
 
 # How often each block is republished while its owner runs (seconds). A block
@@ -23,6 +32,24 @@ CADENCE_S = {"tc": 2.0, "hvc": 6.0, "psu1": 1.0, "psu2": 1.0, "cryo": 1.0, "slta
 DEFAULT_CADENCE_S = 5.0
 SLACK_S = 2.0
 LOG_TAIL_BYTES = 64 * 1024
+CAST_TAKE_S = 3.0          # how long a command waits to be taken before the page is told "queued"
+END_WAIT_S = 120.0         # how long an `end` is kept being sent to a host that is still up
+END_RESEND_S = 3.0
+
+
+class ApiError(Exception):
+    """A refusal, with the HTTP status the server should answer it with."""
+
+    def __init__(self, code: int, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
+# rScript-importing calls (plans, completion) share a module cache that is not
+# thread-safe, and the GUI's own CAST writes are serialised.
+_lock = threading.RLock()
+_action_lock = threading.Lock()
+_action: dict = {"name": None, "since": 0.0}
 
 
 def host() -> dict | None:
@@ -39,10 +66,9 @@ def _epoch(iso: str) -> float | None:
 
 
 def freshness(label: str, block: dict, running: dict | None, now: float) -> dict:
-    """Is this block live, and if not, why. A block has one timestamp, bumped by
-    its owner's status writes but also by a command written to it and by a host
-    start (which stamps every block "now" and keeps the old status), so age alone
-    is not enough: it needs a running host, and a chamber that says it is connected."""
+    """Is this block live, and if not, why: a host is running, its owner reported
+    within three of its publish cadences (the block's timestamp is only ever set
+    by an owner's status write), and a chamber says it is connected."""
     age = now - float(block.get("timestamp") or 0)
     if running is None:
         return {"live": False, "age_s": age, "reason": "no run is going"}
@@ -77,7 +103,8 @@ def status(log_lines: int = 40) -> dict:
                          "pending": bool(block.get("request")) and not block.get("processed", True),
                          **freshness(label, block, running, now)}
     return {"now": now, "host": running, "last_run": None if running else read_lock(),
-            "blocks": blocks, "cast_unreadable": data is None, "log": log_tail(log_lines)}
+            "action": current_action(), "blocks": blocks, "cast_unreadable": data is None,
+            "log": log_tail(log_lines)}
 
 
 def log_tail(lines: int = 40) -> list[str]:
@@ -121,3 +148,154 @@ def run_series(run_id: str, variables: list[str] | None, max_points: int = runs.
         return None
     return {"id": run_id, "name": run["name"], "started": run["started"],
             **runs.series(run, variables, max(10, min(int(max_points), 20000)))}
+
+
+# --- control --------------------------------------------------------------------------
+
+def current_action() -> str | None:
+    """"starting" or "ending" while a start or an end is in progress, else None."""
+    with _action_lock:
+        return _action["name"]
+
+
+def _begin(name: str) -> None:
+    with _action_lock:
+        if _action["name"]:
+            raise ApiError(409, f"a run is already {_action['name']}")
+        _action.update(name=name, since=time.time())
+
+
+def _finish() -> None:
+    with _action_lock:
+        _action["name"] = None
+
+
+def list_plans() -> list[dict]:
+    """The plans `run <name>` can start, each with the rScripts it loads, or why
+    it does not read."""
+    out = []
+    with _lock:
+        for path in discover():
+            try:
+                plan = load_plan(path)
+            except PlanError as e:
+                out.append({"name": path.stem, "error": str(e)})
+                continue
+            out.append({"name": path.stem, "rscripts": list(plan.rscripts),
+                        "steps": len(plan.sequence.segments),
+                        "open_ended": any(s.verb == "hold" and s.params["seconds"] is None
+                                          for s in plan.sequence.segments)})
+    return out
+
+
+def start_run(name: str) -> dict:
+    """Start the host on a plan the server itself lists (never a path from the
+    request). The launch waits for the host's lock, so it runs on a thread."""
+    with _lock:
+        path = next((p for p in discover() if p.stem == name), None)
+        if path is None:
+            raise ApiError(404, f"no plan {name!r}")
+        try:
+            plan = load_plan(path)
+        except PlanError as e:
+            raise ApiError(400, str(e))
+        missing = [n for n in plan.rscripts if rscripts.find(n) is None]
+        if missing:                              # the host refuses a plan whose scripts are not found
+            raise ApiError(400, f"rScript {', '.join(missing)} not found "
+                                f"(searched {', '.join(str(d) for d in rscripts.search_dirs())})")
+    if host():
+        raise ApiError(409, "a run is already going")
+    _begin("starting")
+
+    def launch() -> None:
+        try:
+            ctrlcli._launch_sequence(str(path.resolve()))
+        finally:
+            _finish()
+
+    threading.Thread(target=launch, name="gui-start", daemon=True).start()
+    return {"state": "starting", "plan": name}
+
+
+def end_run() -> dict:
+    """Ask the host to stop, so every rScript's rShutdown runs. `end` is sent
+    again every few seconds while the host lives (a host that is starting clears
+    the ctrl file and can erase it), and the host is never killed from here."""
+    running = host()
+    if running is None:
+        raise ApiError(409, "no run is going")
+    _begin("ending")
+
+    def end(pid: int) -> None:
+        try:
+            deadline, resend_at = time.monotonic() + END_WAIT_S, 0.0
+            while time.monotonic() < deadline and is_host(pid):
+                if time.monotonic() >= resend_at:
+                    resend_at = time.monotonic() + END_RESEND_S
+                    try:
+                        ctrlutils.WriteCommand("end")
+                    except (OSError, ValueError):
+                        pass                             # tried again next round
+                time.sleep(0.25)
+        finally:
+            _finish()
+
+    threading.Thread(target=end, args=(running["pid"],), name="gui-end", daemon=True).start()
+    return {"state": "ending", "plan": running["plan"]}
+
+
+def ctrl(command: str) -> dict:
+    """`pause` or `resume` the running plan's steps."""
+    if command not in ("pause", "resume"):
+        raise ApiError(400, f"unknown ctrl command {command!r}")
+    if host() is None:
+        raise ApiError(409, "no run is going")
+    try:
+        ctrlutils.WriteCommand(command)
+    except (OSError, ValueError) as e:
+        raise ApiError(503, f"could not write the ctrl file: {e}")
+    return {"sent": command}
+
+
+def complete(words: list[str]) -> list[dict]:
+    """What can come after `words` in a command, for the command box."""
+    with _lock:
+        try:
+            options = cast.complete(words)
+        except Exception as e:                       # a broken rScript must not break the box
+            raise ApiError(500, f"{type(e).__name__}: {e}")
+    return [{"kind": o.kind, "text": o.text, "help": o.help, "lo": o.lo, "hi": o.hi, "unit": o.unit}
+            for o in options]
+
+
+def send_command(line: str) -> dict:
+    """Send `hvc platen 20`-style words to the rScript that owns the label,
+    exactly as the cast tab does, and wait briefly for it to be taken.
+
+    Refused unless a run is going and the instrument's block is live: a command
+    to a chamber that is not connected, or whose rScript is not loaded, would sit
+    unread, and the page would look as if it had worked."""
+    words = line.split()
+    if not words:
+        raise ApiError(400, "type a command, e.g. hvc vent open")
+    label = words[0].lower()
+    with _lock:
+        try:
+            request = cast.request(label, words[1:])
+        except GrammarError as e:
+            raise ApiError(400, str(e))
+    running = host()
+    if running is None:
+        raise ApiError(409, "no run is going, so nothing would apply it")
+    blocks = read_blocks() or {}
+    fresh = freshness(label, blocks.get(label) or {}, running, time.time())
+    if not fresh["live"]:
+        raise ApiError(409, f"{label} is not live ({fresh['reason']}), so the command would not be taken")
+    with _lock:
+        castutils.WriteCommand(request, label)
+    deadline = time.monotonic() + CAST_TAKE_S
+    while castutils.CommandPending(label):
+        if time.monotonic() >= deadline:
+            return {"label": label, "request": request, "taken": False}
+        time.sleep(0.1)
+    return {"label": label, "request": request, "taken": True}

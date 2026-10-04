@@ -130,6 +130,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"user": user})
         if path == "/api/status":
             return self._json(200, api.status(int(arg("log", 40))))
+        if path == "/api/plans":
+            return self._json(200, {"plans": api.list_plans()})
+        if path == "/api/complete":
+            return self._json(200, {"options": api.complete((arg("words") or "").split())})
         if path == "/api/runs":
             return self._json(200, api.list_runs())
         if path.startswith("/api/runs/"):
@@ -178,7 +182,33 @@ class Handler(BaseHTTPRequestHandler):
             self.server.sessions.drop(self._token())
             audit(user, "logout")
             return self._json(200, {"ok": True}, {"Set-Cookie": f"{COOKIE}=; Max-Age=0; Path=/; HttpOnly; SameSite=Strict"})
-        self._error(HTTPStatus.NOT_FOUND, "not found")
+        try:
+            self._control(path, body, user)
+        except api.ApiError as e:
+            audit(user, f"refused {path[len('/api/'):]}: {e}")
+            self._error(e.code, str(e))
+        except Exception as e:
+            self._error(HTTPStatus.INTERNAL_SERVER_ERROR, f"{type(e).__name__}: {e}")
+
+    def _control(self, path: str, body: dict, user: str) -> None:
+        """The actions that change something. Each is noted in gui.log."""
+        if path == "/api/run":
+            name = str(body.get("plan", ""))
+            result = api.start_run(name)
+            audit(user, f"run {name}")
+        elif path == "/api/end":
+            result = api.end_run()
+            audit(user, "end")
+        elif path in ("/api/pause", "/api/resume"):
+            result = api.ctrl(path[len("/api/"):])
+            audit(user, path[len("/api/"):])
+        elif path == "/api/cast":
+            line = str(body.get("line", ""))
+            result = api.send_command(line)
+            audit(user, f"cast {line.strip()}" + ("" if result["taken"] else " (not taken yet)"))
+        else:
+            return self._error(HTTPStatus.NOT_FOUND, "not found")
+        self._json(200, result)
 
     def _login(self, body: dict) -> None:
         user, password = str(body.get("user", "")), str(body.get("password", ""))
