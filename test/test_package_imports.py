@@ -27,9 +27,29 @@ import formslab
 FIRMWARE = {"formslab.devices.cryocooler.pico_board_control"}
 
 # Modules that legitimately need an extra, and the distribution that provides
-# it. None today: everything imports on a base install. The map is asserted in
-# both directions below, so a module that needs an extra has to be listed here.
-EXTRA_ONLY = {}
+# it, by module-name prefix. The map is asserted in both directions below, so a
+# module that needs an extra has to be covered here.
+#   formslab.orbit.*  the `orbit` extra (numpy, scipy, matplotlib). The bare
+#                     `formslab.orbit` package imports nothing, so it is not.
+#   ...scene3d        interactive 3-D views; plotly, which no extra installs.
+# First matching prefix wins.
+EXTRA_ONLY_PREFIXES = {
+    "formslab.orbit.geometry.cubesat.scene3d": "plotly",
+    "formslab.orbit.": "numpy",
+}
+
+
+def _extra_for(name):
+    return next((dist for prefix, dist in EXTRA_ONLY_PREFIXES.items()
+                 if name.startswith(prefix)), None)
+
+
+def _installed(dist):
+    try:
+        importlib.import_module(dist)
+    except ModuleNotFoundError:
+        return False
+    return True
 
 
 def _all_modules():
@@ -39,6 +59,9 @@ def _all_modules():
         yield info.name
 
 
+EXTRA_ONLY = {name: dist for name in _all_modules() if (dist := _extra_for(name))}
+
+
 class PackageImports(unittest.TestCase):
 
     def test_every_module_imports(self):
@@ -46,7 +69,7 @@ class PackageImports(unittest.TestCase):
         self.assertGreater(len(found), 40,
                            "package walk found suspiciously few modules")
         for name in found:
-            if name in EXTRA_ONLY:
+            if name in EXTRA_ONLY and not _installed(EXTRA_ONLY[name]):
                 continue
             with self.subTest(module=name):
                 importlib.import_module(name)
@@ -58,6 +81,7 @@ class PackageImports(unittest.TestCase):
         one is made lazy, or its extra gets installed into the base set, this
         says so instead of quietly exempting a module that no longer needs it.
         """
+        self.assertTrue(EXTRA_ONLY, "no extra-only modules found; is formslab.orbit there?")
         for name, dist in EXTRA_ONLY.items():
             with self.subTest(module=name):
                 try:
