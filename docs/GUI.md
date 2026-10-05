@@ -133,7 +133,17 @@ instrument whose rScript is not loaded) turns red, and the reason is under the
 row. A legend above the plan shows the four shapes.
 
 Plans that ship with formsLabCLI (and anything in the folder you started from)
-are read-only here. *Save as...* makes your own copy in
+are read-only here, marked *shipped*. Two buttons move a file between the
+shipped plans and yours, so a name is only ever in one place:
+
+- *Edit* takes a shipped file out to `~/.formslab/plans/`, where you can change
+  it. It keeps its name, so `run <name>` still finds it. In the checkout, git sees
+  it as removed from `plans/` until you ship it again.
+- *Ship* puts one of yours into formsLabCLI's own `plans/` folder, read-only
+  again. Git sees it as changed or new: commit it to share it. A file with
+  problems is not shipped, and neither is the plan that is running.
+
+*Save as...* makes your own copy in
 `~/.formslab/plans/`, which never changes what `run <name>` does for anyone
 else, and a name already taken by any plan is refused. Saving writes the file
 in one step and refuses to overwrite a plan that changed on disk since you

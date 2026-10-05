@@ -241,7 +241,9 @@ def test_the_editor_routes_need_a_login_and_the_header(monkeypatch):
         assert anon.json("GET", "/api/plans/tvac")[0] == 401
         assert anon.json("GET", "/api/rscripts")[0] == 401
         for path, body in (("/api/plan/check", {"text": ""}), ("/api/plan/line", {"scripts": [], "words": []}),
-                           ("/api/plan/save", {"name": "x", "text": "x", "as_new": True})):
+                           ("/api/plan/save", {"name": "x", "text": "x", "as_new": True}),
+                           ("/api/plan/edit", {"name": "tvac", "base_hash": "x"}),
+                           ("/api/plan/ship", {"name": "tvac", "base_hash": "x"})):
             assert anon.json("POST", path, body)[0] == 401
             c = Client(server).login()
             assert c.call("POST", path, body, headers={"X-Requested-With": ""})[0].status == 403
@@ -383,6 +385,73 @@ def test_delete_and_tokens_over_http(client, monkeypatch):
     assert "tester delete plan mine" in (config.run_dir() / "gui.log").read_text(encoding="utf-8")
     code, body = client.json("POST", "/api/plan/tokens", {"text": "load rLACO\nhvc vent open\n"})
     assert code == 200 and [t["role"] for t in body["lines"][1]] == ["verb", "kw", "kw"]
+
+
+# --- edit and ship ----------------------------------------------------------------------------------------
+
+@pytest.fixture
+def shipped(tmp_path, monkeypatch):
+    """A shipped folder of our own: the folder labcli started from, which is read-only
+    here like the checkout's, and where Ship puts files."""
+    folder = tmp_path / "plans"
+    folder.mkdir()
+    (folder / "ours.plan").write_text("load rSMTC08\nhold 1 s\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(plans, "shipped_dir", lambda: folder)
+    return folder
+
+
+def test_edit_takes_a_shipped_file_out_to_yours_and_ship_puts_it_back(shipped):
+    before = plans.read("ours")
+    assert before["editable"] is False
+    edited = plans.edit("ours", before["hash"])
+    assert edited["editable"] is True and edited["text"] == before["text"]
+    assert not (shipped / "ours.plan").exists() and find_plan("ours") == user_plans_dir() / "ours.plan"
+    changed = plans.save("ours", "load rSMTC08\nhold 2 s\n", edited["hash"], as_new=False)
+    back = plans.ship("ours", changed["hash"])
+    assert back["editable"] is False and back["text"] == "load rSMTC08\nhold 2 s\n"
+    assert (shipped / "ours.plan").exists() and not (user_plans_dir() / "ours.plan").exists()
+
+
+def test_a_file_of_yours_never_shipped_ships_into_the_shipped_folder(shipped):
+    saved = plans.save("newone", "load rSMTC08\nhold 1 s\n", None, as_new=True, kind="plan")
+    assert plans.ship("newone", saved["hash"])["editable"] is False and (shipped / "newone.plan").exists()
+
+
+def test_edit_and_ship_refuse_what_is_already_there_or_changed(shipped):
+    ours = plans.read("ours")
+    with pytest.raises(plans.PlanFileError, match="already shipped"):
+        plans.ship("ours", ours["hash"])
+    with pytest.raises(plans.PlanFileError, match="changed on disk"):
+        plans.edit("ours", "stale")
+    edited = plans.edit("ours", ours["hash"])
+    with pytest.raises(plans.PlanFileError, match="already yours"):
+        plans.edit("ours", edited["hash"])
+    (shipped / "ours.plan").write_text("load rSMTC08\nhold 9 s\n", encoding="utf-8")    # a pull put it back
+    with pytest.raises(plans.PlanFileError, match="hidden behind it") as e:
+        plans.ship("ours", edited["hash"])
+    assert e.value.code == 409 and (user_plans_dir() / "ours.plan").exists()
+
+
+def test_a_file_with_problems_is_not_shipped(shipped):
+    saved = plans.save("broken", DRAFT, None, as_new=True)
+    with pytest.raises(plans.PlanFileError, match="problem") as e:
+        plans.ship("broken", saved["hash"])
+    assert e.value.code == 409 and not (shipped / "broken.plan").exists()
+
+
+def test_edit_and_ship_over_http(client, shipped, monkeypatch):
+    ours = plans.read("ours")
+    monkeypatch.setattr(api, "host", lambda: {"pid": 1, "plan": "ours", "started": "t", "output": "/x"})
+    code, body = client.json("POST", "/api/plan/edit", {"name": "ours", "base_hash": ours["hash"]})
+    assert code == 409 and "is running" in body["error"]
+    monkeypatch.setattr(api, "host", lambda: None)
+    code, body = client.json("POST", "/api/plan/edit", {"name": "ours", "base_hash": ours["hash"]})
+    assert code == 200 and body["editable"] is True
+    code, body = client.json("POST", "/api/plan/ship", {"name": "ours", "base_hash": body["hash"]})
+    assert code == 200 and body["editable"] is False
+    log = (config.run_dir() / "gui.log").read_text(encoding="utf-8")
+    assert "tester edit plan ours" in log and "tester ship plan ours" in log
 
 
 # --- which rScripts a plan's steps use (to put a deleted load line back) -----------------------------------

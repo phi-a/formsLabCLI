@@ -94,10 +94,10 @@
   function renderAll() {
     $("#plan-title").textContent = S.name || "No plan open";
     const badge = $("#plan-badge");
-    badge.textContent = !S.name ? "" : S.editable ? "yours" : "shipped, read-only";
+    badge.textContent = !S.name ? "" : S.editable ? "yours" : "shipped: Edit to change it";
     $("#plan-text").hidden = !S.raw;
     $("#plan-rows").hidden = S.raw;
-    $("#plan-raw").textContent = S.raw ? "Show steps" : "Edit as text";
+    $("#plan-raw").textContent = S.raw ? "Show steps" : S.editable ? "Edit as text" : "Show as text";
     if (S.raw) $("#plan-text").value = text();
     $("#plan-text").readOnly = !S.editable;
     legend();
@@ -473,6 +473,13 @@
     $("#plan-raw").disabled = !S.name;
     $("#plan-delete").disabled = !S.name || !S.editable || S.busy;
     $("#plan-delete").hidden = !S.editable;
+    $("#plan-edit").hidden = !S.name || S.editable;
+    $("#plan-edit").disabled = S.busy;
+    $("#plan-ship").hidden = !S.name || !S.editable;
+    $("#plan-ship").disabled = dirty() || S.errors.length > 0 || S.busy;
+    $("#plan-ship").title = dirty() ? "Save it first"
+      : S.errors.length ? "Fix the problems below first: a shipped file must be whole"
+      : "Put it in formsLabCLI's own plans folder, read-only again";
     const d = dirty() ? " (unsaved changes)" : "";
     $("#plan-title").textContent = (S.name || "No plan open") + d;
   }
@@ -517,6 +524,28 @@
       say(`Deleted "${r.deleted}". It is kept in the trash folder if you need it back.`);
     } catch (e) { say(e.message, true); }
   });
+  // Edit and Ship move the file: out of formsLabCLI's plans folder into yours, and back.
+  async function move(action, question, done) {
+    if (!confirm(question)) return;
+    S.busy = true; updateButtons();
+    try {
+      load(await api("/api/plan/" + action, { name: S.name, base_hash: S.hash }));
+      say(done);
+      await loadList();
+    } catch (e) { say(e.message, true); }
+    finally { S.busy = false; updateButtons(); }
+  }
+  $("#plan-edit").addEventListener("click", () => move("edit",
+    `Take the ${S.kind} "${S.name}" out of the shipped files, so you can change it?\n\n`
+    + "It moves to your folder (~/.formslab/plans) and keeps its name, so runs still find it. "
+    + "Until you ship it again, git sees it as removed from plans/.",
+    "Yours now: you can change it. Ship puts it back."));
+  $("#plan-ship").addEventListener("click", () => move("ship",
+    `Ship the ${S.kind} "${S.name}"?\n\n`
+    + "It moves into formsLabCLI's own plans folder and is read-only there. "
+    + "Git sees it as changed or new: commit it to share it.",
+    "Shipped. It is in plans/ now; commit it to share it."));
+
   $("#plan-saveas").addEventListener("click", () => {
     const name = prompt("Name for your copy (letters, digits, - and _):", S.name ? S.name + "_copy" : "");
     if (name) save(true, name.trim());
