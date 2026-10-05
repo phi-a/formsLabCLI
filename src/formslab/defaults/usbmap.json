@@ -25,7 +25,10 @@
     "windows_hub_port": 3,
     "windows_location_path": "USB(2)#USB(3)#USB(3)",
     "baud": 9600,
-    "recovery_method": "hubpower"
+    "recovery_method": "hubpower",
+    "channels": {
+      "1": {"feeds": "cryocooler board", "owner": "rCryoBoard"}
+    }
   },
 
   "psu2": {
@@ -37,7 +40,10 @@
     "port": "1-4.1",
     "interface_id": "1-4.1:1.0",
     "baud": 9600,
-    "recovery_method": "hubpower"
+    "recovery_method": "hubpower",
+    "channels": {
+      "1": {"feeds": "sLTA camera", "owner": "rSLTA"}
+    }
   },
 
   "slta": {

@@ -21,19 +21,33 @@ from formslab.devices.cryocooler.registers import (  # noqa: F401  (re-exported 
     ccvres_ohms_from_code,
 )
 
-# Supply feeding the cryocooler board's input. Confirmed on the bench
-# 2026-08-29: the board is wired to the Rigol DP832A (psu1) CH1. The previous
-# psu2 CH2 entry referred to the FTDI Chipi-X supply, which is not part of
-# this setup.
+# Supply feeding the cryocooler board's input. The hardware map says which
+# (usbmap.json, `"channels"` on the supply: owner rCryoBoard; see
+# devices/dp832a/wiring.py); these are the default when it does not. Confirmed
+# on the bench 2026-08-29: the board is wired to the Rigol DP832A (psu1) CH1.
 #
-# rCryoBoard owns this channel while it runs; do not command psu1 CH1 from a
-# plan or the console at the same time.
+# rCryoBoard owns this channel while it runs; do not command it from a plan or
+# the console at the same time.
 CRYO_PSU_LABEL = "psu1"
 CRYO_PSU_CHANNEL = 1
 
 # Component tag for supply log lines, derived so it cannot drift from the
 # label the way the hard-coded "PSU2" strings did.
 CRYO_PSU_COMPONENT = CRYO_PSU_LABEL.upper()
+
+
+def cryo_supply(r_global=None) -> tuple[str, int]:
+    """(supply label, channel) feeding the board, from the hardware map. Kept on
+    `r_global` for the run, so the channel cannot change under a running board."""
+    from formslab.devices.dp832a.wiring import supply_for
+
+    cached = getattr(r_global, "_supply", None)
+    if cached:
+        return cached
+    supply = supply_for("rCryoBoard", (CRYO_PSU_LABEL, CRYO_PSU_CHANNEL))
+    if r_global is not None:
+        r_global._supply = supply
+    return supply
 
 # The board's I2C devices come up above roughly 15 V in, but the converter
 # cannot be commanded to produce an output until roughly 20 V. 24 V is the

@@ -72,9 +72,11 @@ profile file) is not built yet.
 - **One controller connection:** the HVC-3500 takes one TCP client. While a
   host runs rLACO, `scripts/vent_test.py` and `scripts/pumpdown.py` cannot
   connect; use the cast tab or the `laco_*` plans.
-- **PSU1 CH1:** the cryocooler supply (`cryo_config`). Do not command that
-  channel from a plan or the console while rCryoBoard runs.
-- **PSU2:** disabled in the shipped usbmap, but rSLTA powers the camera from
-  PSU2 CH1 (12 V, 2.0 A). Enable it in the live usbmap before an sLTA run.
+- **Owned supply channels:** `usbmap.json` records what each channel feeds and
+  which rScript drives it (`"channels"`; shipped: PSU1 CH1 → cryocooler board,
+  rCryoBoard; PSU2 CH1 → sLTA camera, rSLTA). Do not command an owned channel
+  from a plan or the console while its owner runs.
+- **PSU2:** disabled in the shipped usbmap, but rSLTA powers the camera from it
+  (12 V, 2.0 A). Enable it in the live usbmap before an sLTA run.
 - **Console PSU tab:** it opens its own VISA session. Do not use it on a supply
   a run is commanding; watch the run from `cast`.

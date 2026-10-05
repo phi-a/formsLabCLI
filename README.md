@@ -151,6 +151,18 @@ a driver asks for it — edit the copy, and an upgrade will not overwrite it. Th
 PowerSwitch password is read from the environment variable named by its
 `password_env` key, never stored in the file.
 
+A supply's entry also says what its channels are wired to, and which rScript
+drives each one:
+
+```json
+"psu1": { "...": "...",
+  "channels": { "1": { "feeds": "cryocooler board", "owner": "rCryoBoard" } } }
+```
+
+rCryoBoard and rSLTA take their supply channel from here, so rewiring the bench
+is an edit to this file, not to code. A map without `channels` uses the shipped
+wiring (psu1 CH1 → cryocooler board, psu2 CH1 → sLTA camera).
+
 Point `$FORMSLAB_CONFIG_DIR` somewhere else to run a second bench from one
 machine.
 

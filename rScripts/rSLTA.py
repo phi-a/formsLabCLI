@@ -13,7 +13,7 @@ from formslab.rscripts import (
 )
 from formslab.devices.slta.imaging import capture
 from formslab.console.cast.castutils import UpdateStatus, ReadCommand, ReadStatus
-from formslab.devices.slta.routine import _init, _init_psu
+from formslab.devices.slta.routine import _init, _init_psu, slta_supply
 from formslab.devices.slta.exposure import ExposureManager
 from formslab.devices.dp832a.commands import (
     build_psu_channel_request,
@@ -72,29 +72,20 @@ rg = rGlobal
 
 
 def _power_on_slta_channel():
-    queue_psu_request(
-        "psu2",
-        build_psu_channel_request(1, on=True),
-        update=True,
-    )
-    wait_for_psu_channel("psu2", 1, on=True, timeout=5.0)
+    label, ch = slta_supply()
+    queue_psu_request(label, build_psu_channel_request(ch, on=True), update=True)
+    wait_for_psu_channel(label, ch, on=True, timeout=5.0)
 
 
 def _power_off_slta_channel():
-    queue_psu_request(
-        "psu2",
-        build_psu_channel_request(1, on=False),
-        update=True,
-    )
-    wait_for_psu_channel("psu2", 1, on=False, timeout=5.0)
+    label, ch = slta_supply()
+    queue_psu_request(label, build_psu_channel_request(ch, on=False), update=True)
+    wait_for_psu_channel(label, ch, on=False, timeout=5.0)
 
 
 def _queue_psu2_shutdown():
-    queue_psu_request(
-        "psu2",
-        build_psu_channel_request(1, on=False),
-        update=True,
-    )
+    label, ch = slta_supply()
+    queue_psu_request(label, build_psu_channel_request(ch, on=False), update=True)
 # === Register capture cycle callback once ===
 def _task(stop_event, cmd: dict) -> None:
     try:
@@ -250,8 +241,8 @@ def rScript(run):
     # === If Startup or Shutdown Logic ===
     if rg.shutdown:
         _queue_psu2_shutdown()
-        run.log("Queued PSU2 shutdown.", component="rSLTA")
-        UpdateStatus(label="psu2", status=ReadStatus("psu2"))
+        run.log(f"Queued {slta_supply()[0].upper()} shutdown.", component="rSLTA")
+        UpdateStatus(label=slta_supply()[0], status=ReadStatus(slta_supply()[0]))
         rg.shutdown = False
         rg._psu2_ready = False
         rg._psu2_request_pending = False

@@ -6,6 +6,16 @@ from formslab.devices.dp832a.commands import (
     psu_channel_state,
     queue_psu_request,
 )
+SLTA_SUPPLY = ("psu2", 1)     # the default when the hardware map does not say
+
+
+def slta_supply() -> tuple[str, int]:
+    """(supply label, channel) feeding the camera, from the hardware map."""
+    from formslab.devices.dp832a.wiring import supply_for
+
+    return supply_for("rSLTA", SLTA_SUPPLY)
+
+
 # --- Helper Functions ---
 def _init(run,rGlobal):
     if rGlobal._vars_initialized:
@@ -18,11 +28,13 @@ def _init(run,rGlobal):
     return
 
 def _init_psu(run, rGlobal):
-    readiness = psu_channel_state("psu2", 1, voltage=12.0, current=2.0)
+    label, ch = slta_supply()
+    tag = label.upper()
+    readiness = psu_channel_state(label, ch, voltage=12.0, current=2.0)
 
     if readiness == "match":
         if not getattr(rGlobal, "_psu2_ready", False):
-            run.log("SLTA supply ready on PSU2 CH1", level="INFO", component="PSU2")
+            run.log(f"SLTA supply ready on {tag} CH{ch}", level="INFO", component=tag)
         rGlobal._psu2_ready = True
         rGlobal._psu2_request_pending = False
         rGlobal._psu2_status_unknown_reported = False
@@ -31,9 +43,9 @@ def _init_psu(run, rGlobal):
     if readiness == "unknown":
         if not getattr(rGlobal, "_psu2_status_unknown_reported", False):
             run.log(
-                "PSU2 CH1 telemetry is unavailable; preserving last-known SLTA configuration",
+                f"{tag} CH{ch} telemetry is unavailable; preserving last-known SLTA configuration",
                 level="WARNING",
-                component="PSU2",
+                component=tag,
             )
             rGlobal._psu2_status_unknown_reported = True
         return
@@ -43,10 +55,10 @@ def _init_psu(run, rGlobal):
         return
 
     rGlobal._psu2_status_unknown_reported = False
-    run.log("Setting PSU2 CH1 for SLTA...", level="INFO", component="PSU2")
+    run.log(f"Setting {tag} CH{ch} for SLTA...", level="INFO", component=tag)
     queue_psu_request(
-        "psu2",
-        build_psu_channel_request(1, ovp=12.5, ocp=2.1, protect=True, voltage=12.0, current=2.0),
+        label,
+        build_psu_channel_request(ch, ovp=12.5, ocp=2.1, protect=True, voltage=12.0, current=2.0),
         update=True,
     )
     rGlobal._psu2_request_pending = True

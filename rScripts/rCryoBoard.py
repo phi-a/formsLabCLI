@@ -4,11 +4,10 @@ from formslab.console.cast.castutils import ReadCommand, UpdateStatus
 from formslab.rscripts import RScriptControl
 from formslab.devices.cryocooler.owner import _init_cryo_board, _init_psu2, _shutdown_cryo_subsystem
 from formslab.devices.cryocooler.config import (
-    CRYO_PSU_LABEL,
-    CRYO_PSU_CHANNEL,
     CRYO_SUPPLY_CURRENT_A,
     CRYO_SUPPLY_VOLTAGE_V,
     ccvres_ohms_from_code,
+    cryo_supply,
 )
 from formslab.devices.dp832a.commands import read_psu_channel_status
 
@@ -55,6 +54,7 @@ def _merge_request(existing, incoming):
     return merged
 
 def _refresh_status(run, r_global):
+    CRYO_PSU_LABEL, CRYO_PSU_CHANNEL = cryo_supply(r_global)
     status = {
         "LINK": r_global.cryo is not None,
         "ON": False,
