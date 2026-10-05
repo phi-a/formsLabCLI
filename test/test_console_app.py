@@ -1,5 +1,7 @@
 """The console shell: tab table, screen clearing, and the REPL loop."""
 
+import sys
+
 from formslab import app
 from formslab.app import clear_screen, initial_tab_from_argv
 from formslab.console.sessions.base import CLIResult
@@ -110,6 +112,7 @@ def test_labcli_does_not_echo_an_entered_command_twice(monkeypatch):
     monkeypatch.setattr(app, "get_session", lambda _tab: Session("ctrl"))
     monkeypatch.setattr(app, "ensure_runtime_files", lambda: None)
     monkeypatch.setattr(app, "render_output", lambda *items: rendered.append(items))
+    monkeypatch.setattr(sys, "argv", ["labcli"])            # a bare `labcli`, not pytest's own arguments
 
     app.main()
 
@@ -140,6 +143,7 @@ def test_labcli_keeps_prompt_alive_after_session_error(monkeypatch):
     monkeypatch.setattr(app, "get_session", lambda _tab: Session("ctrl"))
     monkeypatch.setattr(app, "ensure_runtime_files", lambda: None)
     monkeypatch.setattr(app, "render_output", lambda *items: rendered.append(items))
+    monkeypatch.setattr(sys, "argv", ["labcli"])            # a bare `labcli`, not pytest's own arguments
 
     app.main()
 

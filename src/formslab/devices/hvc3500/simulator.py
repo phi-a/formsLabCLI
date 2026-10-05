@@ -53,7 +53,7 @@ class ControllerState:
 
     def tick(self) -> None:
         now = time.monotonic()
-        dt = now - self._last
+        dt = now - self._last           # 0 when two requests share a clock tick (Windows: ~15.6 ms)
         self._last = now
         for when, code in list(self.pending_toggles):
             if now >= when:
@@ -62,11 +62,11 @@ class ControllerState:
         if self.devices["OR"] and self.devices["OP"]:
             target = max(self.vacuum_setpoint, 1e-6)
             new = self.pressure * (0.1 ** dt) if self.pressure > target else target
-            self.pressure_rate = (new - self.pressure) / dt if dt > 0 else 0.0
+            self.pressure_rate = (new - self.pressure) / dt if dt > 0 else self.pressure_rate
             self.pressure = new
         elif self.devices["OV"]:
             new = min(760.0, self.pressure + 200.0 * dt)
-            self.pressure_rate = (new - self.pressure) / dt if dt > 0 else 0.0
+            self.pressure_rate = (new - self.pressure) / dt if dt > 0 else self.pressure_rate
             self.pressure = new
         else:
             self.pressure_rate = 0.0
