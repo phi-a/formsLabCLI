@@ -122,3 +122,20 @@ def test_a_blocks_own_line_is_its_kind_and_load_goes_after_it():
     assert run_js({"l": "block pumpdown to <pressure:number>"}, "T.kindOf(P.l)") == "block"
     got = add(["# what it does", "block seal", "", "hvc gate close"], "load", ["rLACO"])
     assert got["lines"] == ["# what it does", "block seal", "", "load rLACO", "hvc gate close"]
+
+
+# --- loops: how deep each line is, and the file's indentation --------------------------------
+
+LOOP = ["load rPSU", "repeat 2 times", "psu1 ch1 on", "# a note", "", "repeat until end", "hold 1 s",
+        "end", "end", "log done"]
+
+
+def test_each_line_knows_how_deep_in_loops_it_is():
+    assert run_js(LOOP, "T.depths(P)") == [0, 0, 1, 1, 1, 1, 2, 1, 0, 0]
+    assert run_js(["end", "hold 1 s"], "T.depths(P)") == [0, 0]                 # a stray end stays at 0
+
+
+def test_the_steps_in_a_loop_are_written_two_spaces_in():
+    assert run_js(["load rPSU", "  repeat 2 times", "hold 1 s", "      end", "   "], "T.indent(P)") == \
+        ["load rPSU", "repeat 2 times", "  hold 1 s", "end", ""]
+    assert run_js(LOOP, "T.indent(P)")[6] == "    hold 1 s"

@@ -59,7 +59,28 @@
     return ELEMENTS.filter((k) => !named.has(k));
   };
 
-  const api = { kindOf, headerIndex, withHeader, missingHeaders, ELEMENTS, missingElements };
+  // How deep in loops each line is: a `repeat` and its `end` at the depth outside
+  // the loop, the lines between them one deeper. A stray `end` stays at 0.
+  const headOf = (line) => (kindOf(line) === "step" ? line.trim().split(/\s+/)[0].toLowerCase() : "");
+  function depths(lines) {
+    let depth = 0;
+    return lines.map((l) => {
+      const head = headOf(l);
+      if (head === "end") depth = Math.max(0, depth - 1);
+      const here = depth;
+      if (head === "repeat") depth++;
+      return here;
+    });
+  }
+
+  // The lines as a file holds them: each two spaces in per loop around it, blank
+  // lines empty. Indentation is for reading only; a plan reads the same without it.
+  const indent = (lines) => {
+    const d = depths(lines);
+    return lines.map((l, i) => (l.trim() ? "  ".repeat(d[i]) + l.trim() : ""));
+  };
+
+  const api = { kindOf, headerIndex, withHeader, missingHeaders, ELEMENTS, missingElements, depths, indent };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.PlanText = api;
 })(typeof window !== "undefined" ? window : globalThis);

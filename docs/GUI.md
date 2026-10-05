@@ -103,6 +103,10 @@ Pick a plan on the left (a green page before its name); a plan you open is shown
   tab and `labcli check` use, so they cannot disagree;
 - comments and blank lines are kept, and rows can be moved, inserted and deleted.
   *Edit as text* shows the plain file for pasting or fine changes;
+- a loop (docs/SEQUENCE.md, Loops) is a `repeat` row and an `end` row, each with a
+  circular arrow. The rows between them are set in, with a thin bar for each loop
+  around them, and a step inserted between them is inside the loop. The file is
+  saved with those steps two spaces in;
 - beside the rows, a help card follows the row you are on: what the step does,
   its inputs, and what it needs first, as the plan leaves things at that line
   (✓ the plan establishes it, ✗ the plan breaks it, ? it depends on the chamber at

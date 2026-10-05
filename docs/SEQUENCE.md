@@ -26,6 +26,7 @@ log done
 | `hold until end` | runs until ctrl `end` (`tvac.plan`: manual operation) | — |
 | `until <variable> above\|below <limit> [C\|K] timeout <time> s\|min\|h` | runs until a published value crosses a limit; `C`/`K` converts from the value's own unit | not met by the timeout (required: a wait on hardware always has a limit) |
 | `log <text>` | one line in the run log | — |
+| `repeat …` … `end` | the steps between them again: n times, until a value passes a limit, or until `end` (Loops, below) | a `repeat until` not met by its timeout |
 
 `#` starts a comment, on a line of its own (a `#` after a step is an error,
 since `log` text may contain one). Words and value names ignore case.
@@ -127,6 +128,64 @@ Shipped blocks: `pumpdown to <pressure>` and `vent within <minutes>`, from which
 the plan `pump_soak_vent` is built, and `eclipse within <minutes>` and `sunrise
 within <minutes>`, which wait for the orbit a run follows to enter or leave the
 umbra (docs/ORBIT.md, In a run). `labcli plans` lists the blocks too.
+
+### Loops
+
+The steps between `repeat` and `end` run again:
+
+```
+# Image every umbra for ten orbits
+load rOrbit rPSU rSLTA
+record every 10 s
+
+orbit replay leo_noon
+psu1 ch1 set 5.0 0.5
+repeat 10 times
+  eclipse within 120
+  psu1 ch1 on
+  slta image
+  sunrise within 60
+  psu1 ch1 off
+end
+```
+
+| line | does |
+|---|---|
+| `repeat <n> times` | the steps up to `end`, n times (1 to 10000) |
+| `repeat until <value> above\|below <limit> [C\|K] timeout <time> s\|min\|h` | the steps again until the value passes the limit; the run stops if it has not by the timeout |
+| `repeat until end` | the steps again until the run is ended: a chamber held in a cycle for days |
+| `end` | closes the nearest open `repeat` |
+
+- A condition is read **before each pass**: a loop whose condition is already met runs
+  no pass.
+- A pass is **never cut short**. A value that passes the limit during a pass is seen
+  when that pass ends, so keep the passes short when the timing matters.
+- **Nesting:** loops nest up to eight deep, and may call blocks. A block may hold a
+  loop, closed inside the block, but not `repeat until end`, since nothing after its
+  call would run.
+- **Indentation** is for reading only. The editor writes the steps inside a loop two
+  spaces in.
+- **The rules see a loop as its later passes do.** A step is checked against what the
+  steps before it left, both before the first pass and at the end of a pass. So
+  `hvc vent open` followed by `hvc rough open` in the same loop is an error on the
+  vent: on the second pass, the vacuum valve is open.
+- **After a loop**, a `repeat until` proves its condition, as an `until` does.
+- **The log** marks each pass: `[7/23] repeat 10 times: pass 3 of 10`.
+
+A plan that holds the chamber at its temperatures until the run is ended:
+
+```
+# Hold the platen at -20 C until the run is ended
+load rLACO rSMTC08
+record every 30 s
+
+hvc platen -20
+repeat until end
+  until platenT below -15 C timeout 2 h
+  log platen cold
+  hold 30 min
+end
+```
 
 Shipped plans: `tvac` (manual operation from the cast tab, until `end`),
 `psu1_smtc08_first` (PSU1 + thermocouples), `laco_pumpdown`

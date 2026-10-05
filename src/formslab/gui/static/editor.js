@@ -23,11 +23,16 @@
     liveSeq: 0, liveTimer: null,              // the orbit's live panel
   };
 
-  const { kindOf, withHeader, missingHeaders, missingElements } = window.PlanText;
+  const { kindOf, withHeader, missingHeaders, missingElements, depths, indent } = window.PlanText;
   const isOrbit = () => S.kind === "orbit";
   const isBlock = () => S.kind === "block";
   const blockIcon = (title) => el("span", { class: "part-icon", "data-part": "block", "data-fam": "block",
                                             title: title || "A block", role: "img", "aria-label": "Block:" });
+  // A loop's two lines, `repeat` and `end`, carry a circular arrow.
+  const isLoopWord = (w) => ["repeat", "end"].includes((w || "").toLowerCase());
+  const loopIcon = () => el("span", { class: "part-icon", "data-part": "loop", "data-fam": "flow",
+                                      title: "A loop: the steps between repeat and end run again", role: "img",
+                                      "aria-label": "Loop:" });
   const planIcon = () => el("span", { class: "part-icon", "data-part": "plan", "data-fam": "plan",
                                       title: "A plan: steps the host runs", role: "img", "aria-label": "Plan:" });
   const orbitIcon = () => el("span", { class: "part-icon", "data-part": "shape", "data-fam": "orbit",
@@ -35,7 +40,7 @@
   // The colour of a line: an orbit's is always the orbit's; a plan's, its first word's.
   const famFor = (word) => (isOrbit() ? "orbit" : famOf(word));
   const splitWords = (line) => line.trim().split(/\s+/).filter(Boolean);
-  const text = () => S.lines.join("\n") + "\n";
+  const text = () => indent(S.lines).join("\n") + "\n";        // the steps in a loop two spaces in
   const dirty = () => S.name !== null && text() !== S.original;     // nothing open: nothing to lose
   const scriptsOf = () => {
     const load = S.lines.find((l) => kindOf(l) === "load");
@@ -140,8 +145,10 @@
     box.replaceChildren();
     S.rows = [];
     if (!S.name) { box.append(el("p", { class: "note" }, "Pick a plan on the left, or make a new one.")); return; }
+    const depth = depths(S.lines);
     S.lines.forEach((line, i) => {
       const row = el("div", { class: "prow " + kindOf(line) });
+      if (depth[i]) { row.dataset.depth = depth[i]; row.style.setProperty("--depth", depth[i]); }   // inside a loop
       row.append(el("div", { class: "no" }, String(i + 1)));
       const body = el("div", { class: "body" });
       row.append(body);
@@ -234,6 +241,7 @@
         }
       }
       if (idx === 0 && fam === "block") line.append(blockIcon());
+      if (idx === 0 && isLoopWord(t.text)) line.append(loopIcon());
       line.append(tok);
     });
     return line;
@@ -262,8 +270,11 @@
   }
 
   function setLine(i, value, rerender) {
+    const loopWas = isLoopWord(S.lines[i].trim().split(/\s+/)[0]);
     S.lines[i] = value;
-    if (rerender) renderLine(i);
+    // A line that becomes, or stops being, `repeat` or `end` moves every line after it in or out.
+    if (loopWas !== isLoopWord(value.trim().split(/\s+/)[0])) { renderRows(); showErrors(); }
+    else if (rerender) renderLine(i);
     scheduleCheck();
     updateButtons();
   }
@@ -361,6 +372,7 @@
         if (part) { sel.dataset.part = part; sel.title = partName(part); }
         if (part && k === (isOrbit() ? 0 : 1)) chain.append(partIcon(part, famFor(words[0])));   // before the word naming it
         if (k === 0 && current !== undefined && famOf(current) === "block") chain.append(blockIcon());
+        if (k === 0 && isLoopWord(current)) chain.append(loopIcon());
         if (current === undefined) sel.append(el("option", { value: "" }, k > 0 ? "..." : isOrbit() ? "add an element..." : "add a step..."));
         const addable = k === 0 && current === undefined && !isOrbit()
           ? missingHeaders(S.lines).filter((h) => !(isBlock() && h === "record")) : [];   // load / record, if deleted

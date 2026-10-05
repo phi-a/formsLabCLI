@@ -252,6 +252,12 @@ button.danger-outline:hover { background: color-mix(in srgb, var(--bad) 10%, tra
 .tok[data-fam="block"] { --fam: var(--fam-block); }
 /* a block: a call to a group of steps, drawn as one square */
 .part-icon[data-part="block"] { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='2' y='2' width='12' height='12' rx='2'/%3E%3C/svg%3E"); }
+/* a loop's `repeat` and `end`: a circular arrow */
+.part-icon[data-part="loop"] { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M13 8a5 5 0 1 1-1.6-3.7' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round'/%3E%3Cpath d='M9.2 2.6l3.3.5-.6 3.3z'/%3E%3C/svg%3E"); }
+/* the steps inside a loop: in by a step per loop, with a bar for each loop around them */
+.prow[data-depth] .body { padding-left: calc(var(--depth) * 16px);
+  background: repeating-linear-gradient(to right, color-mix(in srgb, var(--fam-flow) 55%, transparent) 0 2px, transparent 2px 16px)
+              left top / calc(var(--depth) * 16px) 100% no-repeat; }
 /* a plan: a page with its corner folded */
 .part-icon[data-part="plan"] { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 1.5h6l3.5 3.5v9.5h-9.5z' fill='none' stroke='%23000' stroke-width='1.6' stroke-linejoin='round'/%3E%3Cpath d='M9.5 1.5v3.5h3.5' fill='none' stroke='%23000' stroke-width='1.6' stroke-linejoin='round'/%3E%3C/svg%3E"); }
 #plan-new, #orbit-new, #block-new { width: 100%; margin-top: 6px; }

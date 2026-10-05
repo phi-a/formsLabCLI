@@ -15,7 +15,7 @@
   // orbit file's lines all start with an element, and are all the orbit's colour.
   const FAMILY = { hvc: "hvc", psu1: "psu", psu2: "psu", cryo: "cryo", slta: "slta", tc: "tc", orbit: "orbit",
                    epoch: "orbit", a: "orbit", e: "orbit", i: "orbit", raan: "orbit", argp: "orbit", nu: "orbit" };
-  const STEP_WORDS = ["hold", "until", "log", "load", "record"];
+  const STEP_WORDS = ["hold", "until", "log", "load", "record", "repeat", "end"];
   // The names of the blocks the editor lists: a step that calls one has the block colour.
   const BLOCKS = new Set();
   const famOf = (word) => {
