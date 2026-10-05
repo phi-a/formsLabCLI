@@ -123,8 +123,10 @@ since every valve and pump command reads first and an `until` already met ends a
 once, but not every one: where its steps do not establish a prerequisite, the
 live check refuses and the run stops there.
 
-Shipped blocks: `pumpdown to <pressure>` and `vent within <minutes>`; the plan
-`pump_soak_vent` is built from them. `labcli plans` lists the blocks too.
+Shipped blocks: `pumpdown to <pressure>` and `vent within <minutes>`, from which
+the plan `pump_soak_vent` is built, and `eclipse within <minutes>` and `sunrise
+within <minutes>`, which wait for the orbit a run follows to enter or leave the
+umbra (docs/ORBIT.md, In a run). `labcli plans` lists the blocks too.
 
 Shipped plans: `tvac` (manual operation from the cast tab, until `end`),
 `psu1_smtc08_first` (PSU1 + thermocouples), `laco_pumpdown`
@@ -133,7 +135,8 @@ guards, vent valve open, until atmosphere) and `pump_soak_vent` (the blocks).
 
 Orbit content (`orbit.*`, `propagate`, `@procedure`) is refused: that is FORMS'
 part, done offline (see ARCHITECTURE.md). An orbit is described in its own file,
-beside the plans, and never run (docs/ORBIT.md). A file in the old format
+beside the plans; a plan follows one with rOrbit, `orbit follow <orbit>`
+(docs/ORBIT.md). A file in the old format
 (`sequence.operations = [...]`) is refused with a pointer here.
 
 ## Running

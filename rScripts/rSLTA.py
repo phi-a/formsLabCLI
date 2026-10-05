@@ -3,7 +3,7 @@
 # Captures on a forced request ({"image": true} on CAST "slta"), or, with
 # SLTARUN on, whenever the run says the spacecraft is in umbra. Umbra comes from
 # three variables on the run -- InUmbra (0/1), UmbraDuration and
-# UmbraTimeRemaining (s) -- which an eclipse profile computed by FORMS provides.
+# UmbraTimeRemaining (s) -- which rOrbit publishes from an orbit file.
 # Until something publishes them, SLTARUN captures nothing.
 import os,time,math
 import traceback
@@ -45,8 +45,9 @@ COMMANDS = [
      One exposure at the current settings, whatever the umbra state.""", {"image": True}),
     ("run on|off", """Turn umbra-triggered captures on or off
      On, the camera captures whenever the run says the spacecraft is in umbra, from
-     InUmbra in a FORMS eclipse profile. Until something publishes InUmbra, nothing is
-     captured. Status shows this setting as SLTARUN.""",
+     InUmbra, which rOrbit publishes once a plan has chosen an orbit with orbit follow.
+     Until something publishes InUmbra, nothing is captured. Status shows this setting
+     as SLTARUN.""",
      lambda s: {"SLTARUN": s == "on"}),
     ("exposure <seconds:integer 1..3600 s>", """Set the exposure time
      Seconds per exposure, 1 to 3600.""", lambda t: {"exposure": t}),

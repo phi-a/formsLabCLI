@@ -1,0 +1,8 @@
+# Wait for the satellite to leave the Earth's shadow
+# Waits until the orbit the run follows puts the satellite in sunlight, for at
+# most the minutes given. It ends at once if the satellite is in sunlight
+# already. Choose the orbit first, with orbit follow or orbit replay.
+block sunrise within <minutes:number 1..600 min>
+load rOrbit
+
+until InUmbra below 0.5 timeout {minutes} min

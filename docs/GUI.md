@@ -133,7 +133,17 @@ instrument whose rScript is not loaded) turns red, and the reason is under the
 row. A legend above the plan shows the four shapes.
 
 Plans that ship with formsLabCLI (and anything in the folder you started from)
-are read-only here. *Save as...* makes your own copy in
+are read-only here, marked *shipped*. Two buttons move a file between the
+shipped plans and yours, so a name is only ever in one place:
+
+- *Edit* takes a shipped file out to `~/.formslab/plans/`, where you can change
+  it. It keeps its name, so `run <name>` still finds it. In the checkout, git sees
+  it as removed from `plans/` until you ship it again.
+- *Ship* puts one of yours into formsLabCLI's own `plans/` folder, read-only
+  again. Git sees it as changed or new: commit it to share it. A file with
+  problems is not shipped, and neither is the plan that is running.
+
+*Save as...* makes your own copy in
 `~/.formslab/plans/`, which never changes what `run <name>` does for anyone
 else, and a name already taken by any plan is refused. Saving writes the file
 in one step and refuses to overwrite a plan that changed on disk since you
@@ -149,7 +159,9 @@ shape, the plane, the place on the orbit, time). The step chooser offers only th
 elements still missing. Beside them, a panel shows the orbit now, propagated once
 a second: sunlit or in umbra and when that changes, beta angle, altitude, speed,
 and the coming orbit as a strip. *New orbit* starts one. An orbit is never in the
-Start list: nothing runs it.
+Start list: a plan follows it. The panel says how (`load rOrbit`, then `orbit
+follow <orbit>`), and *Use in a plan* makes a plan that follows the orbit and
+waits for its umbra (docs/ORBIT.md, In a run).
 
 A **block** (docs/SEQUENCE.md, Blocks) is listed with stacked squares and opens in
 the same editor: its `block` line is the call, each `{input}` an amber value box.

@@ -11,6 +11,10 @@ a copy saved from the editor goes in this machine's own plans folder
 change what `run <name>` does for everyone, and a name already taken by any plan
 is refused.
 
+*Edit* moves a shipped file into this machine's folder, so it can be changed;
+*Ship* moves one of yours into the checkout's ``plans/``, read-only again. A name
+is only ever in one place, so neither shadows anything.
+
 Saving writes the file in one step and refuses to overwrite a file that changed
 since it was opened (compared by a hash of its contents). Deleting moves the file
 into ``<config>/plans/.trash`` rather than erasing it.
@@ -27,7 +31,7 @@ from pathlib import Path
 from formslab.console.safefile import atomic_write_text
 from formslab.orbit import file as orbitfile
 from formslab.sequence import block as blockfile
-from formslab.sequence.plan import ENV, SUFFIX, discover, review, user_plans_dir
+from formslab.sequence.plan import ENV, PACKAGE_ROOT, SUFFIX, discover, review, user_plans_dir
 
 NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 SUFFIXES = {"plan": SUFFIX, "block": blockfile.SUFFIX, "orbit": orbitfile.SUFFIX}
@@ -58,6 +62,11 @@ def editable_dirs() -> set[Path]:
 
 def is_editable(path: Path) -> bool:
     return path.resolve().parent in editable_dirs()
+
+
+def shipped_dir() -> Path:
+    """The checkout's own ``plans/``, where *Ship* puts a file."""
+    return PACKAGE_ROOT.parents[1] / "plans"
 
 
 def find(name: str) -> Path | None:
@@ -143,3 +152,49 @@ def delete(name: str, base_hash: str | None) -> dict:
     target = trash_dir() / f"{name}_{stamp}{path.suffix}"
     shutil.move(str(path), str(target))
     return {"deleted": name, "trash": str(target)}
+
+
+def _move(name: str, base_hash: str | None, shipped: bool) -> tuple[Path, Path]:
+    """The file `name` and where it goes: out of the shipped files (`shipped`
+    True, *Edit*) or into them (*Ship*); refused if it is not there now, has
+    changed since `base_hash`, or the target is taken."""
+    path = find(name) if NAME.match(name or "") else None
+    if path is None:
+        raise PlanFileError(404, f"no plan {name!r}")
+    if is_editable(path) == shipped:
+        hidden = user_plans_dir() / path.name
+        raise PlanFileError(409, f"{name!r} is already yours" if shipped
+                            else f"a shipped {name!r} is in {path.parent}, and your copy, {hidden}, is "
+                                 "hidden behind it; move or delete one of them" if hidden.exists()
+                            else f"{name!r} is already shipped")
+    if base_hash != content_hash(path.read_bytes()):
+        raise PlanFileError(409, f"{name!r} changed on disk since you opened it; reload it first")
+    target = (user_plans_dir() if shipped else shipped_dir()) / path.name
+    if target.exists():
+        raise PlanFileError(409, f"{target} already exists; move or delete it first")
+    return path, target
+
+
+def _moved(path: Path, target: Path, name: str) -> dict:
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(path), str(target))
+    except OSError as e:
+        raise PlanFileError(403, f"could not move {name!r} to {target.parent}: {e}") from None
+    return read(name)
+
+
+def edit(name: str, base_hash: str | None) -> dict:
+    """Move a shipped file into this machine's folder, so it can be changed. It
+    keeps its name, and `run <name>` still finds it."""
+    return _moved(*_move(name, base_hash, shipped=True), name)
+
+
+def ship(name: str, base_hash: str | None) -> dict:
+    """Move one of your files into the checkout's ``plans/``, read-only again. A
+    file with errors is refused: a shipped plan must run."""
+    path, target = _move(name, base_hash, shipped=False)
+    text = path.read_text(encoding="utf-8")
+    if errors := problems(text, kind_of(path))["errors"]:
+        raise PlanFileError(409, f"{name!r} has {len(errors)} problem(s); fix them before shipping it")
+    return _moved(path, target, name)

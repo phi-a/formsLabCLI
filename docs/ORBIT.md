@@ -2,9 +2,10 @@
 
 An orbit file describes one satellite orbit in a `.orbit` file, one classical
 element per line. The GUI's Plans tab opens it beside the plans and shows the
-satellite where it is now, propagated on the wall clock. It is the first part of
-the environment tool, which will go on to the satellite's view factors and
-background temperatures (Notebook/gui.md); nothing runs an orbit file as a plan.
+satellite where it is now, propagated on the wall clock. A plan can follow it
+during a run (In a run, below). It is the first part of the environment tool,
+which will go on to the satellite's view factors and background temperatures
+(Notebook/gui.md).
 
 ```
 # orbit: leo_noon -- sun-synchronous, 550 km, noon to midnight
@@ -74,9 +75,51 @@ the coming orbit from now, sunlit or in umbra. The panel follows the text as it
 is, unsaved changes included, and says why it shows nothing while the file has a
 mistake.
 
+Under them, the panel says how to use the orbit in a plan, and *Use in a plan*
+makes one: it follows the orbit and waits for its umbra.
+
 Shipped: `leo_dawn_dusk` (the plane faces the Sun, no eclipse: the hot case) and
 `leo_noon` (the Sun in the plane, 35 minutes of umbra every orbit: the cold case).
 Names are shared with plans: an orbit cannot take a plan's name.
+
+## In a run
+
+The rScript `rOrbit` follows an orbit file during a run and publishes, once a
+second, where the satellite is:
+
+```
+# Capture images in the umbra of leo_noon
+load rOrbit rSLTA
+record every 10 s
+
+orbit follow leo_noon
+slta run on
+eclipse within 120
+log umbra began
+sunrise within 60
+```
+
+| step | does |
+|---|---|
+| `orbit follow <orbit>` | puts the satellite where the wall clock does, as the live panel shows it |
+| `orbit replay <orbit>` | starts the satellite at the file's epoch at this step, so a test sees the same orbit every time |
+| `eclipse within <minutes>` | a block: waits for the satellite to enter the umbra |
+| `sunrise within <minutes>` | a block: waits for it to leave the umbra |
+
+The orbit names offered are the orbit files on the plan path. A file that does not
+read is refused when the step runs, and the run stops there.
+
+| value | means |
+|---|---|
+| `InUmbra` | 1 in the umbra, 0 in sunlight |
+| `UmbraDuration` | s: in the umbra, its whole length; in sunlight, the next one's; 0 if there is none |
+| `UmbraTimeRemaining` | s left in this umbra; 0 in sunlight |
+| `NextUmbra` | s until the next umbra begins |
+| `OrbitBeta`, `OrbitAltitude` | the beta angle (deg) and altitude (km) |
+
+They are recorded with the run, an `until` can wait on any of them, and rSLTA's
+umbra captures (`slta run on`) follow the first three. Until a `follow` or
+`replay`, nothing is published.
 
 ## In the models
 

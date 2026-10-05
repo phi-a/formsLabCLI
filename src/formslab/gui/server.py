@@ -241,6 +241,10 @@ class Handler(BaseHTTPRequestHandler):
             name = str(body.get("name", ""))
             result = api.plan_delete(name, body.get("base_hash"))
             audit(user, f"delete plan {name} (moved to {result['trash']})")
+        elif path in ("/api/plan/edit", "/api/plan/ship"):
+            name, action = str(body.get("name", "")), path[len("/api/plan/"):]
+            result = api.plan_move(action, name, body.get("base_hash"))
+            audit(user, f"{action} {result['kind']} {name}")
         elif path == "/api/plan/save":
             name = str(body.get("name", ""))
             result = api.plan_save(name, str(body.get("text", "")), body.get("base_hash"),

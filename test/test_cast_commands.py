@@ -201,7 +201,7 @@ def test_every_label_has_an_owner_and_a_cast_block():
 
     labels, errors = cast.owners()
     assert errors == {}
-    assert set(labels) == {"hvc", "psu1", "psu2", "cryo", "slta", "tc"}
+    assert set(labels) == {"hvc", "psu1", "psu2", "cryo", "slta", "tc", "orbit"}
     assert set(labels) <= set(build_default_cast_state())
 
 

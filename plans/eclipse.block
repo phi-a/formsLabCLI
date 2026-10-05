@@ -1,0 +1,8 @@
+# Wait for the satellite to enter the Earth's shadow
+# Waits until the orbit the run follows puts the satellite in umbra, for at most
+# the minutes given. It ends at once if the satellite is in umbra already. Choose
+# the orbit first, with orbit follow or orbit replay.
+block eclipse within <minutes:number 1..600 min>
+load rOrbit
+
+until InUmbra above 0.5 timeout {minutes} min

@@ -75,6 +75,7 @@ trailing `?` (`hvc platen ?`) lists what can come next.
 | `rPSU` | Rigol DP832A supplies psu1/psu2 (enabled ones only) | `psu1`, `psu2` | `PSU1_CH<n>_V/_I/_ON` |
 | `rCryoBoard` | cryocooler control board (Pico I2C) and its PSU1 CH1 supply | `cryo` | status on CAST |
 | `rSLTA` | sLTA camera, powered from PSU2 CH1 | `slta` | status on CAST |
+| `rOrbit` | no hardware: an orbit file, followed on the wall clock or from its epoch (docs/ORBIT.md) | `orbit` | `InUmbra`, `UmbraDuration`, `UmbraTimeRemaining`, `NextUmbra` (s), `OrbitBeta` (deg), `OrbitAltitude` (km) |
 
 `run tvac` runs `plans/tvac.plan`, which loads rLACO, rSMTC08 and rPSU and
 runs until ctrl `end`.
@@ -85,9 +86,9 @@ the channels its run switched on. Do not load two routines that own the same
 instrument: rCryoBoard uses PSU1 CH1, so do not also command that channel from
 a plan or the console while it runs.
 
-rSLTA's automatic capture follows `InUmbra`, `UmbraDuration` and
-`UmbraTimeRemaining` variables. A FORMS-computed eclipse profile will publish
-them; until then only forced captures (`slta image`) run.
+rSLTA's automatic capture follows the `InUmbra`, `UmbraDuration` and
+`UmbraTimeRemaining` variables, which rOrbit publishes from an orbit file. Without
+rOrbit, or before its `orbit follow`, only forced captures (`slta image`) run.
 
 Test timelines (pumpdown, vent, soaks) are lab plans (`plans/`, see
 docs/SEQUENCE.md), not rScripts.

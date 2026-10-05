@@ -32,7 +32,7 @@ from formslab.state import cast_state_path
 
 # How often each block is republished while its owner runs (seconds). A block
 # older than three of these, plus a little slack, is not live.
-CADENCE_S = {"tc": 2.0, "hvc": 6.0, "psu1": 1.0, "psu2": 1.0, "cryo": 1.0, "slta": 3.0}
+CADENCE_S = {"tc": 2.0, "hvc": 6.0, "psu1": 1.0, "psu2": 1.0, "cryo": 1.0, "slta": 3.0, "orbit": 1.0}
 DEFAULT_CADENCE_S = 5.0
 SLACK_S = 2.0
 LOG_TAIL_BYTES = 64 * 1024
@@ -387,6 +387,16 @@ def plan_delete(name: str, base_hash: str | None) -> dict:
         raise ApiError(409, f"{name!r} is running; end the run first")
     with _lock:
         return _plan_call(plans.delete, name, base_hash)
+
+
+def plan_move(action: str, name: str, base_hash: str | None) -> dict:
+    """`edit` (take a shipped file out to yours) or `ship` (put yours in the
+    shipped plans); not while it is the plan running."""
+    running = host()
+    if running and running.get("plan") == name:
+        raise ApiError(409, f"{name!r} is running; end the run first")
+    with _lock:
+        return _plan_call({"edit": plans.edit, "ship": plans.ship}[action], name, base_hash)
 
 
 def plan_tokens(text: str, kind: str = "plan") -> list[list[dict]]:
