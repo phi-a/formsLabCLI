@@ -46,6 +46,12 @@ DEVICE_CODES = {label: code for code, label in DEVICE_LABELS.items()}
 VALVES = ("rough", "vent", "fill", "foreline", "gate")
 PUMPS = ("pump", "turbo")
 
+# What each part is called wherever it is shown: the names on the chamber's own
+# screen (the HMI). The command words stay short (`hvc rough open`).
+PART_NAMES = {"rough": "Vacuum valve", "vent": "Vent valve", "fill": "Fill valve",
+              "foreline": "Foreline valve", "gate": "Gate valve",
+              "pump": "Vacuum pump", "turbo": "Turbo pump"}
+
 # Cycle-level vacuum operations (manual appendix 9.1).
 OPERATIONS = {"vent2atm": "VA", "fill2atm": "FA", "purge": "PS", "close_all": "NA"}
 

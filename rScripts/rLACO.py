@@ -133,6 +133,18 @@ def COMMANDS():
     ]
 
 
+def PARTS():
+    """Which kind of part each command word names: shown as an icon beside the word
+    (valve, pump, zone, setting). Cycle words (start, abort, stop...) name none."""
+    from formslab.devices.hvc3500 import load_profile
+
+    out = {v: "valve" for v in VALVES}
+    out.update({p: "pump" for p in PUMPS})
+    out.update({z: "zone" for z in load_profile().zones})
+    out.update({w: "setting" for w in ("vacuum", "hold", "recipe")})
+    return out
+
+
 def RULES():
     """What each command needs first (devices/hvc3500/rules.py), thresholds from
     this bench's tvac_bench.json."""

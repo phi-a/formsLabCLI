@@ -294,9 +294,10 @@ class Grammar:
     def describe(self, words: Sequence[str], limit: int = 6) -> list[dict]:
         """Help cards for `words`: the command they are, when they are a whole
         one; else every command they begin (a value out of range still counts,
-        so a mistyped line keeps its card). Each card is {usage, help, details,
-        inputs, complete}; an input is a slot {name, kind, lo, hi, unit} or a
-        choice {name, kind: "choice", choices}."""
+        so a mistyped line keeps its card). More than `limit` begun commands are
+        too many to help: none is returned, and the next words narrow it. Each card
+        is {usage, words, help, details, inputs, complete}; an input is a slot
+        {name, kind, lo, hi, unit} or a choice {name, kind: "choice", choices}."""
         words = list(words)
         if not words:
             return []
@@ -307,7 +308,8 @@ class Grammar:
                 full.append(cmd)
             elif (kind == "short" and i == len(words)) or kind == "bad":
                 begun.append(cmd)
-        return [_card(c, bool(full)) for c in (full or begun)[:limit]]
+        chosen = full or begun
+        return [] if len(chosen) > limit else [_card(c, bool(full)) for c in chosen]
 
 
 def _paragraphs(text: str) -> str:
@@ -324,7 +326,16 @@ def _card(cmd: _Command, complete: bool) -> dict:
             inputs.append({"name": e.name, "kind": e.kind, "lo": e.lo, "hi": e.hi, "unit": e.unit})
         elif isinstance(e, _Choice):
             inputs.append({"name": e.name, "kind": "choice", "choices": list(e.members)})
-    return {"usage": " ".join(e.usage() for e in cmd.elements), "help": cmd.help,
+    words = []
+    for e in cmd.elements:
+        if isinstance(e, _Slot):
+            words.append({"text": e.name, "role": "slot", "kind": e.kind, "unit": e.unit})
+        elif isinstance(e, _Choice):
+            words.append({"text": e.name or "|".join(e.members), "role": "choice",
+                          "choices": list(e.members)})
+        else:
+            words.append({"text": e.text, "role": "word"})
+    return {"usage": " ".join(e.usage() for e in cmd.elements), "words": words, "help": cmd.help,
             "details": cmd.details, "inputs": inputs, "complete": complete}
 
 

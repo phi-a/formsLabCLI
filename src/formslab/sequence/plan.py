@@ -290,6 +290,7 @@ def describe_step(text: str, line: int) -> dict:
     are the prerequisites of the command it is, each {why, conditions: [{text,
     status}]}, status as this plan leaves it there: ok, broken, unknown (checked
     when the step runs) or live (checkable only then)."""
+    from formslab.rscripts import cast
     from formslab.sequence import rules as plan_rules
 
     lines = text.splitlines()
@@ -304,7 +305,7 @@ def describe_step(text: str, line: int) -> dict:
     load = next((ln.split() for ln in lines if ln.split()[:1] and ln.split()[0].lower() == "load"), [])
     scripts = tuple(load[1:])
     grammar, _, published = _grammar(scripts)
-    cards = grammar.describe(words)
+    cards = [{**c, "part": cast.card_part(c)} for c in grammar.describe(words)]
     rules = []
     if cards and cards[0]["complete"]:
         steps: list = []
@@ -352,13 +353,17 @@ def line_options(scripts, words) -> dict:
 
     {'positions': [options before word 0, before word 1, ..., after the last],
      'complete': the words are a whole step, 'error': why not, or None}. Each
-    option is {kind, text, help, lo, hi, unit}. A line that is merely unfinished
-    has no error: it is a valid start."""
+    option is {kind, text, help, lo, hi, unit, part}; `part` is the kind of part it
+    names or belongs to (cast.option_parts). A line that is merely unfinished has
+    no error: it is a valid start."""
     from formslab.rscripts import cast
 
     scripts, words = tuple(scripts), list(words)
     grammar, owner, _ = _grammar(scripts)
-    positions = [[_option(o) for o in grammar.complete(words[:k])] for k in range(len(words) + 1)]
+    positions = []
+    for k in range(len(words) + 1):
+        options = grammar.complete(words[:k])
+        positions.append([_option(o, p) for o, p in zip(options, cast.option_parts(words[:k], options))])
     result = {"positions": positions, "complete": False, "error": None}
     if not words:
         return result
@@ -388,8 +393,10 @@ def line_options(scripts, words) -> dict:
 #   comment  a whole comment line
 #   bad      a word that fits nothing here (it, and every word after it)
 def tokens(text: str) -> list[list[dict]]:
-    """Every line of plan `text` as [{text, role}, ...]; [] for a blank line."""
+    """Every line of plan `text` as [{text, role, part?}, ...]; [] for a blank line.
+    A command's keywords carry its part (`hvc gate open`: valve)."""
     from formslab import rscripts
+    from formslab.rscripts import cast
 
     lines = text.splitlines()
     load = next((ln.split() for ln in lines if ln.split()[:1] and ln.split()[0].lower() == "load"), [])
@@ -407,7 +414,9 @@ def tokens(text: str) -> list[list[dict]]:
                        + [{"text": w, "role": "script" if rscripts.find(w) else "bad"} for w in words[1:]])
         else:
             g = _RECORD if words[0].lower() == "record" else grammar
-            out.append([{"text": w, "role": r} for w, r in zip(words, _roles(g, words))])
+            part = cast.part_of(words[0], words)
+            out.append([{"text": w, "role": r, **({"part": part} if part and r == "kw" else {})}
+                        for w, r in zip(words, _roles(g, words))])
     return out
 
 
@@ -439,8 +448,9 @@ def _is_number(word: str) -> bool:
     return True
 
 
-def _option(o) -> dict:
-    return {"kind": o.kind, "text": o.text, "help": o.help, "lo": o.lo, "hi": o.hi, "unit": o.unit}
+def _option(o, part=None) -> dict:
+    return {"kind": o.kind, "text": o.text, "help": o.help, "lo": o.lo, "hi": o.hi, "unit": o.unit,
+            "part": part}
 
 
 def _parse(fail, n, grammar, words):

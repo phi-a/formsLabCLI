@@ -195,6 +195,44 @@ def send(label: str, request: dict, *, host: dict | None, wait_result: bool | No
     return {**out, "state": state, "ok": ok, "messages": messages, "text": text}
 
 
+def parts(label: str) -> dict[str, str]:
+    """{command word: kind of part} as the owner of `label` declares it (PARTS: a
+    dict, or a function returning one). Empty for an owner that declares none."""
+    labels, _ = owners()
+    value = getattr(labels.get(str(label).lower()), "PARTS", None)
+    value = value() if callable(value) else (value or {})
+    return {str(k).lower(): str(v) for k, v in value.items()}
+
+
+def part_of(label: str, words) -> str | None:
+    """The kind of part a command is about: the part named by the word after the
+    label, shared by every keyword of the command (`hvc gate open` is a valve)."""
+    words = list(words)
+    return parts(label).get(str(words[1]).lower()) if len(words) > 1 else None
+
+
+def option_parts(words, options) -> list:
+    """The part for each option that can follow `words`: right after the label,
+    each option's own; later, the command's."""
+    words = list(words)
+    if not words:
+        return [None] * len(options)
+    if len(words) == 1:
+        own = parts(words[0])
+        return [own.get(o.text.lower()) if o.kind == "word" else None for o in options]
+    return [part_of(words[0], words)] * len(options)
+
+
+def card_part(card: dict) -> str | None:
+    """The part a help card's command is about, from its structured usage."""
+    w = card.get("words") or []
+    if len(w) < 2:
+        return None
+    second = w[1]
+    word = second["choices"][0] if second.get("role") == "choice" else second["text"]
+    return parts(w[0]["text"]).get(word.lower())
+
+
 def status_labels(label: str, status: dict) -> dict[str, str]:
     """{key: friendly name} for the keys of `label`'s status block, from its
     owner's STATUS_LABELS: a dict, or a function (label, key) -> name or None.
@@ -230,7 +268,7 @@ def describe(words: list[str]) -> dict:
     from formslab.rscripts.rules import explain
 
     g = grammar()
-    cards = g.describe(words)
+    cards = [{**c, "part": card_part(c)} for c in g.describe(words)]
     rules = []
     if cards and cards[0]["complete"]:
         try:

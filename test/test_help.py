@@ -20,7 +20,9 @@ G = Grammar([
 def test_a_whole_command_has_one_card_with_its_details_and_inputs():
     [card] = G.describe(["lamp", "level", "3"])
     assert card == {"usage": "lamp level <n>", "help": "Brightness", "details": "", "complete": True,
-                    "inputs": [{"name": "n", "kind": "integer", "lo": 0.0, "hi": 10.0, "unit": ""}]}
+                    "inputs": [{"name": "n", "kind": "integer", "lo": 0.0, "hi": 10.0, "unit": ""}],
+                    "words": [{"text": "lamp", "role": "word"}, {"text": "level", "role": "word"},
+                              {"text": "n", "role": "slot", "kind": "integer", "unit": ""}]}
     [card] = G.describe(["lamp", "on"])
     assert card["details"] == "Switches the lamp.\n\nA second paragraph."
     assert card["inputs"] == [{"name": "", "kind": "choice", "choices": ["on", "off"]}]

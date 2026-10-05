@@ -270,10 +270,11 @@ def complete(words: list[str]) -> list[dict]:
     with _lock:
         try:
             options = cast.complete(words)
+            parts = cast.option_parts(words, options)
         except Exception as e:                       # a broken rScript must not break the box
             raise ApiError(500, f"{type(e).__name__}: {e}")
-    return [{"kind": o.kind, "text": o.text, "help": o.help, "lo": o.lo, "hi": o.hi, "unit": o.unit}
-            for o in options]
+    return [{"kind": o.kind, "text": o.text, "help": o.help, "lo": o.lo, "hi": o.hi, "unit": o.unit,
+             "part": p} for o, p in zip(options, parts)]
 
 
 def send_command(line: str) -> dict:

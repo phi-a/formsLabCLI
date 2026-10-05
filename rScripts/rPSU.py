@@ -36,8 +36,8 @@ COMMANDS = [
      Switches the channel's output, at its setpoints.""", lambda ch, s: {ch[2:]: {"on": s == "on"}}),
     (f"{_CH} protect <max_volts:number 0.01..33 V> <max_amps:number 0.001..3.3 A>",
      """Turn on over-voltage and over-current protection
-     The supply cuts the channel off above max_volts or max_amps. Set them a little
-     above the setpoints.""",
+     The supply cuts the channel off above the maximum voltage or current. Set them
+     a little above the setpoints.""",
      lambda ch, v, a: {ch[2:]: {"ovp": v, "ocp": a, "protect": True}}),
     (f"{_CH} protect off", """Turn protection off
      The channel then has no over-voltage or over-current cut-off.""",

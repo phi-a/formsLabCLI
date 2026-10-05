@@ -116,6 +116,13 @@ plan and in the command box's suggestions, so the grammar can be seen:
 | shaded box, its unit inside | a value you type | `25 °C`, `30` |
 | dashed underline | free text | a `log` message |
 
+A chamber command also shows which kind of part it is about, as a small
+engineering symbol in the instrument's colour before its first word: a bowtie for a
+valve, a circle with a triangle for a pump, a thermometer for a zone (platen,
+shroud), a gauge for a setting (pressure setpoint, hold time, recipe). The part's
+name is in the tooltip and in what a screen reader says. Cycle commands (`start`,
+`abort`, `stop`) carry no symbol.
+
 A word that does not fit (an unknown keyword, a number out of range, an
 instrument whose rScript is not loaded) turns red, and the reason is under the
 row. A legend above the plan shows the four shapes.

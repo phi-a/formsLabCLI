@@ -122,7 +122,8 @@ button:disabled { opacity: .5; cursor: not-allowed; }
         font-size: 13px; line-height: 1.45; }
 #plan-info { position: sticky; top: 8px; }
 #cmd-info { margin: 8px 0; max-width: 760px; }
-.info .usage { font: 600 13px ui-monospace, Consolas, monospace; }
+.info .usage { gap: 4px; }
+.info .begun li { margin: 4px 0 8px; }
 .info .title { font-weight: 600; margin: 4px 0; }
 .info .details { color: var(--muted); margin: 4px 0; }
 .info h4 { margin: 10px 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
@@ -230,6 +231,19 @@ button.danger-outline:hover { background: color-mix(in srgb, var(--bad) 10%, tra
 .tok[data-fam="flow"] { --fam: var(--fam-flow); }  .tok[data-fam="hvc"] { --fam: var(--fam-hvc); }
 .tok[data-fam="psu"] { --fam: var(--fam-psu); }    .tok[data-fam="cryo"] { --fam: var(--fam-cryo); }
 .tok[data-fam="slta"] { --fam: var(--fam-slta); }  .tok[data-fam="tc"] { --fam: var(--fam-tc); }
+
+/* ---- parts: what a command is about, as a small engineering symbol in the instrument's
+   colour (docs/WRITING.md: never colour alone -- the part's name is in its title) ---- */
+.part-icon { display: inline-block; flex: none; width: 14px; height: 14px; vertical-align: -2px;
+             background-color: var(--fam, var(--fam-other));
+             -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat; }
+.tok > .part-icon { margin-right: 1px; }
+.chain > .part-icon, .tokline > .part-icon { margin-right: -2px; }
+.part-icon[data-part="valve"] { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M1 3v10l7-5zM15 3v10l-7-5z'/%3E%3C/svg%3E"); }
+.part-icon[data-part="pump"] { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6.4' fill='none' stroke='%23000' stroke-width='1.7'/%3E%3Cpath d='M6 4.7v6.6l5.4-3.3z'/%3E%3C/svg%3E"); }
+.part-icon[data-part="zone"] { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M6.4 2.4a1.6 1.6 0 0 1 3.2 0v6.8a3.3 3.3 0 1 1-3.2 0z'/%3E%3C/svg%3E"); }
+.part-icon[data-part="setting"] { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='9.2' r='5.9' fill='none' stroke='%23000' stroke-width='1.7'/%3E%3Cpath d='M8 9.2l3.4-4.2' stroke='%23000' stroke-width='1.9' stroke-linecap='round'/%3E%3C/svg%3E"); }
+.legend .part { display: inline-flex; align-items: center; gap: 4px; }
 
 #demo-bar { background: #bc4c00; color: #fff; text-align: center; padding: 4px 10px; font-size: 13px; font-weight: 600; position: sticky; top: 0; z-index: 5; }
 .demo-note { background: color-mix(in srgb, #bc4c00 14%, transparent); border: 1px solid #bc4c00; border-radius: 6px; padding: 8px 10px; font-size: 13px; margin: 0 0 10px; }

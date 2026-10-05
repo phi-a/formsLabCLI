@@ -18,9 +18,16 @@
     const w = (word || "").toLowerCase();
     return FAMILY[w] || (STEP_WORDS.includes(w) ? "flow" : "other");
   };
-  const unitText = (u) => (u === "C" ? "\u00b0C" : u || "");
+  const unitText = (u) => (u || "").replace(/^C(?=\/|$)/, "\u00b0C");
 
-  window.App = { api: (...a) => api(...a), el, $, famOf, unitText };    // for editor.js, loaded next
+  // The kind of part a command is about, drawn as a small symbol in the instrument's
+  // colour. Its name is in the title, so it never rests on colour alone.
+  const PART_NAMES = { valve: "Valve", pump: "Pump", zone: "Zone", setting: "Setting" };
+  const partIcon = (part, fam) => el("span", { class: "part-icon", "data-part": part, "data-fam": fam || "other",
+                                               title: PART_NAMES[part] || part, role: "img",
+                                               "aria-label": PART_NAMES[part] || part });
+
+  window.App = { api: (...a) => api(...a), el, $, famOf, unitText, PART_NAMES, partIcon };   // for editor.js, loaded next
 
   const state = {
     view: "status", timer: null, runs: [], run: null, selected: new Set(), data: null,
@@ -257,8 +264,10 @@
     const options = r.options.filter((o) => o.kind !== "word" || o.text.toLowerCase().startsWith(prefix));
     for (const o of options.slice(0, 40)) {
       if (o.kind === "word") {
-        const b = el("button", { type: "button", title: o.help || "", class: "tok " + (done.length ? "kw" : "verb"),
-                                 "data-fam": famOf(done.length ? done[0] : o.text) }, o.text);
+        const fam = famOf(done.length ? done[0] : o.text);
+        const b = el("button", { type: "button", class: "tok " + (done.length ? "kw" : "verb"), "data-fam": fam,
+                                 title: (o.part ? PART_NAMES[o.part] + ": " : "") + (o.help || "") }, o.text);
+        if (o.part && done.length === 1) b.prepend(partIcon(o.part, fam));
         b.addEventListener("click", () => {
           $("#cmd").value = done.concat(o.text).join(" ") + " ";
           $("#cmd").focus();

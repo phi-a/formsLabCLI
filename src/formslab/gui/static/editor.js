@@ -7,7 +7,7 @@
 // truth; the dropdowns only edit it. Server text goes on the page as text only.
 (function () {
   "use strict";
-  const { api, el, $, famOf, unitText } = window.App;
+  const { api, el, $, famOf, unitText, PART_NAMES, partIcon } = window.App;
   // el(tag, attrs, "text") makes a text element; h(tag, attrs, ...children) one with children.
   const h = (tag, attrs, ...kids) => { const e = el(tag, attrs); for (const k of kids) e.append(k); return e; };
 
@@ -174,15 +174,21 @@
     if (!toks.length) { line.append(el("span", { class: "note" }, " ")); return line; }
     const fam = famOf(toks[0].text);
     let text = null;
-    for (const t of toks) {
+    toks.forEach((t, idx) => {
       if (t.role === "text") {                         // a run of free text is one underlined phrase
         if (!text) { text = el("span", { class: "tok text" }, t.text); line.append(text); }
         else text.textContent += " " + t.text;
-        continue;
+        return;
       }
       text = null;
-      line.append(el("span", { class: "tok " + t.role, "data-fam": t.role === "script" ? "flow" : fam }, t.text));
-    }
+      const tok = el("span", { class: "tok " + t.role, "data-fam": t.role === "script" ? "flow" : fam }, t.text);
+      if (t.part) {                                    // the part the command is about: its symbol on the first word
+        tok.dataset.part = t.part;
+        tok.title = PART_NAMES[t.part] || t.part;
+        if (idx === 1) tok.prepend(partIcon(t.part, fam));
+      }
+      line.append(tok);
+    });
     return line;
   }
 
@@ -193,7 +199,9 @@
       el("span", { class: "tok kw", "data-fam": "hvc" }, "platen"), el("span", {}, "keyword"),
       el("span", { class: "tok value" }, "25 \u00b0C"), el("span", {}, "a value you type"),
       el("span", { class: "tok text" }, "a log message"), el("span", {}, "free text"),
-      el("span", { class: "tok bad" }, "900"), el("span", {}, "does not fit"));
+      el("span", { class: "tok bad" }, "900"), el("span", {}, "does not fit"),
+      el("span", {}, "  Parts:"),
+      ...Object.entries(PART_NAMES).map(([p, name]) => h("span", { class: "part" }, partIcon(p, "hvc"), el("span", {}, name))));
   }
 
   function setLine(i, value, rerender) {
@@ -283,9 +291,13 @@
       }
       const wordOpts = opts.filter((o) => o.kind === "word"), slot = opts.find((o) => o.kind !== "word");
       if (!slot) {                                            // only fixed words: a dropdown
-        const sel = el("select", { "aria-label": "Choice " + (k + 1),
+        const chosen = current === undefined ? null : wordOpts.find((o) => o.text.toLowerCase() === current.toLowerCase());
+        const part = chosen && chosen.part;
+        const sel = el("select", { "aria-label": part ? PART_NAMES[part] : "Choice " + (k + 1),
           class: "tok " + (k === 0 ? "verb" : "kw") + (k === 0 && current === undefined ? " empty" : ""),
           "data-fam": famOf(k === 0 ? current : words[0]) });
+        if (part) { sel.dataset.part = part; sel.title = PART_NAMES[part]; }
+        if (part && k === 1) chain.append(partIcon(part, famOf(words[0])));
         if (current === undefined) sel.append(el("option", { value: "" }, k === 0 ? "add a step..." : "..."));
         const addable = k === 0 && current === undefined ? missingHeaders(S.lines) : [];   // load / record, if deleted
         for (const kind of addable) {
