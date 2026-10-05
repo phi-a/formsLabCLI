@@ -32,7 +32,7 @@ def test_a_block_file_draws_and_completes_with_its_inputs():
     from formslab.gui import api
     text = find_plan("pump_soak_vent").with_name("pumpdown.block").read_text(encoding="utf-8")
     lines = api.plan_tokens(text, "block")
-    assert lines[7] == [{"text": "block", "role": "verb"}, {"text": "pumpdown", "role": "kw"},
+    assert lines[7] == [{"text": "block", "role": "verb"}, {"text": "pumpdown", "role": "name"},
                         {"text": "to", "role": "kw"}, {"text": "pressure", "role": "value"}]
     assert lines[16][3] == {"text": "{pressure}", "role": "value"}
     r = api.plan_line(["rLACO"], ["until", "chamberP", "below", "{pressure}"], "block")

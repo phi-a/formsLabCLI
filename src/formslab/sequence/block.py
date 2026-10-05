@@ -234,6 +234,8 @@ def tokens(text: str) -> list[list[dict]]:
                     toks.append({"text": part.strip("<>").split(":")[0], "role": "value"})
                 else:
                     toks += [{"text": w, "role": "kw"} for w in part.split()]
+            if len(toks) > 1 and toks[1]["role"] == "kw":
+                toks[1]["role"] = "name"                    # the block's name: the first word after `block`
             out[i] = toks
         elif any(_INPUT.match(w) for w in words) and i < len(out):
             out[i] = [{**t, "text": w, "role": "value"} if _INPUT.match(w) else t

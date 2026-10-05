@@ -143,6 +143,12 @@ shipped plans and yours, so a name is only ever in one place:
   again. Git sees it as changed or new: commit it to share it. A file with
   problems is not shipped, and neither is the plan that is running.
 
+*Rename* renames one of yours, and what refers to it in your plans and blocks: the
+calls to a block, the `orbit follow` and `orbit replay` lines of an orbit. If a shipped
+file refers to it, the rename is refused and names that file: Edit it first. A
+block's name is also the first box on its `block` line; changing it there renames it
+the same way.
+
 *Save as...* makes your own copy in
 `~/.formslab/plans/`, which never changes what `run <name>` does for anyone
 else, and a name already taken by any plan is refused. Saving writes the file

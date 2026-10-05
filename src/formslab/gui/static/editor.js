@@ -184,15 +184,24 @@
     else renderStep(i, body);
   }
 
-  // A block's own line: its name, then the words a plan writes to call it, each input
-  // as <name:number lo..hi unit>. Plain text, checked as it is typed.
+  // A block's own line: its name in a box of its own (changing it renames the block),
+  // then the words a plan writes after the name to call it, each input as
+  // <name:number lo..hi unit>. Plain text, checked as it is typed.
   function renderBlockLine(i, body) {
-    const rest = S.lines[i].trim().replace(/^block\s*/i, "");
-    const input = el("input", { class: "tok text", value: rest, "aria-label": "The block's name and call",
-                                title: "The block's name, then the words a plan writes to call it, e.g. "
-                                       + "pumpdown to <pressure:number 0.01..760 Torr>" });
-    input.addEventListener("input", () => setLine(i, "block " + input.value.trim(), false));
-    body.append(h("div", { class: "chain" }, blockIcon(), el("span", { class: "tok verb", "data-fam": "block" }, "block"), input));
+    const [, rest = ""] = S.lines[i].trim().replace(/^block\s*/i, "").match(/^\S*\s*(.*)$/) || [];
+    const name = el("input", { value: S.name, "aria-label": "The block's name", size: Math.max(4, S.name.length),
+                               title: "The block's name: a plan writes it to call the block. Change it to rename the block." });
+    name.addEventListener("keydown", (ev) => { if (ev.key === "Enter") name.blur(); });
+    name.addEventListener("change", () => {
+      const wanted = name.value.trim().toLowerCase();
+      if (wanted && wanted !== S.name) renameTo(wanted); else name.value = S.name;
+    });
+    const call = el("input", { class: "tok text", value: rest, "aria-label": "The words after the name",
+                               title: "The words a plan writes after the name to call the block, e.g. "
+                                      + "to <pressure:number 0.01..760 Torr>" });
+    call.addEventListener("input", () => setLine(i, `block ${S.name} ${call.value.trim()}`.trim(), false));
+    body.append(h("div", { class: "chain" }, blockIcon(), el("span", { class: "tok verb", "data-fam": "block" }, "block"),
+                  h("span", { class: "tok name", "data-fam": "block" }, name), call));
   }
 
   // A read-only plan is drawn with the same tokens, from the server's reading of it.
@@ -482,6 +491,8 @@
     $("#plan-raw").disabled = !S.name;
     $("#plan-delete").disabled = !S.name || !S.editable || S.busy;
     $("#plan-delete").hidden = !S.editable;
+    $("#plan-rename").hidden = !S.name || !S.editable;
+    $("#plan-rename").disabled = S.busy;
     $("#plan-edit").hidden = !S.name || S.editable;
     $("#plan-edit").disabled = S.busy;
     $("#plan-ship").hidden = !S.name || !S.editable;
@@ -533,6 +544,28 @@
       say(`Deleted "${r.deleted}". It is kept in the trash folder if you need it back.`);
     } catch (e) { say(e.message, true); }
   });
+  // Rename one of yours. A block's calls and an orbit's `orbit follow` lines in your
+  // plans and blocks are renamed with it, by the server, in the same step.
+  async function renameTo(wanted) {
+    if (dirty()) { say("Save your changes first, then rename.", true); renderAll(); return; }
+    const refs = isBlock() ? " Plans and blocks of yours that call it are updated."
+      : isOrbit() ? " Plans and blocks of yours that follow it are updated." : "";
+    if (!confirm(`Rename the ${S.kind} "${S.name}" to "${wanted}"?${refs}`)) { renderAll(); return; }
+    S.busy = true; updateButtons();
+    try {
+      const r = await api("/api/plan/rename", { name: S.name, new: wanted, base_hash: S.hash });
+      load(r);
+      say(`Renamed to "${r.name}".` + (r.updated.length ? ` Updated to match: ${r.updated.join(", ")}.` : ""));
+      await loadList();
+    } catch (e) { say(e.message, true); renderAll(); }
+    finally { S.busy = false; updateButtons(); }
+  }
+  $("#plan-rename").addEventListener("click", () => {
+    const wanted = prompt(isBlock() ? "New name for the block (one lowercase word):"
+                                    : "New name (letters, digits, - and _):", S.name);
+    if (wanted && wanted.trim() !== S.name) renameTo(wanted.trim());
+  });
+
   // Edit and Ship move the file: out of formsLabCLI's plans folder into yours, and back.
   async function move(action, question, done) {
     if (!confirm(question)) return;

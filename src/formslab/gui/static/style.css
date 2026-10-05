@@ -210,6 +210,9 @@ select.tok { padding-right: 22px;
              box-shadow: inset 0 1px 2px rgba(0, 0, 0, .12); }
 .tok.value input { border: 0; background: transparent; color: inherit; font: inherit; padding: 0; width: 7ch; min-width: 3ch; outline: none; }
 .tok.value .unit { color: var(--muted); font-size: 11px; }
+/* a block's name, on its own `block` line: a box in the block's colour */
+.tok.name { background: var(--bg); color: var(--fam); border: 1.5px solid var(--fam); font-weight: 600; }
+.tok.name input { border: 0; background: transparent; color: inherit; font: inherit; padding: 0; width: 12ch; outline: none; }
 .tok.text { background: transparent; border: 0; border-bottom: 1px dashed var(--muted); border-radius: 0; font-style: italic; padding-left: 2px; }
 .tok.text input { border: 0; background: transparent; color: inherit; font: inherit; width: min(420px, 60vw); outline: none; }
 .tok.bad, .tok.value.bad { background-color: color-mix(in srgb, var(--bad) 12%, transparent); color: var(--bad); border-color: var(--bad); }

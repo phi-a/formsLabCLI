@@ -389,6 +389,15 @@ def plan_delete(name: str, base_hash: str | None) -> dict:
         return _plan_call(plans.delete, name, base_hash)
 
 
+def plan_rename(name: str, new: str, base_hash: str | None) -> dict:
+    """Rename one of your files, and what refers to it; not the plan running."""
+    running = host()
+    if running and running.get("plan") == name:
+        raise ApiError(409, f"{name!r} is running; end the run first")
+    with _lock:
+        return _plan_call(plans.rename, name, new, base_hash)
+
+
 def plan_move(action: str, name: str, base_hash: str | None) -> dict:
     """`edit` (take a shipped file out to yours) or `ship` (put yours in the
     shipped plans); not while it is the plan running."""
