@@ -166,24 +166,30 @@ def RULE_EFFECTS(request):
     return laco_effects(request)
 
 
-_NAMES = {"connected": "Connected", "error": "Error", "mode": "Mode", "test_status": "Test status",
-          "pressure": "Chamber pressure", "pressure_unit": "Pressure unit",
-          "vacuum_setpoint": "Vacuum setpoint", "recipe": "Recipe", "recipe_step": "Recipe step",
-          "thermal_control": "Thermal control", "fault_severity": "Fault severity", "faults": "Faults",
-          "rough": "Rough valve", "vent": "Vent valve", "fill": "Fill valve",
-          "foreline": "Foreline valve", "gate": "Gate valve", "pump": "Roughing pump", "turbo": "Turbo pump"}
+def READINGS(label, status):
+    """The status page's groups, in the chamber screen's names (laco.PART_NAMES)."""
+    from formslab.devices.hvc3500 import load_profile
+    from formslab.devices.hvc3500.laco import PART_NAMES
 
-
-def STATUS_LABELS(label, key):
-    """Friendly names for the status page: `platen C` -> `Platen (C)`."""
-    if key in _NAMES:
-        return _NAMES[key]
-    if key.endswith(" setpoint C"):
-        return f"{key[:-len(' setpoint C')].capitalize()} setpoint (C)"
-    if key.endswith(" C"):                       # a zone ("platen"), or a sensor as the HMI names it ("t2")
-        name = key[:-2]
-        return f"{name.capitalize() if name.isalpha() else name} (C)"
-    return None
+    unit = status.get("pressure_unit") or "Torr"
+    zones = []
+    for z in load_profile().zones:
+        zones += [(f"{z} C", f"{z.capitalize()} (°C)"), (f"{z} setpoint C", f"{z.capitalize()} setpoint (°C)")]
+    zones.append(("thermal_control", "Holding temperature", ("On", "Off")))
+    zoned = {k for k, *_ in zones}
+    sensors = [(k, f"{k[:-2]} (°C)") for k in status if k.endswith(" C") and k not in zoned]
+    return [
+        ("Chamber", None, [("connected", "Connected"), ("error", "Error"), ("mode", "Mode"),
+                           ("test_status", "Test status"), ("pressure", f"Chamber pressure ({unit})"),
+                           ("pressure_unit", None), ("fault_severity", "Fault severity"),
+                           ("faults", "Faults")]),
+        ("Valves", "valve", [(v, PART_NAMES[v]) for v in VALVES]),
+        ("Pumps", "pump", [(p, PART_NAMES[p]) for p in PUMPS]),
+        ("Zones", "zone", zones),
+        ("Thermocouples", None, sensors),
+        ("Pressure settings", "setting", [("vacuum_setpoint", f"Pressure setpoint ({unit})")]),
+        ("Recipe", None, [("recipe", "Recipe"), ("recipe_step", "Recipe step")]),
+    ]
 
 
 def VARIABLES():

@@ -27,9 +27,9 @@ RETRY_INTERVAL = 30.0
 CAST_LABELS = ("tc",)          # read-only: no commands
 
 
-def STATUS_LABELS(label, key):
-    """`TC01 C` -> `TC01 (C)` on the status page."""
-    return f"{key[:-2]} (C)" if key.endswith(" C") else None
+def READINGS(label, status):
+    """`TC01 C` -> `TC01 (°C)` on the status page."""
+    return [("Thermocouples", None, [(k, f"{k[:-2]} (°C)") for k in status if k.endswith(" C")])]
 COMMANDS = []
 VARIABLES = [(f"TC{first + i:02d}", "K") for first in BOARDS.values() for i in range(CHANNELS)]
 

@@ -45,19 +45,22 @@ COMMANDS = [
     ("update", """Read the supply now
      Refreshes its readings without waiting for the next poll.""", {"update": True}),
 ]
-_READINGS = {"on": "output", "vset": "set (V)", "cset": "limit (A)", "vmeas": "(V)", "cmeas": "(A)",
-             "ovp": "OVP (V)", "ocp": "OCP (A)", "protect": "protection"}
+_READINGS = (("on", "Output", ("On", "Off")), ("vset", "Set (V)"), ("cset", "Limit (A)"),
+             ("vmeas", "Measured (V)"), ("cmeas", "Measured (A)"), ("ovp", "OVP (V)"),
+             ("ocp", "OCP (A)"), ("protect", "Protection", ("On", "Off")))
 
 
-def STATUS_LABELS(label, key):
-    """`1 vset` -> `CH1 set (V) - cryocooler board`: what the hardware map says it feeds."""
+def READINGS(label, status):
+    """One group per channel, titled with what the hardware map says it feeds."""
     from formslab.devices.dp832a.wiring import channel
 
-    ch, _, reading = key.partition(" ")
-    if not ch.isdigit() or reading not in _READINGS:
-        return {"error": "Error"}.get(key)
-    feeds = channel(label, ch).get("feeds")
-    return f"CH{ch} {_READINGS[reading]}" + (f" - {feeds}" if feeds else "")
+    channels = sorted({k.split(" ")[0] for k in status if k.split(" ")[0].isdigit()}, key=int)
+    groups = [("Supply", None, [("error", "Error")])]
+    for ch in channels:
+        feeds = channel(label, ch).get("feeds")
+        groups.append((f"CH{ch}" + (f" - {feeds}" if feeds else ""), None,
+                       [(f"{ch} {key}", *rest) for key, *rest in _READINGS]))
+    return groups
 
 
 VARIABLES = [(f"PSU{n}_CH{c}_{q}", unit) for n in (1, 2) for c in (1, 2, 3)

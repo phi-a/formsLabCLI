@@ -100,25 +100,45 @@ def test_describe_over_http(client):
     assert stranger.json("POST", "/api/describe", {"words": []})[0] == 401
 
 
-# --- friendly names on the status page ------------------------------------------------------------
+# --- readings: named, grouped by part ---------------------------------------------------------------
 
-def test_each_owner_names_its_readings():
-    assert cast.status_labels("hvc", {"platen C": 20.0, "t2 C": 21.0, "platen setpoint C": 20.0,
-                                      "rough": False, "mystery": 1}) == {
-        "platen C": "Platen (C)", "t2 C": "t2 (C)", "platen setpoint C": "Platen setpoint (C)",
-        "rough": "Rough valve"}                                      # an unnamed key keeps its own
-    assert cast.status_labels("psu1", {"1": {"vset": 24.0}, "2": {"on": False}}) == {
-        "1 vset": "CH1 set (V) - cryocooler board", "2 on": "CH2 output"}
-    assert cast.status_labels("cryo", {"CCVINM": 24.0})["CCVINM"] == "Supply (V)"
-    assert cast.status_labels("tc", {"TC01 C": 20.0}) == {"TC01 C": "TC01 (C)"}
+def _names(groups):
+    return [(g["title"], [(r["key"], r["name"], r.get("text")) for r in g["rows"]]) for g in groups]
+
+
+def test_the_chamber_readings_come_in_groups_with_the_screens_names():
+    groups = cast.readings("hvc", {"connected": True, "pressure": 4.4, "pressure_unit": "Torr",
+                                   "rough": False, "pump": True, "platen C": 20.0, "platen setpoint C": 20.0,
+                                   "t2 C": 21.0, "vacuum_setpoint": 0.01, "mystery": 1})
+    assert _names(groups) == [
+        ("Chamber", [("connected", "Connected", "Yes"), ("pressure", "Chamber pressure (Torr)", None)]),
+        ("Valves", [("rough", "Vacuum valve", "Closed")]),
+        ("Pumps", [("pump", "Vacuum pump", "On")]),
+        ("Zones", [("platen C", "Platen (°C)", None), ("platen setpoint C", "Platen setpoint (°C)", None)]),
+        ("Thermocouples", [("t2 C", "t2 (°C)", None)]),
+        ("Pressure settings", [("vacuum_setpoint", "Pressure setpoint (Torr)", None)]),
+        ("Other", [("mystery", "mystery", None)])]                    # a reading no group claims
+    assert [g["part"] for g in groups][:4] == [None, "valve", "pump", "zone"]
+
+
+def test_supply_readings_are_grouped_by_channel_with_what_it_feeds():
+    groups = cast.readings("psu1", {"1": {"on": True, "vset": 24.0}, "2": {"on": False}})
+    assert _names(groups) == [("CH1 - cryocooler board", [("1 on", "Output", "On"), ("1 vset", "Set (V)", None)]),
+                              ("CH2", [("2 on", "Output", "Off")])]
+
+
+def test_other_owners():
+    assert _names(cast.readings("tc", {"TC01 C": 20.0})) == [("Thermocouples", [("TC01 C", "TC01 (°C)", None)])]
+    assert cast.readings("cryo", {"CCVINM": 24.0})[0]["rows"][0]["name"] == "Measured (V)"
 
 
 def test_the_status_page_and_the_cast_tab_use_them(monkeypatch):
     from formslab.console.cast import castcli
     from formslab.gui import api
     castutils.UpdateStatus("hvc", {"connected": True, "rough": False})
-    assert api.status()["blocks"]["hvc"]["labels"] == {"connected": "Connected", "rough": "Rough valve"}
+    assert _names(api.status()["blocks"]["hvc"]["groups"]) == [
+        ("Chamber", [("connected", "Connected", "Yes")]), ("Valves", [("rough", "Vacuum valve", "Closed")])]
     text = castcli.status_panel("hvc").content.plain
-    assert "Rough valve" in text and "rough " not in text
+    assert "Valves" in text and "Vacuum valve" in text and "Closed" in text and "rough " not in text
     castutils.UpdateStatus("psu1", {"1": {"on": True, "vset": 24.0, "cset": 2.0, "vmeas": 24.0, "cmeas": 0.4}})
     assert "cryocooler board" in castcli.status_panel("psu1").content.plain

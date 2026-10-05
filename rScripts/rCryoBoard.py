@@ -37,10 +37,15 @@ COMMANDS = [
      lambda w: {w: True}),
 ]
 VARIABLES = []
-STATUS_LABELS = {"LINK": "Board link", "ON": "Output on", "PSU": "Supply channel", "PSUON": "Supply on",
-                 "CCVIN": "Supply set (V)", "CCIIN": "Supply limit (A)", "CCVINM": "Supply (V)",
-                 "CCIINM": "Supply (A)", "CCV": "Cooler voltage (V)", "CCVRES": "Variable resistor (ohm)",
-                 "CCVRES#": "Resistor code"}
+def READINGS(label, status):
+    return [
+        ("Board", None, [("LINK", "Board link", ("Up", "Down")), ("ON", "Output", ("On", "Off")),
+                         ("CCV", "Cooler voltage (V)"), ("CCVRES", "Variable resistor (ohm)"),
+                         ("CCVRES#", "Resistor step")]),
+        ("Supply", None, [("PSU", "Supply channel"), ("PSUON", "Supply output", ("On", "Off")),
+                          ("CCVIN", "Set (V)"), ("CCIIN", "Limit (A)"), ("CCVINM", "Measured (V)"),
+                          ("CCIINM", "Measured (A)")]),
+    ]
 
 
 def RULES():

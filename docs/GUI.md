@@ -62,6 +62,10 @@ goes), one card per instrument, and the end of the host log. From here:
 
 Every action is noted with the user name in `~/.formslab/.run/gui.log`.
 
+Each card shows its readings in groups, by what they are: for the chamber, Valves, Pumps,
+Zones, Thermocouples, Pressure settings; for a supply, one group per channel, named
+with what it feeds. Valves read Open or Closed, pumps On or Off.
+
 Each card says whether it is *live*, and why not when it is not: no run is going, its owner has not updated
 it recently (is its rScript in the plan's `load` line?), or the chamber says it
 is not connected. A block that is not live is greyed with its age; its numbers

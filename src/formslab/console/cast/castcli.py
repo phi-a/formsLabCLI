@@ -127,7 +127,7 @@ def _feeds(label: str, ch: str) -> str:
 
 
 def _render_generic(name: str, entry: dict) -> Text:
-    """Any block as name: value (its owner's STATUS_LABELS), plus a pending
+    """Any block in its owner's groups (READINGS), as name: value, plus a pending
     request if one is waiting."""
     result = Text()
     ts_val = entry.get("timestamp", 0)
@@ -136,17 +136,21 @@ def _render_generic(name: str, entry: dict) -> Text:
 
     stats = entry.get("status", {}) or {}
     try:
-        names = cast.status_labels(name, stats)
+        groups = cast.readings(name, stats)
     except Exception:                               # a broken rScript must not break the tab
-        names = {}
-    if not stats:
+        groups = []
+    rows = [r for g in groups for r in g["rows"]]
+    if not rows:
         result.append("  (no status data)\n", DIM)
-    else:
-        width = max(len(names.get(str(k), str(k))) for k in stats) + 2
-        for k, v in stats.items():
-            result.append(f"  {names.get(str(k), str(k)).ljust(width)}", LABEL)
+    width = max((len(r["name"]) for r in rows), default=0) + 2
+    for g in groups:
+        if g["title"]:
+            result.append(f"  {g['title']}\n", HEADER)
+        for r in g["rows"]:
+            v = r["value"]
+            result.append(f"    {r['name'].ljust(width)}", LABEL)
             if isinstance(v, bool):
-                result.append("ON/OPEN" if v else "off/closed", STATE_ON if v else STATE_OFF)
+                result.append(r["text"], STATE_ON if v else STATE_OFF)
             elif isinstance(v, float):
                 result.append(f"{v:.4g}", NUMBER)
             elif isinstance(v, int):

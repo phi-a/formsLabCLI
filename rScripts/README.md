@@ -55,6 +55,8 @@ A routine may also say what must be true before a command is sent
     def RULE_STATE(status): ...        # its CAST status block -> the names conditions use
     def RULE_EFFECTS(request): ...     # what a request leaves set (default: its on/off keys)
     RESULT_LABELS = ("hvc",)           # it reports done or refused for each request it takes
+    PARTS = {"rough": "valve", ...}    # which word names a valve, pump, zone or setting
+    def READINGS(label, status): ...   # its status block in named groups, for the status page
 
 Plans are checked against them when read, and every command when it is sent
 (docs/SEQUENCE.md, Prerequisites).

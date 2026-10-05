@@ -136,13 +136,6 @@
     if (typeof v === "number") return Number.isInteger(v) ? String(v) : String(Number(v.toPrecision(5)));
     return String(v);
   }
-  function flatten(obj, prefix, out) {
-    for (const [k, v] of Object.entries(obj || {})) {
-      if (v && typeof v === "object" && !Array.isArray(v)) flatten(v, `${prefix}${k} `, out);
-      else out.push([prefix + k, Array.isArray(v) ? v.join(", ") : v]);
-    }
-    return out;
-  }
 
   function renderStatus(s) {
     const banner = $("#run-banner");
@@ -165,13 +158,20 @@
       card.append(h);
       if (!b.live && b.reason) card.append(el("div", { class: "why" }, b.reason));
       if (b.pending) card.append(el("div", { class: "pending" }, "a command is waiting to be taken"));
-      const rows = flatten(b.status, "", []);
-      if (rows.length) {
+      // The readings in their owner's groups (Valves, Pumps, Zones...), each headed
+      // by its name and the part's symbol; a yes/no reads Open/Closed, On/Off.
+      const fam = famOf(label);
+      for (const g of b.groups || []) {
+        if (g.title) {
+          const head = el("div", { class: "group" });
+          if (g.part) head.append(partIcon(g.part, fam));
+          head.append(el("span", {}, g.title));
+          card.append(head);
+        }
         const t = el("table");
-        const names = b.labels || {};
-        for (const [k, v] of rows) {
+        for (const r of g.rows) {
           const tr = el("tr");
-          tr.append(el("td", names[k] ? { title: k } : {}, names[k] || k), el("td", {}, fmtValue(v)));
+          tr.append(el("td", r.name !== r.key ? { title: r.key } : {}, r.name), el("td", {}, r.text ?? fmtValue(r.value)));
           t.append(tr);
         }
         card.append(t);

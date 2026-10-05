@@ -233,23 +233,60 @@ def card_part(card: dict) -> str | None:
     return parts(w[0]["text"]).get(word.lower())
 
 
-def status_labels(label: str, status: dict) -> dict[str, str]:
-    """{key: friendly name} for the keys of `label`'s status block, from its
-    owner's STATUS_LABELS: a dict, or a function (label, key) -> name or None.
-    Nested blocks are flattened as the status page shows them ("1 vset"); a key
-    the owner does not name keeps its own."""
+# How a yes/no reading reads, by the kind of part its group is about.
+_WORDS = {"valve": ("Open", "Closed"), "pump": ("On", "Off")}
+
+
+def readings(label: str, status: dict) -> list[dict]:
+    """`label`'s status block as the status page shows it: [{title, part, rows:
+    [{key, name, value, text?}]}], from its owner's READINGS. That is a dict
+    {key: name}, or a function (label, flat status) returning [(title, part,
+    [(key, name) or (key, name, (yes, no))])]. Nested blocks are flattened as
+    "1 vset". A row named None is claimed but not shown (it repeats another). A
+    reading no group claims goes in a last group, "Other" (no title when it is the
+    only one). A yes/no value carries `text`: Open/Closed in a valve
+    group, On/Off in a pump group, the row's own words, or Yes/No."""
+    flat = dict(_flat_items(status or {}))
     labels, _ = owners()
-    module = labels.get(label.lower())
-    names = getattr(module, "STATUS_LABELS", None)
-    out = {}
-    for key in _flat_keys(status or {}):
-        try:
-            name = names(label.lower(), key) if callable(names) else (names or {}).get(key)
-        except Exception:                             # a naming mistake must not break the page
-            name = None
-        if name and name != key:
-            out[key] = str(name)
+    declared = getattr(labels.get(str(label).lower()), "READINGS", None)
+    try:
+        if callable(declared):
+            groups = list(declared(str(label).lower(), flat))
+        else:
+            groups = [(None, None, list((declared or {}).items()))]
+    except Exception:                             # a naming mistake must not break the page
+        groups = []
+    out, claimed = [], set()
+    for title, part, rows in groups:
+        shown = []
+        for row in rows:
+            key, name, words = (*row, None)[:3]
+            if key in flat and key not in claimed:
+                claimed.add(key)
+                if name is not None:
+                    shown.append(_row(key, name, flat[key], words or _WORDS.get(part)))
+        if shown:
+            out.append({"title": title, "part": part, "rows": shown})
+    rest = [_row(k, k, v, None) for k, v in flat.items() if k not in claimed]
+    if rest:
+        out.append({"title": "Other" if out else None, "part": None, "rows": rest})
     return out
+
+
+def _row(key, name, value, words) -> dict:
+    row = {"key": key, "name": str(name), "value": value}
+    if isinstance(value, bool):
+        yes, no = words or ("Yes", "No")
+        row["text"] = yes if value else no
+    return row
+
+
+def _flat_items(d: dict, prefix: str = ""):
+    for k, v in d.items():
+        if isinstance(v, dict):
+            yield from _flat_items(v, f"{prefix}{k} ")
+        else:
+            yield f"{prefix}{k}", v
 
 
 def _flat_keys(d: dict, prefix: str = "") -> list[str]:
