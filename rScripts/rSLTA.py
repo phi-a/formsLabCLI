@@ -27,6 +27,12 @@ name = os.path.splitext(os.path.basename(__file__))[0]
 # --- console commands (see formslab.rscripts.cast) ---------------------------------
 
 CAST_LABELS = ("slta",)
+STATUS_LABELS = {"SLTARUN": "Umbra captures", "running": "Capturing", "in_umbra": "In umbra",
+                 "umbraDuration": "Umbra length (s)", "umbraTimeRemaining": "Umbra left (s)",
+                 "mode": "Mode", "exposure": "Exposure (s)", "exposureComputed": "Exposure, computed (s)",
+                 "exposureLocked": "Exposure locked", "exposureOverride": "Exposure override (s)",
+                 "idle": "Idle poll (s)", "nsamp": "Samples per pixel", "clear": "Clear dwell (s)",
+                 "version": "Driver version", "token": "Image token", "IMAGEDIR": "Image folder"}
 COMMANDS = [
     ("image", """Capture one image now
      One exposure at the current settings, whatever the umbra state.""", {"image": True}),

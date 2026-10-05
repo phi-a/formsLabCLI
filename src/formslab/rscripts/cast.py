@@ -195,6 +195,35 @@ def send(label: str, request: dict, *, host: dict | None, wait_result: bool | No
     return {**out, "state": state, "ok": ok, "messages": messages, "text": text}
 
 
+def status_labels(label: str, status: dict) -> dict[str, str]:
+    """{key: friendly name} for the keys of `label`'s status block, from its
+    owner's STATUS_LABELS: a dict, or a function (label, key) -> name or None.
+    Nested blocks are flattened as the status page shows them ("1 vset"); a key
+    the owner does not name keeps its own."""
+    labels, _ = owners()
+    module = labels.get(label.lower())
+    names = getattr(module, "STATUS_LABELS", None)
+    out = {}
+    for key in _flat_keys(status or {}):
+        try:
+            name = names(label.lower(), key) if callable(names) else (names or {}).get(key)
+        except Exception:                             # a naming mistake must not break the page
+            name = None
+        if name and name != key:
+            out[key] = str(name)
+    return out
+
+
+def _flat_keys(d: dict, prefix: str = "") -> list[str]:
+    keys = []
+    for k, v in d.items():
+        if isinstance(v, dict):
+            keys += _flat_keys(v, f"{prefix}{k} ")
+        else:
+            keys.append(f"{prefix}{k}")
+    return keys
+
+
 def describe(words: list[str]) -> dict:
     """For the command box's help card: {cards, rules}. `rules` are the
     prerequisites of the command `words` are, with their status now."""

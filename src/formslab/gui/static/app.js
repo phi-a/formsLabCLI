@@ -161,9 +161,10 @@
       const rows = flatten(b.status, "", []);
       if (rows.length) {
         const t = el("table");
+        const names = b.labels || {};
         for (const [k, v] of rows) {
           const tr = el("tr");
-          tr.append(el("td", {}, k), el("td", {}, fmtValue(v)));
+          tr.append(el("td", names[k] ? { title: k } : {}, names[k] || k), el("td", {}, fmtValue(v)));
           t.append(tr);
         }
         card.append(t);

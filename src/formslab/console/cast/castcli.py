@@ -99,6 +99,7 @@ def _render_psu(name: str, entry: dict) -> Text:
         st = stats[ch]
         rq = (reqs.get(ch) if isinstance(reqs, dict) else None) or {}
         result.append(f"{ch}  ", INFO)
+        feeds = _feeds(name, ch)
         for key, fmt, width, unit in (("vset", "5.2f", 5, "V "), ("cset", "5.3f", 5, "A "),
                                       ("vmeas", "6.3f", 6, "V "), ("cmeas", "6.3f", 6, "A ")):
             v = st.get(key)
@@ -110,24 +111,40 @@ def _render_psu(name: str, entry: dict) -> Text:
                       STATE_ERR if on is None else STATE_ON if on else STATE_OFF)
         if rq.get("voltage") is not None or rq.get("current") is not None:
             result.append(f" ← pending {rq.get('voltage')}V {rq.get('current')}A", WARNING)
+        if feeds:
+            result.append(f"  {feeds}", DIM)
         result.append("\n")
     return result
 
 
+def _feeds(label: str, ch: str) -> str:
+    """What the hardware map says a supply channel feeds, or ""."""
+    try:
+        from formslab.devices.dp832a.wiring import channel
+        return channel(label, ch).get("feeds") or ""
+    except Exception:
+        return ""
+
+
 def _render_generic(name: str, entry: dict) -> Text:
-    """Any block as key: value, plus a pending request if one is waiting."""
+    """Any block as name: value (its owner's STATUS_LABELS), plus a pending
+    request if one is waiting."""
     result = Text()
     ts_val = entry.get("timestamp", 0)
     result.append(f"  {name.upper()}", HEADER)
     result.append(f"  {_ago(ts_val) if ts_val else 'unknown'}\n", DIM)
 
     stats = entry.get("status", {}) or {}
+    try:
+        names = cast.status_labels(name, stats)
+    except Exception:                               # a broken rScript must not break the tab
+        names = {}
     if not stats:
         result.append("  (no status data)\n", DIM)
     else:
-        width = max(len(str(k)) for k in stats) + 2
+        width = max(len(names.get(str(k), str(k))) for k in stats) + 2
         for k, v in stats.items():
-            result.append(f"  {str(k).ljust(width)}", LABEL)
+            result.append(f"  {names.get(str(k), str(k)).ljust(width)}", LABEL)
             if isinstance(v, bool):
                 result.append("ON/OPEN" if v else "off/closed", STATE_ON if v else STATE_OFF)
             elif isinstance(v, float):

@@ -96,3 +96,27 @@ def test_describe_over_http(client):
     assert code == 200 and any(c["text"] == "turbo on" for r in body["rules"] for c in r["conditions"])
     assert me.json("POST", "/api/describe", {"words": "hvc"})[0] == 400
     assert stranger.json("POST", "/api/describe", {"words": []})[0] == 401
+
+
+# --- friendly names on the status page ------------------------------------------------------------
+
+def test_each_owner_names_its_readings():
+    assert cast.status_labels("hvc", {"platen C": 20.0, "t2 C": 21.0, "platen setpoint C": 20.0,
+                                      "rough": False, "mystery": 1}) == {
+        "platen C": "Platen (C)", "t2 C": "t2 (C)", "platen setpoint C": "Platen setpoint (C)",
+        "rough": "Rough valve"}                                      # an unnamed key keeps its own
+    assert cast.status_labels("psu1", {"1": {"vset": 24.0}, "2": {"on": False}}) == {
+        "1 vset": "CH1 set (V) - cryocooler board", "2 on": "CH2 output"}
+    assert cast.status_labels("cryo", {"CCVINM": 24.0})["CCVINM"] == "Supply (V)"
+    assert cast.status_labels("tc", {"TC01 C": 20.0}) == {"TC01 C": "TC01 (C)"}
+
+
+def test_the_status_page_and_the_cast_tab_use_them(monkeypatch):
+    from formslab.console.cast import castcli
+    from formslab.gui import api
+    castutils.UpdateStatus("hvc", {"connected": True, "rough": False})
+    assert api.status()["blocks"]["hvc"]["labels"] == {"connected": "Connected", "rough": "Rough valve"}
+    text = castcli.status_panel("hvc").content.plain
+    assert "Rough valve" in text and "rough " not in text
+    castutils.UpdateStatus("psu1", {"1": {"on": True, "vset": 24.0, "cset": 2.0, "vmeas": 24.0, "cmeas": 0.4}})
+    assert "cryocooler board" in castcli.status_panel("psu1").content.plain

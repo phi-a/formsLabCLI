@@ -35,6 +35,10 @@ COMMANDS = [
      lambda w: {w: True}),
 ]
 VARIABLES = []
+STATUS_LABELS = {"LINK": "Board link", "ON": "Output on", "PSU": "Supply channel", "PSUON": "Supply on",
+                 "CCVIN": "Supply set (V)", "CCIIN": "Supply limit (A)", "CCVINM": "Supply (V)",
+                 "CCIINM": "Supply (A)", "CCV": "Cooler voltage (V)", "CCVRES": "Variable resistor (ohm)",
+                 "CCVRES#": "Resistor code"}
 
 
 def RULES():

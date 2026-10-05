@@ -44,6 +44,21 @@ COMMANDS = [
     ("update", """Read the supply now
      Refreshes its readings without waiting for the next poll.""", {"update": True}),
 ]
+_READINGS = {"on": "output", "vset": "set (V)", "cset": "limit (A)", "vmeas": "(V)", "cmeas": "(A)",
+             "ovp": "OVP (V)", "ocp": "OCP (A)", "protect": "protection"}
+
+
+def STATUS_LABELS(label, key):
+    """`1 vset` -> `CH1 set (V) - cryocooler board`: what the hardware map says it feeds."""
+    from formslab.devices.dp832a.wiring import channel
+
+    ch, _, reading = key.partition(" ")
+    if not ch.isdigit() or reading not in _READINGS:
+        return {"error": "Error"}.get(key)
+    feeds = channel(label, ch).get("feeds")
+    return f"CH{ch} {_READINGS[reading]}" + (f" - {feeds}" if feeds else "")
+
+
 VARIABLES = [(f"PSU{n}_CH{c}_{q}", unit) for n in (1, 2) for c in (1, 2, 3)
              for q, unit in (("V", "V"), ("I", "A"), ("ON", None))]
 

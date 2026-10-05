@@ -143,6 +143,26 @@ def RULE_EFFECTS(request):
     return laco_effects(request)
 
 
+_NAMES = {"connected": "Connected", "error": "Error", "mode": "Mode", "test_status": "Test status",
+          "pressure": "Chamber pressure", "pressure_unit": "Pressure unit",
+          "vacuum_setpoint": "Vacuum setpoint", "recipe": "Recipe", "recipe_step": "Recipe step",
+          "thermal_control": "Thermal control", "fault_severity": "Fault severity", "faults": "Faults",
+          "rough": "Rough valve", "vent": "Vent valve", "fill": "Fill valve",
+          "foreline": "Foreline valve", "gate": "Gate valve", "pump": "Roughing pump", "turbo": "Turbo pump"}
+
+
+def STATUS_LABELS(label, key):
+    """Friendly names for the status page: `platen C` -> `Platen (C)`."""
+    if key in _NAMES:
+        return _NAMES[key]
+    if key.endswith(" setpoint C"):
+        return f"{key[:-len(' setpoint C')].capitalize()} setpoint (C)"
+    if key.endswith(" C"):                       # a zone ("platen"), or a sensor as the HMI names it ("t2")
+        name = key[:-2]
+        return f"{name.capitalize() if name.isalpha() else name} (C)"
+    return None
+
+
 def VARIABLES():
     from formslab.devices.hvc3500 import load_profile
 

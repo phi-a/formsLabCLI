@@ -100,7 +100,13 @@ def status(log_lines: int = 40) -> dict:
     for label, block in (data or {}).items():
         if not isinstance(block, dict):
             continue
-        blocks[label] = {"status": block.get("status") or {},
+        status_ = block.get("status") or {}
+        with _lock:
+            try:
+                names = cast.status_labels(label, status_) if isinstance(status_, dict) else {}
+            except Exception:                        # a broken rScript must not break the page
+                names = {}
+        blocks[label] = {"status": status_, "labels": names,
                          "pending": bool(block.get("request")) and not block.get("processed", True),
                          **freshness(label, block, running, now)}
     return {"now": now, "host": running, "last_run": None if running else read_lock(),
