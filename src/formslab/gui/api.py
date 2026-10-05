@@ -32,7 +32,7 @@ from formslab.state import cast_state_path
 
 # How often each block is republished while its owner runs (seconds). A block
 # older than three of these, plus a little slack, is not live.
-CADENCE_S = {"tc": 2.0, "hvc": 6.0, "psu1": 1.0, "psu2": 1.0, "cryo": 1.0, "slta": 3.0}
+CADENCE_S = {"tc": 2.0, "hvc": 6.0, "psu1": 1.0, "psu2": 1.0, "cryo": 1.0, "slta": 3.0, "orbit": 1.0}
 DEFAULT_CADENCE_S = 5.0
 SLACK_S = 2.0
 LOG_TAIL_BYTES = 64 * 1024

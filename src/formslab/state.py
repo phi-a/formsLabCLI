@@ -85,6 +85,12 @@ def build_default_cast_state(now: float | None = None) -> dict:
             "request": {},
             "status": {},
         },
+        "orbit": {
+            "timestamp": timestamp,
+            "processed": True,
+            "request": {},
+            "status": {"orbit": None, "mode": "none chosen"},
+        },
         "hvc": {
             "timestamp": timestamp,
             "processed": True,

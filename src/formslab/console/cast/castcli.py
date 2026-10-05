@@ -31,7 +31,7 @@ from formslab.rscripts import cast
 from formslab.state import cast_state_path
 
 # Display order for the full status: PSUs side by side, then these, then the rest.
-_DISPLAY_ORDER = ["hvc", "tc", "cryo", "slta"]
+_DISPLAY_ORDER = ["hvc", "tc", "cryo", "slta", "orbit"]
 
 
 def _load_cast() -> dict:

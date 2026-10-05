@@ -73,7 +73,7 @@ def test_every_shipped_plan_checks_clean(name):
 def test_options_at_every_position_of_a_step():
     r = line_options(["rLACO"], ["hvc", "platen"])
     first, second, third = r["positions"]
-    assert [o["text"] for o in first] == ["hold", "log", "until", "hvc", "pumpdown", "vent"]   # blocks last
+    assert [o["text"] for o in first] == ["hold", "log", "until", "hvc", "eclipse", "pumpdown", "sunrise", "vent"]   # blocks last
     assert [o["text"] for o in second][:3] == ["platen", "shroud", "vacuum"]
     assert third[0] == {"kind": "number", "text": "temperature", "help": "Set the platen temperature",
                         "lo": -180.0, "hi": 200.0, "unit": "C", "part": "zone"}
@@ -103,7 +103,7 @@ def test_until_offers_exactly_what_the_loaded_scripts_publish():
 
 
 def test_the_rscripts_a_plan_can_load():
-    assert available_rscripts() == ["rCryoBoard", "rLACO", "rPSU", "rSLTA", "rSMTC08"]
+    assert available_rscripts() == ["rCryoBoard", "rLACO", "rOrbit", "rPSU", "rSLTA", "rSMTC08"]
 
 
 # --- where plans live -------------------------------------------------------------------------------
@@ -255,7 +255,7 @@ def test_read_check_and_save_over_http(client):
     assert code == 200 and body["editable"] is False and body["errors"] == [] and "vent open" in body["text"]
     assert client.json("GET", "/api/plans/..%2ftvac")[0] == 400
     assert client.json("GET", "/api/plans/nope")[0] == 404
-    assert client.json("GET", "/api/rscripts")[1]["rscripts"] == ["rCryoBoard", "rLACO", "rPSU", "rSLTA", "rSMTC08"]
+    assert client.json("GET", "/api/rscripts")[1]["rscripts"] == ["rCryoBoard", "rLACO", "rOrbit", "rPSU", "rSLTA", "rSMTC08"]
 
     code, body = client.json("POST", "/api/plan/check", {"text": DRAFT})
     assert code == 200 and {"line": 3, "message": "record needs a positive duration"} in body["errors"]
