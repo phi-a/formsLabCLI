@@ -11,7 +11,11 @@ hardware test sequences against them. Running those sequences is its central job
  │ psu   direct control │                 │ plan step (hold/command/until/log) │
  │ log   host output    │◀── host.log ─── │ CSV row when due                   │
  └──────────────────────┘                 │ rShutdown on any exit              │
-                                          └───────────────────────────────────┘
+ labcli gui (web page)                    └───────────────────────────────────┘
+ ┌──────────────────────┐                                  ▲
+ │ status, chamber,     │── the same ctrl and CAST files, ─┘
+ │ plans, plots         │   lock and log; it never opens an instrument
+ └──────────────────────┘
 ```
 
 ## Layers
@@ -20,7 +24,7 @@ hardware test sequences against them. Running those sequences is its central job
 |---|---|---|
 | Drivers | `formslab.devices` | One folder per instrument (`hvc3500`, `dp832a`, `smtc08`, `cryocooler`, `slta`, `powerswitch`), plus device objects (`hvc3500.LACO`). Opens ports, speaks protocols; knows nothing about runs. |
 | Routines | `rScripts/*.py` on `formslab.rscripts` | The instrument during a run: apply CAST requests for it, publish its readings as variables, leave it safe in `rShutdown`. One owner per instrument. |
-| Grammar | `formslab.rscripts.grammar`, `cast` | The commands each routine declares, as data: parses a cast-tab line or a plan step, lists what can come next (completion, a future GUI), and builds the help. |
+| Grammar | `formslab.rscripts.grammar`, `cast` | The commands each routine declares, as data: parses a cast-tab line or a plan step, lists what can come next (completion, the GUI's dropdowns), and builds the help cards. |
 | Sequences | `formslab.sequence` | Lab plans, one step per line: which routines run, and the ordered steps of a test. Steps talk to routines through CAST, never to a driver. |
 | Host | `formslab.host` | One run of one plan. Lock, ctrl, pacing, recording, shutdown. |
 | Console | `formslab.console`, `formslab.app` | The operator: start and stop runs, watch and command instruments. |
@@ -29,7 +33,8 @@ CAST (`castfile.json`) is the bus between them: a request block per instrument
 label (`hvc`, `tc`, `psu1`, `psu2`, `cryo`, `slta`), written by the console or a
 plan and taken by the routine that owns that label, which writes back a status
 block. Each routine declares its own commands and published values as data
-(`CAST_LABELS`, `COMMANDS`, `VARIABLES` -- see rScripts/README.md), read by one
+(`CAST_LABELS`, `COMMANDS`, `VARIABLES`, and what must be true first, `RULES`
+-- see rScripts/README.md), read by one
 grammar (`rscripts/grammar.py`), so the cast tab, a plan and the routine always
 agree on what a command means, and the same declarations answer "what can come
 next" for completion.

@@ -90,9 +90,8 @@ instrument.
   words that fit, then number boxes showing limits and units.
 - Every row is checked live by the real parser, with the error beside it.
 - Save writes the plain text back, comments and blank lines kept.
-- **Needs (not built):** a `plan_options(loaded_scripts, words)` function (the plan's
-  `hold`, `until`, `log` completion exists inside the parser but is not exposed), and a
-  test that parse, edit, save round-trips every shipped plan unchanged.
+- **Built:** `line_options(scripts, words)` in sequence/plan.py (what was sketched as
+  `plan_options`), and the test that every shipped plan round-trips unchanged.
 
 ### 2. Control
 - Run state, Start (plan list), End (always visible), Pause and Resume.
@@ -228,7 +227,7 @@ Non-functional
 ## Build order (each stage useful alone)
 
 1. Server skeleton, login, status, run and end, Control screen.
-2. Plans editor (plus `plan_options` and the round-trip test).
+2. Plans editor (plus `line_options` and the round-trip test). Done.
 3. TVAC viewer.
 4. Plot viewer.
 5. Space environment viewer (after deciding the 3D and replay questions).

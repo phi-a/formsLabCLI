@@ -53,11 +53,10 @@ package-dir = { "" = "src" }
 where = ["src"]
 
 [tool.setuptools.package-data]
-# Command tables, the Pico firmware, and the shipped `defaults/`.
+# The Pico firmware, the shipped `defaults/`, and the GUI's page.
 # Nothing here is written to at runtime: mutable state and the live `usbmap.json`
 # live in the config directory (see formslab/config.py).
 formslab = [
-    "console/**/*.json",
     "devices/cryocooler/pico_board_control.py",
     "defaults/*",
     "gui/static/*",

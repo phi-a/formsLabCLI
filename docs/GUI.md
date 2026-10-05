@@ -14,8 +14,9 @@ labcli gui                 # then open http://localhost:8080/
 or over SSH keep running either way.
 
 To try it without the bench (a simulated chamber, a throwaway login and config, nothing real
-touched): `python scripts/gui_demo.py`, then open `http://localhost:8080/` (user `demo`,
-password `demo`).
+touched): `python scripts/gui_demo.py`, then open `http://localhost:8088/` (user `demo`,
+password `demo`). The demo has its own port and an orange DEMO bar, so it cannot be
+mistaken for the bench's own GUI.
 
 ## From another machine
 

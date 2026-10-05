@@ -1,7 +1,7 @@
-# FormsLabCLI
+# formsLabCLI
 
-A terminal console for thermal-vacuum testing: control chamber temperatures,
-supplies and readouts from the terminal, and run hardware test sequences (lab
+A terminal console and a web GUI for thermal-vacuum testing: control chamber
+temperatures, supplies and readouts, and run hardware test sequences (lab
 plans) against them. It drives the LACO chamber's HVC-3500 controller, Rigol
 programmable supplies, SMTC08 thermocouple readers, a
 cryocooler control board behind a Raspberry Pi Pico I2C bridge, a Digital
@@ -91,7 +91,7 @@ falls back to plain `input()` and append-only text, so redirected runs stay
 diffable. The typed `more`, `back` and `top` exist for that path.
 
 The status region is the tab's `banner()`, drawn only where a tab sets
-`live_status`: it is polled once per repaint. CTRL (reads `sequence.pid`) and
+`live_status`: it is polled once per repaint. CTRL (reads the running host's lock) and
 CAST (reads `castfile.json`) opt in. PSU's banner opens a VISA session per
 supply and queries every channel, so it stays a command rather than a region —
 a new tab has to declare its banner free before the frame will poll it.
@@ -139,7 +139,7 @@ thing is:
 
 | Location | Holds | Override |
 |---|---|---|
-| package | code, command tables, Pico firmware, shipped defaults | — |
+| package | code, Pico firmware, shipped defaults | — |
 | config | live `usbmap.json`, CTRL command table, CAST device state, and in `.run/` the running host's lock, event log and `host.log` | `$FORMSLAB_CONFIG_DIR` (default `~/.formslab`) |
 | output | CSV histories, captured frames, instrument logs | `$FORMSLAB_OUTPUT_DIR` (default `<cwd>/outputs`) |
 
@@ -215,18 +215,22 @@ refused or failed, 2 usage). What is running is kept per machine in
 ```
 labcli status                       # is a run going (exit 1 if not)
 labcli run tvac                     # start one; it keeps running after you log out
-labcli cast hvc platen 20           # waits until rLACO has taken it
+labcli cast hvc platen 20           # waits until the chamber has done it, or says why not
 labcli cast hvc platen '?'          # what can come next
 labcli status hvc                   # one instrument's readings
 labcli log 50                       # the host's output
 labcli end
 ```
 
-`labcli cast` refuses when no run is going: nothing would apply the command.
-`labcli help` lists every command.
+`labcli cast` refuses when no run is going (nothing would apply the command),
+and when the command's prerequisites are not met now (the rough valve open for
+a vent; see [docs/SEQUENCE.md](docs/SEQUENCE.md)). `labcli help` lists every
+command.
 
-`labcli gui` starts a small web GUI on this machine (status of every instrument,
-plots of recorded runs); see [docs/GUI.md](docs/GUI.md).
+`labcli gui` starts a small web GUI on this machine: every instrument's status,
+starting and ending runs, the command box, the chamber drawn as its own screen
+draws it, a plan editor with help for every step, and plots of recorded runs;
+see [docs/GUI.md](docs/GUI.md).
 
 ## Windows and Linux (Raspberry Pi)
 
