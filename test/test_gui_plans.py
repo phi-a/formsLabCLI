@@ -75,7 +75,7 @@ def test_options_at_every_position_of_a_step():
     first, second, third = r["positions"]
     assert [o["text"] for o in first] == ["hold", "log", "until", "hvc"]
     assert [o["text"] for o in second][:3] == ["platen", "shroud", "vacuum"]
-    assert third[0] == {"kind": "number", "text": "C", "help": "platen setpoint (refused outside the profile limits)",
+    assert third[0] == {"kind": "number", "text": "temperature", "help": "Set the platen temperature",
                         "lo": -180.0, "hi": 200.0, "unit": "C"}
     assert [o["text"] for o in third[1:]] == ["on", "off", "rate", "range"]
     assert r["complete"] is False and r["error"] is None               # unfinished is a valid start

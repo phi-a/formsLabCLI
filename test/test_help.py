@@ -68,7 +68,7 @@ def test_the_load_record_and_comment_lines():
     text = "# a comment\nload rLACO\nrecord every 2 s\nhvc stop\n"
     assert describe_step(text, 1) == {"cards": [], "rules": []}
     assert describe_step(text, 2)["cards"][0]["usage"] == "load <rScript> ..."
-    assert describe_step(text, 3)["cards"][0]["help"] == "CSV cadence"
+    assert describe_step(text, 3)["cards"][0]["help"] == "Set how often values are recorded"
     assert describe_step(text, 4)["rules"] == []                # `stop` is always allowed
     assert describe_step(text, 99) == {"cards": [], "rules": []}
 
@@ -91,7 +91,7 @@ def client(monkeypatch):
 def test_describe_over_http(client):
     me, stranger = client
     code, body = me.json("POST", "/api/describe", {"text": "load rLACO\nhvc pump on\n", "line": 2})
-    assert code == 200 and body["cards"][0]["help"].startswith("A pump")
+    assert code == 200 and body["cards"][0]["help"] == "Turn a pump on or off"
     code, body = me.json("POST", "/api/describe", {"words": ["hvc", "gate", "open"]})
     assert code == 200 and any(c["text"] == "turbo on" for r in body["rules"] for c in r["conditions"])
     assert me.json("POST", "/api/describe", {"words": "hvc"})[0] == 400

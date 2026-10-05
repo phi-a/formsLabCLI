@@ -22,9 +22,9 @@ log done
 | step | does | fails the plan when |
 |---|---|---|
 | `<label> <words>` | a command to the routine that owns the label (`hvc vent open`, `psu1 ch1 on`, `cryo ccv 14`) -- the cast tab's words; waits until the routine has taken it, and for the chamber (rLACO) until it is done | a prerequisite is not met (below); not taken within 10 s; the chamber refuses it |
-| `hold <n> s\|min\|h` | runs the routines for a while | — |
+| `hold <time> s\|min\|h` | runs the routines for a while | — |
 | `hold until end` | runs until ctrl `end` (`tvac.plan`: manual operation) | — |
-| `until <value> above\|below <n> [C\|K] timeout <n> s\|min\|h` | runs until a published value crosses a limit; `C`/`K` converts from the value's own unit | not met by the timeout (required: a wait on hardware always has a limit) |
+| `until <variable> above\|below <limit> [C\|K] timeout <time> s\|min\|h` | runs until a published value crosses a limit; `C`/`K` converts from the value's own unit | not met by the timeout (required: a wait on hardware always has a limit) |
 | `log <text>` | one line in the run log | — |
 
 `#` starts a comment, on a line of its own (a `#` after a step is an error,

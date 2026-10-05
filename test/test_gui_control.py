@@ -312,7 +312,7 @@ def test_completion_lists_what_can_come_next(server, client):
     assert code == 200 and {"hvc", "psu1", "psu2", "cryo", "slta"} <= set(first) and "tc" not in first
 
     after = client.json("GET", "/api/complete?words=hvc%20platen")[1]["options"]
-    assert after[0] == {"kind": "number", "text": "C", "help": "platen setpoint (refused outside the profile limits)",
+    assert after[0] == {"kind": "number", "text": "temperature", "help": "Set the platen temperature",
                         "lo": -180.0, "hi": 200.0, "unit": "C"}
     assert [o["text"] for o in after[1:]] == ["on", "off", "rate", "range"]
     assert client.json("GET", "/api/complete?words=hvc%20platen%2020")[1]["options"] == []

@@ -24,23 +24,24 @@ from formslab.rscripts import RScriptControl
 # --- console commands (see formslab.rscripts.cast) ---------------------------------
 
 CAST_LABELS = ("psu1", "psu2")
-_CH = "<ch:ch1|ch2|ch3>"
+_CH = "<channel:ch1|ch2|ch3>"
 COMMANDS = [
-    (f"{_CH} set <V:number 0..32 V> <A:number 0..3.2 A>", """Channel setpoints: volts and current limit
-     The channel's output voltage and the most current it may supply; the output
-     itself is switched with `on` / `off`. A channel the hardware map gives to an
-     rScript (usbmap.json "channels"; psu1 ch1 feeds the cryocooler board) is
-     refused while that rScript runs.""",
+    (f"{_CH} set <volts:number 0..32 V> <amps:number 0..3.2 A>", """Set a channel's voltage and current limit
+     The channel's output voltage, 0 to 32 V, and the most current it may supply, 0 to
+     3.2 A. Its output is switched on and off separately. A channel the hardware map
+     gives to an rScript, such as psu1 ch1 for the cryocooler board, is refused while
+     that rScript runs.""",
      lambda ch, v, a: {ch[2:]: {"voltage": v, "current": a}}),
-    (f"{_CH} on|off", """Channel output
+    (f"{_CH} on|off", """Turn a channel's output on or off
      Switches the channel's output, at its setpoints.""", lambda ch, s: {ch[2:]: {"on": s == "on"}}),
-    (f"{_CH} protect <OVP:number 0.01..33 V> <OCP:number 0.001..3.3 A>",
-     """Over-voltage / over-current protection on
-     The supply cuts the channel off above OVP volts or OCP amps. Set them a little
+    (f"{_CH} protect <max_volts:number 0.01..33 V> <max_amps:number 0.001..3.3 A>",
+     """Turn on over-voltage and over-current protection
+     The supply cuts the channel off above max_volts or max_amps. Set them a little
      above the setpoints.""",
      lambda ch, v, a: {ch[2:]: {"ovp": v, "ocp": a, "protect": True}}),
-    (f"{_CH} protect off", """Protection off
-     No over-voltage or over-current cut-off on the channel.""", lambda ch: {ch[2:]: {"protect": False}}),
+    (f"{_CH} protect off", """Turn protection off
+     The channel then has no over-voltage or over-current cut-off.""",
+     lambda ch: {ch[2:]: {"protect": False}}),
     ("update", """Read the supply now
      Refreshes its readings without waiting for the next poll.""", {"update": True}),
 ]

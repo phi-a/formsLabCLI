@@ -18,20 +18,22 @@ name = os.path.splitext(os.path.basename(__file__))[0]
 
 CAST_LABELS = ("cryo",)
 COMMANDS = [
-    ("ccv <V:number 12..20 V>", """Cryocooler output voltage
-     The board's converter output to the cooler, 12 to 20 V (the band formsLabCLI
-     drives it in). Applied while the output is on.""", lambda v: {"voltage": v}),
-    ("on|off", """Cryocooler output
-     on needs the board's supply at 20 V or more: below that the converter cannot
-     produce an output (checked before it is sent).""", lambda s: {"enabled": s == "on"}),
-    ("ccvres <ohm:number 62..1120>", """Variable resistor (nearest 6-bit code)
-     The board's variable resistor in ohms, set to the nearest of its 64 steps
-     (`cryo code` sets the step itself).""", lambda r: {"resistance": r}),
-    ("code <n:integer 0..63>", """Variable resistor by code
+    ("ccv <volts:number 12..20 V>", """Set the cryocooler voltage
+     The board's output to the cooler, 12 to 20 V, the band formsLabCLI drives it in.
+     It is applied while the output is on.""", lambda v: {"voltage": v}),
+    ("on|off", """Turn the cryocooler output on or off
+     On needs the board's supply at 20 V or more: below that the converter cannot
+     produce an output. This is checked before the command is sent.""",
+     lambda s: {"enabled": s == "on"}),
+    ("ccvres <ohms:number 62..1120>", """Set the variable resistor in ohms
+     The board's variable resistor, 62 to 1120 ohms, set to the nearest of its 64
+     steps. cryo code sets the step itself.""", lambda r: {"resistance": r}),
+    ("code <step:integer 0..63>", """Set the variable resistor step
      The resistor's step, 0 to 63.""", lambda n: {"code": n}),
-    ("startup|shutdown|update", """Bring the board up / down, or read it now
-     startup: its supply channel on, the board initialized with the output off.
-     shutdown: output off, then the supply channel off. update: read the board now.""",
+    ("startup|shutdown|update", """Start, stop or read the board
+     startup turns its supply channel on and initializes the board with the output
+     off. shutdown turns the output off, then the supply channel. update reads the
+     board now.""",
      lambda w: {w: True}),
 ]
 VARIABLES = []

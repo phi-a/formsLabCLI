@@ -79,7 +79,7 @@ def test_laco_apply_understands_every_command_request(laco):
 @pytest.mark.parametrize("typed, message", [
     ("platen 500", "hvc platen: 500 is outside -180..200 C"),     # profile limit 200 C
     ("shroud 150", "outside -180..120 C"),                        # each zone its own limits
-    ("platen hot", "expected <C> (-180..200 C), on, off, rate or range after 'hvc platen', got 'hot'"),
+    ("platen hot", "expected <temperature> (-180..200 C), on, off, rate or range after 'hvc platen', got 'hot'"),
     ("pump open", "expected on or off after 'hvc pump', got 'open'"),
     ("recipe 99", "outside 1..20"),
     ("vacuum -5", "must be >= 0"),                                # was a TypeError
@@ -141,9 +141,9 @@ def test_complete_is_what_a_dropdown_lists():
     first = [o.text for o in cast.complete([])]
     assert {"hvc", "psu1", "psu2", "cryo", "slta"} <= set(first) and "tc" not in first
     after = cast.complete(["hvc", "platen"])
-    assert str(after[0]) == "<C> (-180..200 C)"
+    assert str(after[0]) == "<temperature> (-180..200 C)"
     assert [o.text for o in after[1:]] == ["on", "off", "rate", "range"]
-    assert [o.text for o in cast.complete(["psu1", "ch1", "set"])] == ["V"]
+    assert [o.text for o in cast.complete(["psu1", "ch1", "set"])] == ["volts"]
 
 
 def _declared(script):
@@ -261,7 +261,7 @@ def test_the_tab_refuses_what_the_rules_forbid_and_sends_nothing(run_going):
 
 def test_the_tab_lists_what_can_come_next():
     text = castcli.execute_command(["hvc", "pump", "?"]).content.plain
-    assert "on" in text and "off" in text and "A pump" in text
+    assert "on" in text and "off" in text and "Turn a pump on or off" in text
     assert ReadCommand("hvc") == {}
 
 
@@ -273,6 +273,6 @@ def test_the_tab_reports_usage_without_writing():
 
 def test_help_lists_every_scripts_commands():
     text = castcli.help_panel().content.plain
-    for usage in ("hvc platen <C>", "hvc stop", "psu1|psu2 <ch> set <V> <A>",
-                  "cryo ccv <V>", "slta image", "hvc <valve> open|close"):
+    for usage in ("hvc platen <temperature>", "hvc stop", "psu1|psu2 <channel> set <volts> <amps>",
+                  "cryo ccv <volts>", "slta image", "hvc <valve> open|close"):
         assert usage in text

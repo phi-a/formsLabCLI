@@ -20,9 +20,9 @@ Steps:
                         words as the cast tab (``hvc vent open``). Sent and
                         awaited until that rScript takes it (10 s limit), and
                         for one that reports results until it is done or refused
-    hold <n> s|min|h    run the loaded rScripts for a while
+    hold <time> s|min|h run the loaded rScripts for a while
     hold until end      until the operator's ctrl `end` (plans/tvac.plan)
-    until <variable> above|below <value> [C|K] timeout <n> s|min|h
+    until <variable> above|below <limit> [C|K] timeout <time> s|min|h
                         run until a published value crosses a limit, or fail
                         at the timeout (required: a wait on hardware always has
                         a limit). C or K converts from the variable's own unit
@@ -240,7 +240,7 @@ def parse_plan(source: str, *, path: Path | None = None, steps_out: list | None 
                 if not published:
                     fail(n, "no loaded rScript publishes a value to wait on")
             if "timeout" not in (w.lower() for w in words):
-                fail(n, "until needs `timeout <n> s|min|h`: a wait on hardware always has a limit")
+                fail(n, "until needs `timeout <time> s|min|h`: a wait on hardware always has a limit")
         return replace(_parse(fail, n, grammar, words), label=" ".join(words))
 
     numbered = [(n, seg) for n, words in steps if (seg := attempt(check_step, n, words)) is not None]
@@ -481,12 +481,12 @@ def _command(label, request):
     return Segment("command", {"label": label, "request": request, "timeout_s": COMMAND_TIMEOUT_S})
 
 
-_RECORD = Grammar([("record every <n:number 0..> s|min|h", """CSV cadence
-                     How often every published value is written to the run's CSV
-                     (outputs/<plan>_<UTC>.csv). The line after `load`.""",
+_RECORD = Grammar([("record every <interval:number 0..> s|min|h", """Set how often values are recorded
+                     How often every published value is written to the run's CSV file,
+                     in the outputs folder. It is the line after load.""",
                     lambda n, u: (_positive("record", n), _RECORD_UNIT[u]))])
 
-_LOAD_CARD = {"usage": "load <rScript> ...", "help": "The rScripts this plan runs", "complete": True,
+_LOAD_CARD = {"usage": "load <rScript> ...", "help": "Choose the rScripts this plan runs", "complete": True,
               "inputs": [], "details": (
                   "Each rScript owns instruments: rLACO the chamber (hvc), rPSU the supplies (psu1, "
                   "psu2), rSMTC08 the thermocouples (tc), rCryoBoard the cryocooler board (cryo), "
@@ -505,30 +505,30 @@ def _grammar(scripts):
         if cast.script_name(module) in scripts:
             published.update(cast.variables(module))
     steps = [
-        ("hold <n:number 0..> s|min|h", """Run the loaded rScripts for a while
+        ("hold <time:number 0..> s|min|h", """Wait while the rScripts run
          Nothing is sent; the instruments keep being read and recorded. Time paused
          from the console or the GUI does not count.""", _hold),
-        ("hold until end", """Until ctrl `end` (manual operation)
-         The plan stays here, recording, until the run is ended (End run in the GUI,
-         `labcli end`). For operating by hand from the command box.""",
+        ("hold until end", """Wait until the run is ended
+         The plan stays here, recording, until someone ends the run: End run in the
+         GUI, or labcli end. Use it to operate by hand from the command box.""",
          lambda: Segment("hold", {"seconds": None})),
-        ("log <message:rest>", """One line in the run log
-         The text goes to the host log with the time: a mark for where a phase begins.""",
+        ("log <message:rest>", """Write a line in the run log
+         The text goes to the host log with the time, to mark where a phase begins.""",
          lambda m: Segment("log", {"message": m})),
     ]
     if published:
         var = f"<variable:{'|'.join(published)}>"
-        until = f"until {var} above|below <value:number>"
+        until = f"until {var} above|below <limit:number>"
         why = """
-         Runs until the value is past the limit, then goes on. If it is not within the
-         timeout, the plan stops here and each rScript's shutdown runs. A wait on
-         hardware always has a timeout. Just before a command, it also proves that
-         command's prerequisite (`until platenT below 60 C` before `hvc vent open`)."""
+         Runs until the value is past the limit, then goes on. If it is not past it
+         within the timeout, the plan stops here and each rScript's shutdown runs. A
+         wait on hardware always has a timeout. Just before a command, it also proves
+         that command's prerequisite: until platenT below 60 C before hvc vent open."""
         steps += [
-            (f"{until} timeout <t:number 0..> s|min|h", "Wait for a value, with a limit" + why,
+            (f"{until} timeout <time:number 0..> s|min|h", "Wait for a value to pass a limit" + why,
              _until(published)),
-            (f"{until} C|K timeout <t:number 0..> s|min|h", "The same, the value in C or K" + why,
-             _until(published)),
+            (f"{until} C|K timeout <time:number 0..> s|min|h",
+             "Wait for a temperature in °C or K to pass a limit" + why, _until(published)),
         ]
     return Grammar(steps + cast.label_commands(scripts, build=_command)), labels, published
 
