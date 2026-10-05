@@ -87,7 +87,7 @@ foreline pressure, and each zone's own on/off (the controller reports one
 chamber-wide "holding temperature" state).
 
 **Plans.** A plan editor for people who do not want to remember the words.
-Pick a plan on the left; a plan you open is shown line by line:
+Pick a plan on the left (a green page before its name); a plan you open is shown line by line:
 
 - the `load` line is a row of checkboxes, one per rScript;
 - `record every` is a number and a unit;
@@ -163,7 +163,7 @@ Start list: a plan follows it. The panel says how (`load rOrbit`, then `orbit
 follow <orbit>`), and *Use in a plan* makes a plan that follows the orbit and
 waits for its umbra (docs/ORBIT.md, In a run).
 
-A **block** (docs/SEQUENCE.md, Blocks) is listed with stacked squares and opens in
+A **block** (docs/SEQUENCE.md, Blocks) is listed with a purple square and opens in
 the same editor: its `block` line is the call, each `{input}` an amber value box.
 *New block* starts one; *Register as block* makes one from the open plan (its
 comments, `load` and steps; `record` is the calling plan's). In a plan, a call is

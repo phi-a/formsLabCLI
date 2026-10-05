@@ -28,6 +28,10 @@
   const isBlock = () => S.kind === "block";
   const blockIcon = (title) => el("span", { class: "part-icon", "data-part": "block", "data-fam": "block",
                                             title: title || "A block", role: "img", "aria-label": "Block:" });
+  const planIcon = () => el("span", { class: "part-icon", "data-part": "plan", "data-fam": "plan",
+                                      title: "A plan: steps the host runs", role: "img", "aria-label": "Plan:" });
+  const orbitIcon = () => el("span", { class: "part-icon", "data-part": "shape", "data-fam": "orbit",
+                                       title: "An orbit file", role: "img", "aria-label": "Orbit:" });
   // The colour of a line: an orbit's is always the orbit's; a plan's, its first word's.
   const famFor = (word) => (isOrbit() ? "orbit" : famOf(word));
   const splitWords = (line) => line.trim().split(/\s+/).filter(Boolean);
@@ -55,9 +59,9 @@
     for (const p of r.plans) {
       const b = el("button", { type: "button", class: p.name === S.name ? "active" : "" });
       const name = el("span", {}, p.name);
-      if (p.kind === "orbit") name.prepend(el("span", { class: "part-icon", "data-part": "shape", "data-fam": "orbit",
-                                                        title: "An orbit file", role: "img", "aria-label": "Orbit:" }));
+      if (p.kind === "orbit") name.prepend(orbitIcon());
       if (p.kind === "block") name.prepend(blockIcon("A block: steps a plan calls by name"));
+      if (p.kind === "plan") name.prepend(planIcon());
       b.append(name, el("small", {}, (p.kind === "block" ? "block, " : "") + (p.editable ? "yours" : "shipped")
         + (p.error ? (p.kind === "orbit" ? " - not whole" : p.kind === "block" ? " - cannot be used" : " - cannot run") : "")));
       if (p.error) b.title = p.error;
@@ -93,6 +97,7 @@
 
   function renderAll() {
     $("#plan-title").textContent = S.name || "No plan open";
+    $("#plan-icon").replaceChildren(...(!S.name ? [] : isOrbit() ? [orbitIcon()] : isBlock() ? [blockIcon()] : [planIcon()]));
     const badge = $("#plan-badge");
     badge.textContent = !S.name ? "" : S.editable ? "yours" : "shipped: Edit to change it";
     $("#plan-text").hidden = !S.raw;
