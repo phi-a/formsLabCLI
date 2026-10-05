@@ -470,6 +470,10 @@
     $("#plan-saveas").disabled = !S.name;
     $("#plan-register").hidden = S.kind !== "plan";
     $("#plan-register").disabled = !S.name || S.busy;
+    $("#orbit-use").hidden = !isOrbit() || !S.name;
+    $("#orbit-use").disabled = dirty() || S.busy;
+    $("#orbit-use").title = dirty() ? "Save the orbit first: a plan follows the saved file"
+      : "Make a plan that follows this orbit and waits for its umbra";
     $("#plan-raw").disabled = !S.name;
     $("#plan-delete").disabled = !S.name || !S.editable || S.busy;
     $("#plan-delete").hidden = !S.editable;
@@ -594,6 +598,14 @@
     save(true, name.trim(), ["# " + name.trim(), "epoch " + now, "a 6928 km", "e 0.001", "i 97.6 deg",
                              "raan 0 deg", "argp 0 deg", "nu 0 deg", ""].join("\n"), "orbit");
   });
+  // A plan that follows the open orbit (rOrbit) and waits for its umbra (the eclipse block).
+  $("#orbit-use").addEventListener("click", () => {
+    const orbit = S.name;
+    const name = prompt("Name for the new plan (letters, digits, - and _):", `${orbit}_umbra`);
+    if (!name) return;
+    save(true, name.trim(), [`# Follow the orbit ${orbit} and wait for its umbra`, "load rOrbit", "record every 10 s", "",
+                             `orbit follow ${orbit}`, "eclipse within 120", "log umbra began", ""].join("\n"), "plan");
+  });
   $("#plan-revert").addEventListener("click", () => { if (confirm("Discard your unsaved changes?")) openPlanFresh(); });
   $("#plan-raw").addEventListener("click", () => {
     if (S.raw) {
@@ -673,7 +685,10 @@
       strip.append(shade);
     }
     box.replaceChildren(title, dl, el("h4", {}, "The coming orbit"), strip,
-      h("div", { class: "strip-scale" }, el("span", {}, "now"), el("span", {}, `+${minutes(r.period_s)} min`)));
+      h("div", { class: "strip-scale" }, el("span", {}, "now"), el("span", {}, `+${minutes(r.period_s)} min`)),
+      el("h4", {}, "In a plan"),
+      el("p", { class: "details" }, `Load rOrbit, then write orbit follow ${S.name} (as here, on the wall clock) `
+        + `or orbit replay ${S.name} (from its epoch, at that step). Use in a plan starts one.`));
   }
 
   // --- entry -----------------------------------------------------------------------------------------

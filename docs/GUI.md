@@ -159,7 +159,9 @@ shape, the plane, the place on the orbit, time). The step chooser offers only th
 elements still missing. Beside them, a panel shows the orbit now, propagated once
 a second: sunlit or in umbra and when that changes, beta angle, altitude, speed,
 and the coming orbit as a strip. *New orbit* starts one. An orbit is never in the
-Start list: nothing runs it.
+Start list: a plan follows it. The panel says how (`load rOrbit`, then `orbit
+follow <orbit>`), and *Use in a plan* makes a plan that follows the orbit and
+waits for its umbra (docs/ORBIT.md, In a run).
 
 A **block** (docs/SEQUENCE.md, Blocks) is listed with stacked squares and opens in
 the same editor: its `block` line is the call, each `{input}` an amber value box.
