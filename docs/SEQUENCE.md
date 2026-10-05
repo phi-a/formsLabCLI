@@ -56,7 +56,7 @@ vacuum valve, `pump` the vacuum pump.
 | command | needs first |
 |---|---|
 | `hvc vent open`, `hvc fill open` | Vacuum valve and Gate valve closed; Platen and Shroud each at least 10 and at most 60 °C |
-| `hvc rough open` | Turbo pump off; Vent, Fill, Foreline and Gate valves closed |
+| `hvc rough open` | Turbo pump off; Vent, Fill, Foreline and Gate valves closed; Chamber pressure at least 0.01 Torr (opening the roughing line to a chamber already at high vacuum can let roughing-pump oil flow back into it) |
 | `hvc pump off` | Vacuum valve and Foreline valve closed, Turbo pump off (`hvc stop` does it in order) |
 | `hvc foreline open` | Vacuum valve closed |
 | `hvc foreline close` | Turbo pump off: the foreline is a running turbo's only backing |

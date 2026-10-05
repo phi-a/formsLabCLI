@@ -43,9 +43,15 @@ def laco_rules(profile: BenchProfile) -> list[Rule]:
                f"between {lo:g} and {hi:g} °C.")
     gate = (on("turbo"), opened("foreline"))
     crossover = lim.get("high_vac_crossover_torr")
+    roughing = []
     if crossover:
         gate += (value("chamberP", "below", crossover, shown=profile.pressure_unit, called="Chamber pressure"),)
-    return [
+        roughing.append(Rule("hvc", {"rough": True},
+                             (value("chamberP", "above", crossover, shown=profile.pressure_unit,
+                                    called="Chamber pressure"),),
+                             "Opening the roughing line to a chamber already below the crossover pressure "
+                             "can let roughing-pump oil flow back into it."))
+    return roughing + [
         Rule("hvc", {"vent": True}, sealed, venting),
         Rule("hvc", {"fill": True}, sealed, venting),
         Rule("hvc", {"rough": True},

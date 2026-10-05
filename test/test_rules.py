@@ -166,3 +166,15 @@ def test_reasons_are_whole_sentences():
     from formslab.devices.hvc3500.rules import laco_rules
     for rule in laco_rules(load_profile()):
         assert rule.why[0].isupper() and rule.why.endswith(".") and "`" not in rule.why, rule.why
+
+
+def test_roughing_is_refused_once_the_chamber_is_below_the_crossover():
+    """Opening the roughing line to a chamber already at high vacuum can let
+    roughing-pump oil flow back into it."""
+    sealed = dict(vent=False, fill=False, foreline=False, gate=False, turbo=False)
+    why = rules.refusal("hvc", {"rough": "open"}, blocks=blocks(pressure=0.001, **sealed))
+    assert why.startswith("Needs Chamber pressure at least 0.01 Torr. Opening the roughing line")
+    assert rules.refusal("hvc", {"rough": "open"}, blocks=blocks(pressure=743.0, **sealed)) is None
+    p = parse_plan(plan("hvc turbo off", "hvc vent close", "hvc fill close", "hvc foreline close",
+                        "hvc gate close", "until chamberP above 0.01 timeout 1 min", "hvc rough open"))
+    assert p.warnings == ()
