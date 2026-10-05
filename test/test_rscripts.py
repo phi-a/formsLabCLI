@@ -284,7 +284,16 @@ def test_a_cast_command_reaches_the_chamber_through_the_host(chamber, tmp_path, 
     plan = _tvac_plan(tmp_path, monkeypatch, ["rLACO"])
     monkeypatch.setattr(ctrlcli, "running", lambda: {"pid": 1, "plan": "tvac"})   # the host, in this process
     typed = []      # typed while the host runs: it clears stale requests at start
-    timer = _operator(0.5, lambda: typed.append(castcli.execute_command(["hvc", "platen", "35"])),
+
+    def reported():                # as an operator would: once the chamber shows on the status page
+        import time
+        from formslab.console.cast.castutils import ReadStatus
+        for _ in range(100):
+            if ReadStatus("hvc").get("fault_severity"):
+                return
+            time.sleep(0.1)
+
+    timer = _operator(0.5, reported, lambda: typed.append(castcli.execute_command(["hvc", "platen", "35"])),
                       lambda: __import__("time").sleep(1.5))
     sequence.channel(plan)
     timer.join()

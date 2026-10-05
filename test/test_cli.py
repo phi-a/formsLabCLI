@@ -25,9 +25,13 @@ def no_host(monkeypatch):
 
 @pytest.fixture
 def host(monkeypatch):
-    """A run is going, and its rScripts take hvc requests as they arrive and
-    answer as rLACO does: the gate valve is refused, the rest done."""
+    """A run is going, the chamber has just reported (sealed, at rest), and its
+    rScripts take hvc requests as they arrive and answer as rLACO does: the
+    rough valve is refused, the rest done."""
     monkeypatch.setattr(ctrlcli, "running", lambda: HOST)
+    castutils.UpdateStatus("hvc", {"connected": True, "fault_severity": "N", "pressure": 700.0, "platen C": 20.0,
+                                        "shroud C": 20.0, "rough": False, "vent": False, "fill": False,
+                                        "foreline": False, "gate": False, "pump": False, "turbo": False})
     taken, stop = [], threading.Event()
 
     def owner():
@@ -35,9 +39,9 @@ def host(monkeypatch):
             req, ids = castutils.TakeCommand("hvc")
             if req:
                 taken.append(req)
-                refused = "gate" in req
+                refused = "rough" in req
                 castutils.ReportResult("hvc", ids, not refused,
-                                       ["gate: interlock, turbo off"] if refused else ["verified"])
+                                       ["rough: interlock"] if refused else ["verified"])
             time.sleep(0.02)
 
     t = threading.Thread(target=owner, daemon=True)
@@ -99,8 +103,14 @@ def test_cast_waits_until_the_rscript_takes_it(capsys, host):
 
 
 def test_cast_a_refused_command_fails_with_the_reason(capsys, host):
+    code, out = run(capsys, "cast", "hvc", "rough", "open")
+    assert code == 1 and "✗ hvc" in out and "refused: rough: interlock" in out
+
+
+def test_cast_what_the_rules_forbid_is_not_sent(capsys, host):
     code, out = run(capsys, "cast", "hvc", "gate", "open")
-    assert code == 1 and "✗ hvc" in out and "refused: gate: interlock, turbo off" in out
+    assert code == 1 and "refused, nothing sent: needs turbo on, foreline open" in out
+    assert host == []
 
 
 def test_cast_nobody_takes_fails(capsys, monkeypatch):

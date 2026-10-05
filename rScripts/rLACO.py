@@ -77,6 +77,27 @@ def COMMANDS():
     ]
 
 
+def RULES():
+    """What each command needs first (devices/hvc3500/rules.py), thresholds from
+    this bench's tvac_bench.json."""
+    from formslab.devices.hvc3500 import load_profile
+    from formslab.devices.hvc3500.rules import laco_rules
+
+    return laco_rules(load_profile())
+
+
+def RULE_STATE(status):
+    from formslab.devices.hvc3500.rules import laco_state
+
+    return laco_state(status)
+
+
+def RULE_EFFECTS(request):
+    from formslab.devices.hvc3500.rules import laco_effects
+
+    return laco_effects(request)
+
+
 def VARIABLES():
     from formslab.devices.hvc3500 import load_profile
 

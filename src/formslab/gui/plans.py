@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from formslab.console.safefile import atomic_write_text
-from formslab.sequence.plan import ENV, SUFFIX, check_text, discover, user_plans_dir
+from formslab.sequence.plan import ENV, SUFFIX, discover, review, user_plans_dir
 
 NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 
@@ -65,7 +65,14 @@ def read(name: str) -> dict:
     data = path.read_bytes()
     text = data.decode("utf-8", errors="replace").replace("\r\n", "\n")      # a Windows checkout may have CRLF
     return {"name": name, "text": text, "hash": content_hash(data), "editable": is_editable(path),
-            "errors": [{"line": n, "message": m} for n, m in check_text(text)]}
+            **problems(text)}
+
+
+def problems(text: str) -> dict:
+    """{errors, warnings}: [{line, message}] each (see sequence.plan.review)."""
+    errors, warnings = review(text)
+    return {"errors": [{"line": n, "message": m} for n, m in errors],
+            "warnings": [{"line": n, "message": m} for n, m in warnings]}
 
 
 def save(name: str, text: str, base_hash: str | None, as_new: bool) -> dict:
@@ -95,7 +102,7 @@ def save(name: str, text: str, base_hash: str | None, as_new: bool) -> dict:
         target = existing
     atomic_write_text(target, text)
     return {"name": name, "hash": content_hash(text.encode("utf-8")), "editable": True,
-            "errors": [{"line": n, "message": m} for n, m in check_text(text)]}
+            **problems(text)}
 
 
 def trash_dir() -> Path:

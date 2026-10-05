@@ -110,6 +110,8 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .prow:hover .tools, .prow:focus-within .tools { opacity: 1; }
 .prow .tools button { padding: 0 6px; font-size: 12px; line-height: 22px; }
 .prow .rowerr { grid-column: 2 / 4; color: var(--bad); font-size: 12px; }
+.prow .rowwarn { grid-column: 2 / 4; color: var(--warn); font-size: 12px; }
+.prow .rowwarn:empty, .prow .rowerr:empty { display: none; }
 .prow.blank .body { color: var(--muted); font-size: 12px; padding-top: 6px; }
 .chain { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .chain select, .chain input { width: auto; min-width: 70px; font-family: ui-monospace, Consolas, monospace; font-size: 13px; padding: 3px 6px; }

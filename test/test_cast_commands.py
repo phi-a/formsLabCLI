@@ -211,6 +211,9 @@ def run_going(monkeypatch):
     from formslab.console.ctrl import ctrlcli
     monkeypatch.setattr(ctrlcli, "running", lambda: {"pid": 1, "plan": "tvac"})
     monkeypatch.setattr(castutils, "TAKE_S", 0.3)
+    castutils.UpdateStatus("hvc", {"connected": True, "fault_severity": "N", "pressure": 700.0, "platen C": 20.0,
+                                        "shroud C": 20.0, "rough": False, "vent": False, "fill": False,
+                                        "foreline": False, "gate": False, "pump": False, "turbo": False})   # the chamber has just reported: sealed, at rest, no fault
 
 
 def test_the_tab_writes_the_request_and_says_what_became_of_it(run_going):
@@ -240,10 +243,20 @@ def test_the_tab_shows_the_owners_refusal(run_going):
                 return
             threading.Event().wait(0.01)
 
-    threading.Thread(target=owner, daemon=True).start()
+    thread = threading.Thread(target=owner, daemon=True)
+    thread.start()
     result = castcli.execute_command(["hvc", "rough", "open"])
+    thread.join(5)
     assert "✗ hvc ←" in result.content.plain
     assert "refused: rough: refused by the PLC" in result.content.plain
+
+
+def test_the_tab_refuses_what_the_rules_forbid_and_sends_nothing(run_going):
+    from formslab.console.cast.castutils import ReadStatus, UpdateStatus
+    UpdateStatus("hvc", {**ReadStatus("hvc"), "gate": True})
+    result = castcli.execute_command(["hvc", "rough", "open"])
+    assert "refused, nothing sent: needs gate closed" in result.content.plain and not result.ok
+    assert ReadCommand("hvc") == {}
 
 
 def test_the_tab_lists_what_can_come_next():

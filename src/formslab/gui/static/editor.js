@@ -13,7 +13,7 @@
 
   const S = {
     plans: [], name: null, editable: false, hash: null, original: "", lines: [], raw: false,
-    errors: [], available: [], cache: new Map(), checkTimer: null, rows: [], busy: false, tokStamp: 0,
+    errors: [], warnings: [], available: [], cache: new Map(), checkTimer: null, rows: [], busy: false, tokStamp: 0,
     fresh: -1,     // the line just inserted as a step: empty, so it shows the step chooser, not a blank
   };
 
@@ -64,6 +64,7 @@
     if (S.lines[S.lines.length - 1] === "") S.lines.pop();
     S.original = text();
     S.errors = r.errors || [];
+    S.warnings = r.warnings || [];
     S.raw = false;
     S.fresh = -1;
     say("");
@@ -108,7 +109,7 @@
           tools.append(b);
         }
       }
-      row.append(tools, el("div", { class: "rowerr" }));
+      row.append(tools, el("div", { class: "rowerr" }), el("div", { class: "rowwarn" }));
       box.append(row);
       S.rows.push({ row, body });
       renderLine(i);
@@ -356,7 +357,10 @@
     say("");                                                // an edit makes the last "Saved" stale
     clearTimeout(S.checkTimer);
     S.checkTimer = setTimeout(async () => {
-      try { S.errors = (await api("/api/plan/check", { text: text() })).errors; showErrors(); } catch (e) { /* login screen */ }
+      try {
+        const r = await api("/api/plan/check", { text: text() });
+        S.errors = r.errors; S.warnings = r.warnings || []; showErrors();
+      } catch (e) { /* login screen */ }
     }, 400);
   }
 
@@ -367,6 +371,9 @@
       const msgs = new Set(S.errors.filter((e) => e.line === idx + 1).map((e) => e.message));
       if (holder.dataset.stepError) msgs.add(holder.dataset.stepError);
       holder.textContent = [...msgs].join("  ");
+      // A warning: a rule this plan does not establish. It can still run; the step is checked live.
+      const warn = msgs.size ? [] : S.warnings.filter((w) => w.line === idx + 1).map((w) => w.message);
+      r.row.querySelector(".rowwarn").textContent = warn.length ? `\u26a0 ${warn.join("  ")}` : "";
     });
   }
 
@@ -392,11 +399,13 @@
       const r = await api("/api/plan/save", asNew
         ? { name: newName, text: body, as_new: true }
         : { name: S.name, text: body, base_hash: S.hash });
-      S.name = r.name; S.hash = r.hash; S.editable = true; S.errors = r.errors;
+      S.name = r.name; S.hash = r.hash; S.editable = true; S.errors = r.errors; S.warnings = r.warnings || [];
       S.lines = body.split("\n");
       if (S.lines[S.lines.length - 1] === "") S.lines.pop();
       S.original = text();
-      say(r.errors.length ? `Saved, but it cannot run yet: ${r.errors.length} problem(s) below.` : "Saved. It can run.", r.errors.length > 0);
+      say(r.errors.length ? `Saved, but it cannot run yet: ${r.errors.length} problem(s) below.`
+        : S.warnings.length ? `Saved. It can run; ${S.warnings.length} step(s) depend on the chamber at the start (amber), checked when they run.`
+        : "Saved. It can run.", r.errors.length > 0);
       await loadList();
       renderAll();
     } catch (e) {

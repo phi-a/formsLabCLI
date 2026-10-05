@@ -18,7 +18,8 @@ Steps:
 
     <label> <words>     a command to the rScript that owns the label -- the same
                         words as the cast tab (``hvc vent open``). Sent and
-                        awaited until that rScript takes it (10 s limit)
+                        awaited until that rScript takes it (10 s limit), and
+                        for one that reports results until it is done or refused
     hold <n> s|min|h    run the loaded rScripts for a while
     hold until end      until the operator's ctrl `end` (plans/tvac.plan)
     until <variable> above|below <value> [C|K] timeout <n> s|min|h
@@ -29,7 +30,9 @@ Steps:
 
 ``#`` starts a comment on its own line. Commands and variable names come from
 what the loaded rScripts declare (COMMANDS, VARIABLES), checked while the plan
-is read; a mistake is reported with its line number before anything runs.
+is read; a mistake is reported with its line number before anything runs. So
+are the owners' prerequisites (RULES; formslab.sequence.rules): a step that
+breaks one is an error, one the plan does not establish a warning.
 Orbit content (``orbit.*``, ``propagate``, ``@procedure``) is FORMS': a plan
 runs on the wall clock.
 """
@@ -58,9 +61,11 @@ class PlanError(ValueError):
     for the first problem; `errors` lists every one found as (line, message),
     line 0 meaning the document as a whole."""
 
-    def __init__(self, message: str, errors: list[tuple[int, str]] | None = None) -> None:
+    def __init__(self, message: str, errors: list[tuple[int, str]] | None = None,
+                 warnings: list[tuple[int, str]] | None = None) -> None:
         super().__init__(message)
         self.errors = errors if errors is not None else [(0, message)]
+        self.warnings = warnings or []
 
 
 class _LineError(Exception):
@@ -79,6 +84,8 @@ class Plan:
     record_interval: float
     record_unit: str
     sequence: Sequence
+    # (line, message): a rule this plan does not establish, checked when the step runs
+    warnings: tuple[tuple[int, str], ...] = ()
 
 
 # --- finding plans -----------------------------------------------------------
@@ -142,6 +149,7 @@ def parse_plan(source: str, *, path: Path | None = None) -> Plan:
     where = path.name if path else "<plan>"
     name = path.stem if path else "plan"
     errors: list[tuple[int, str]] = []
+    warnings: list[tuple[int, str]] = []
 
     def fail(n, message):
         raise _LineError(n, message)
@@ -157,7 +165,8 @@ def parse_plan(source: str, *, path: Path | None = None) -> Plan:
         if errors:
             errors.sort(key=lambda e: e[0])
             n, message = errors[0]
-            raise PlanError(f"{where}:{n}: {message}" if n else f"{where}: {message}", list(errors))
+            raise PlanError(f"{where}:{n}: {message}" if n else f"{where}: {message}", list(errors),
+                            list(warnings))
 
     if "sequence.operations" in source:
         errors.append((0, "this is the old plan format (sequence.operations = [...]); "
@@ -233,30 +242,43 @@ def parse_plan(source: str, *, path: Path | None = None) -> Plan:
                 fail(n, "until needs `timeout <n> s|min|h`: a wait on hardware always has a limit")
         return replace(_parse(fail, n, grammar, words), label=" ".join(words))
 
-    segments = [seg for n, words in steps if (seg := attempt(check_step, n, words)) is not None]
+    numbered = [(n, seg) for n, words in steps if (seg := attempt(check_step, n, words)) is not None]
+    from formslab.sequence.rules import check as check_rules
+
+    broken, warnings[:] = check_rules(numbered, scripts, published)
+    errors.extend(broken)
     done()
 
     interval, unit = record
+    segments = tuple(seg for _, seg in numbered)
     return Plan(name=name, path=path, rscripts=scripts, record_interval=interval, record_unit=unit,
-                sequence=Sequence(name=name, segments=tuple(segments), rscripts=scripts))
+                sequence=Sequence(name=name, segments=segments, rscripts=scripts),
+                warnings=tuple(sorted(warnings)))
 
 
-def check_text(text: str) -> list[tuple[int, str]]:
-    """Every problem in plan `text` as (line, message), line 0 for the document
-    as a whole; [] for a plan that can run. Also notes rScripts on the `load`
-    line that cannot be found, which reading alone does not mind."""
+def review(text: str) -> tuple[list[tuple[int, str]], list[tuple[int, str]]]:
+    """(errors, warnings) in plan `text`, each (line, message), line 0 for the
+    document as a whole. An error keeps the plan from running; a warning is a
+    rule the plan does not establish, checked when its step runs. Also notes
+    rScripts on the `load` line that cannot be found, which reading alone does
+    not mind."""
     try:
         plan = parse_plan(text)
-        errors: list[tuple[int, str]] = []
+        errors, warnings = [], list(plan.warnings)
     except PlanError as e:
-        plan, errors = None, list(e.errors)
+        errors, warnings = list(e.errors), list(e.warnings)
     from formslab import rscripts
 
     for n, line in enumerate(text.splitlines(), 1):
         words = line.split()
         if words and words[0].lower() == "load":
             errors += [(n, f"rScript {w} not found") for w in words[1:] if rscripts.find(w) is None]
-    return sorted(errors, key=lambda e: e[0])
+    return sorted(errors, key=lambda e: e[0]), sorted(warnings, key=lambda e: e[0])
+
+
+def check_text(text: str) -> list[tuple[int, str]]:
+    """Every error in plan `text` (see `review`); [] for a plan that can run."""
+    return review(text)[0]
 
 
 def needed_rscripts(text: str) -> list[str]:

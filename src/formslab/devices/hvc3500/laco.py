@@ -462,7 +462,7 @@ class LACO:
                 out.append(("WARNING", f"{name}: expected {'/'.join(words)}, got {request[name]!r}"))
                 continue
             attempt(name, lambda n=name, v=v: self.device(n, v),
-                    lambda got, n=name, w=words: f"{n} verified {w[0] if got else w[1]}")
+                    lambda got, n=name, w=words: f"{n} verified {w[0] if got else 'closed' if w[1] == 'close' else w[1]}")
 
         known.add("stop_pumping")
         if request.get("stop_pumping") is True:

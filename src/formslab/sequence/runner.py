@@ -131,15 +131,26 @@ def _command(runner, run, segment) -> int:
     label = segment.params["label"]
     request = segment.params["request"]
     timeout = segment.params["timeout_s"]
-    # The step ends when the request is taken, or, for an owner that reports
-    # results (rLACO), when it has been carried out: a refusal stops the plan.
-    wait = rscripts.reports_results(label)
+    from formslab.rscripts.rules import assess
+
     n = 0
 
     def tick():
         nonlocal n
         n += 1
         runner.step(segment.verb, n)
+
+    # The owner's rules first. One the chamber's last report breaks stops the plan
+    # here; one it cannot tell yet (the owner has not reported since the start) is
+    # waited for, within the step's limit.
+    start = runner.elapsed
+    while problems := assess(label, request):
+        if any(definite for _, definite in problems) or runner.elapsed - start >= timeout:
+            raise SequenceError(f"{label}: {request} not sent: " + "; ".join(w for w, _ in problems))
+        tick()
+    # The step ends when the request is taken, or, for an owner that reports
+    # results (rLACO), when it has been carried out: a refusal stops the plan.
+    wait = rscripts.reports_results(label)
 
     out = send_request(request, label, wait_result=wait, take_s=timeout,
                        clock=lambda: runner.elapsed, tick=tick)

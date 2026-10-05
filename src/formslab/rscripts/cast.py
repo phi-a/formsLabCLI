@@ -53,6 +53,11 @@ def script_name(module) -> str:
     return module.__name__.split(".")[-1]
 
 
+def labels_of(module) -> tuple[str, ...]:
+    """The CAST labels a script owns."""
+    return tuple(str(x).lower() for x in getattr(module, "CAST_LABELS", ()))
+
+
 # --- discovery ---------------------------------------------------------------------
 
 _cache: dict[Path, tuple[float, object]] = {}
@@ -154,16 +159,22 @@ def send(label: str, request: dict, *, host: dict | None, wait_result: bool | No
 
     `host` is the running host's lock. With none the command is refused and
     nothing is written: the host clears CAST when it starts, so a request written
-    beforehand would be lost. Returns {label, request, state, ok, messages, text},
+    beforehand would be lost. A command the owner's rules forbid right now
+    (formslab.rscripts.rules) is refused too, with the reason. Returns {label,
+    request, state, ok, messages, text},
     where state is "refused" (not sent), "not_taken", "cleared", "taken" or "done",
     and `text` says it in one line."""
     from formslab.console.cast import castutils
+    from formslab.rscripts.rules import refusal
 
     label = label.lower()
     out = {"label": label, "request": request, "messages": []}
     if host is None:
         return {**out, "state": "refused", "ok": False,
                 "text": "refused: no run is going, so nothing would apply it; nothing sent"}
+    if why := refusal(label, request):
+        return {**out, "state": "refused", "ok": False, "messages": [why],
+                "text": f"refused, nothing sent: {why}"}
     if wait_result is None:
         wait_result = reports_results(label)
     take_s = castutils.TAKE_S if take_s is None else take_s

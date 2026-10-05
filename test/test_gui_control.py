@@ -229,7 +229,9 @@ def owner():
 
 def live_hvc():
     castutils.GenerateCleanCast()
-    castutils.UpdateStatus("hvc", {"connected": True, "pressure": 4.4})
+    castutils.UpdateStatus("hvc", {"connected": True, "fault_severity": "N", "pressure": 700.0, "platen C": 20.0,
+                                        "shroud C": 20.0, "rough": False, "vent": False, "fill": False,
+                                        "foreline": False, "gate": False, "pump": False, "turbo": False})
 
 
 def test_a_command_is_sent_and_taken(client, host_up, owner):
@@ -256,15 +258,24 @@ def test_a_command_nobody_takes_is_reported_as_not_taken(client, host_up, monkey
 
 def test_a_command_the_chamber_refuses_says_why(client, host_up):
     live_hvc()
-    taken, stop, thread = _owner(lambda req: (False, ["gate: still closed (interlock: turbo off)"]))
+    taken, stop, thread = _owner(lambda req: (False, ["rough: still closed (interlock)"]))
     try:
-        code, body = client.json("POST", "/api/cast", {"line": "hvc gate open"})
+        code, body = client.json("POST", "/api/cast", {"line": "hvc rough open"})
     finally:
         stop.set()
         thread.join(2)
     assert code == 200 and body["ok"] is False
-    assert body["text"] == "refused: gate: still closed (interlock: turbo off)"
-    assert "cast hvc gate open (refused: gate" in (config.run_dir() / "gui.log").read_text(encoding="utf-8")
+    assert body["text"] == "refused: rough: still closed (interlock)"
+    assert "cast hvc rough open (refused: rough" in (config.run_dir() / "gui.log").read_text(encoding="utf-8")
+
+
+def test_a_command_the_rules_forbid_is_not_sent(client, host_up, owner):
+    live_hvc()
+    castutils.UpdateStatus("hvc", {**castutils.ReadStatus("hvc"), "platen C": 85.0})
+    code, body = client.json("POST", "/api/cast", {"line": "hvc vent open"})
+    assert code == 200 and body["ok"] is False and body["state"] == "refused"
+    assert "needs platenT below 60 C" in body["text"] and "vent window" in body["text"]
+    assert owner == []
 
 
 def test_a_bad_command_says_what_would_fit_and_sends_nothing(client, host_up):

@@ -216,7 +216,7 @@ class Handler(BaseHTTPRequestHandler):
             result = api.ctrl(path[len("/api/"):])
             audit(user, path[len("/api/"):])
         elif path == "/api/plan/check":
-            return self._json(200, {"errors": api.plan_check(str(body.get("text", "")))})
+            return self._json(200, api.plan_check(str(body.get("text", ""))))
         elif path == "/api/plan/line":
             scripts, words = body.get("scripts", []), body.get("words", [])
             if not all(isinstance(w, str) for w in [*scripts, *words]):

@@ -88,7 +88,10 @@ def test_a_failed_pumpdown_still_ends_with_rough_closed_and_pump_off(chamber, mo
 
 def test_a_refused_command_stops_the_plan_at_that_step(chamber, monkeypatch, tmp_path):
     """The gate valve will not open with the turbo off: the step fails with the
-    controller's reason instead of the plan running on, and rShutdown still runs."""
+    controller's reason instead of the plan running on, and rShutdown still runs.
+    (The rules would stop it before sending; here they are off, to reach the PLC.)"""
+    from formslab.rscripts import rules
+    monkeypatch.setattr(rules, "assess", lambda *a, **k: [])
     plan = tmp_path / "gate.plan"
     plan.write_text("load rLACO\nhvc pump on\nhvc gate open\nlog never reached\n", encoding="utf-8")
     _quick(monkeypatch)
@@ -97,6 +100,15 @@ def test_a_refused_command_stops_the_plan_at_that_step(chamber, monkeypatch, tmp
     s = chamber.state
     assert not s.devices["OG"]
     assert not s.devices["OP"]          # the pump this run started was stopped
+
+
+def test_the_rules_stop_a_step_before_it_is_sent(chamber, monkeypatch, tmp_path):
+    plan = tmp_path / "gate.plan"
+    plan.write_text("load rLACO\nhvc pump on\nhvc gate open\nlog never reached\n", encoding="utf-8")
+    _quick(monkeypatch)
+    with pytest.raises(SequenceError, match="not sent: needs turbo on"):
+        sequence.channel(plan_path=plan)
+    assert not chamber.state.devices["OG"] and not chamber.state.devices["OP"]
 
 
 def test_a_command_with_the_chamber_unreachable_is_refused(monkeypatch, tmp_path):

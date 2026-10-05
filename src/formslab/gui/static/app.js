@@ -206,8 +206,10 @@
       sel.replaceChildren();
       for (const p of r.plans) {
         const o = el("option", { value: p.name },
-          p.error ? `${p.name} (cannot run)` : `${p.name} - ${p.rscripts.join(", ")}${p.open_ended ? " - until you end it" : ""}`);
+          p.error ? `${p.name} (cannot run)`
+            : `${p.name} - ${p.rscripts.join(", ")}${p.open_ended ? " - until you end it" : ""}${p.warnings?.length ? " - \u26a0 checks at the start" : ""}`);
         if (p.error) { o.disabled = true; o.title = p.error; }
+        else if (p.warnings?.length) o.title = p.warnings.join("\n");
         sel.append(o);
       }
       if (keep) sel.value = keep;

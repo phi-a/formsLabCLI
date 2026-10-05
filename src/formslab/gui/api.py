@@ -24,7 +24,7 @@ from formslab import rscripts
 from formslab.rscripts import cast
 from formslab.rscripts.grammar import GrammarError
 from formslab.sequence import PlanError, discover, load_plan
-from formslab.sequence.plan import available_rscripts, check_text, line_options, needed_rscripts, tokens
+from formslab.sequence.plan import available_rscripts, line_options, needed_rscripts, tokens
 from formslab.state import cast_state_path
 
 # How often each block is republished while its owner runs (seconds). A block
@@ -184,6 +184,7 @@ def list_plans() -> list[dict]:
                 continue
             out.append({"name": path.stem, "rscripts": list(plan.rscripts),
                         "steps": len(plan.sequence.segments), "editable": plans.is_editable(path),
+                        "warnings": [f"line {n}: {m}" for n, m in plan.warnings],
                         "open_ended": any(s.verb == "hold" and s.params["seconds"] is None
                                           for s in plan.sequence.segments)})
     return out
@@ -317,10 +318,10 @@ def plan_save(name: str, text: str, base_hash: str | None, as_new: bool) -> dict
         return _plan_call(plans.save, name, text, base_hash, as_new)
 
 
-def plan_check(text: str) -> list[dict]:
-    """Every problem in the plan text, each with its line (0: the whole file)."""
+def plan_check(text: str) -> dict:
+    """{errors, warnings} in the plan text, each [{line, message}] (0: the whole file)."""
     with _lock:
-        return [{"line": n, "message": m} for n, m in check_text(text)]
+        return plans.problems(text)
 
 
 def plan_line(scripts: list[str], words: list[str]) -> dict:

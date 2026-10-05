@@ -21,7 +21,7 @@ log done
 
 | step | does | fails the plan when |
 |---|---|---|
-| `<label> <words>` | a command to the routine that owns the label (`hvc vent open`, `psu1 ch1 on`, `cryo ccv 14`) -- the cast tab's words; waits until the routine has taken it | not taken within 10 s |
+| `<label> <words>` | a command to the routine that owns the label (`hvc vent open`, `psu1 ch1 on`, `cryo ccv 14`) -- the cast tab's words; waits until the routine has taken it, and for the chamber (rLACO) until it is done | a prerequisite is not met (below); not taken within 10 s; the chamber refuses it |
 | `hold <n> s\|min\|h` | runs the routines for a while | — |
 | `hold until end` | runs until ctrl `end` (`tvac.plan`: manual operation) | — |
 | `until <value> above\|below <n> [C\|K] timeout <n> s\|min\|h` | runs until a published value crosses a limit; `C`/`K` converts from the value's own unit | not met by the timeout (required: a wait on hardware always has a limit) |
@@ -43,6 +43,39 @@ tvac.plan:4: expected s, min or h after 'hold 30', got 'sec'; did you mean 's'?
 
 To see what can follow some words, end them with `?` in the cast tab
 (`hvc platen ?`) or `labcli cast hvc platen ?`.
+
+### Prerequisites
+
+Some commands are only safe in some states, and the routine that owns them
+says which (`RULES`, rScripts/README.md). The chamber's, with limits from
+`tvac_bench.json`:
+
+| command | needs first |
+|---|---|
+| `hvc vent open`, `hvc fill open` | rough and gate closed; every zone inside the vent window (10..60 C); no fault |
+| `hvc rough open` | vent, fill, foreline and gate closed |
+| `hvc pump off` | rough and foreline closed, turbo off (`hvc stop` does it in order) |
+| `hvc foreline open` | rough closed |
+| `hvc turbo on` | foreline open |
+| `hvc gate open` | turbo on, foreline open, chamberP below the crossover (0.01 Torr) |
+| `cryo on` | its supply at 20 V or more |
+| anything, during a fault (severity F) | refused, except closing valves, `stop`, zones off, `closeall`, `reset`, `abort` |
+| a supply channel the hardware map gives an owner | refused while that owner runs (psu1 ch1: rCryoBoard) |
+
+They are checked when the plan is read. A step that breaks one is an error
+and the plan cannot start:
+
+```
+bad.plan:5: needs rough closed (line 4 changed it): air may only come in with the chamber sealed ...
+```
+
+A step whose conditions the plan does not itself establish is a **warning**
+(amber in the editor; the plan can run). The plan establishes a state by
+commanding it (`hvc rough close`), or a value with an `until` just before the
+step (`until platenT below 60 C ...`, as `laco_vent` does). Every rule is then
+checked again, live, when the step runs, against what the chamber last reported:
+a step it fails stops the plan, before anything is sent. The command box, the
+cast tab and `labcli cast` check the same rules and refuse with the reason.
 
 Shipped plans: `tvac` (manual operation from the cast tab, until `end`),
 `psu1_smtc08_first` (PSU1 + thermocouples), `laco_pumpdown`
