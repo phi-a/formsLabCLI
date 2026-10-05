@@ -44,6 +44,10 @@ def COMMANDS():
     ]
 
 
+# Nothing is published until a request chooses an orbit, so a plan that waits on
+# one of the VARIABLES before `orbit follow` or `orbit replay` is refused when read.
+STARTED_BY = ("follow", "replay")
+
 VARIABLES = [("InUmbra", None), ("UmbraDuration", "s"), ("UmbraTimeRemaining", "s"),
              ("NextUmbra", "s"), ("OrbitBeta", "deg"), ("OrbitAltitude", "km")]
 

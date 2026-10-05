@@ -156,3 +156,29 @@ def test_a_run_replays_an_orbit_and_the_eclipse_block_ends_at_the_umbra(tmp_path
 def test_the_blocks_need_rorbit_loaded_and_the_orbit_must_exist():
     assert check_text("load rSLTA\neclipse within 5\n") == [(2, "eclipse needs rOrbit; add it to `load`")]
     assert "expected leo_dawn_dusk or leo_noon" in check_text("load rOrbit\norbit follow nowhere\n")[0][1]
+
+
+# --- a wait on rOrbit's values comes after an orbit is chosen -------------------------------------
+
+HEAD = "load rOrbit rLACO\nrecord every 10 s\n"
+NOT_YET = "InUmbra has no value yet: rOrbit publishes it only after `orbit follow` or `orbit replay`"
+
+
+@pytest.mark.parametrize("steps, line", [
+    ("eclipse within 120\norbit follow leo_noon\n", 3),                               # through a block
+    ("until InUmbra above 0.5 timeout 10 min\norbit replay leo_noon\n", 3),
+    ("repeat until InUmbra above 0.5 timeout 2 h\nhold 10 s\nend\n", 3),               # never chosen
+    ("repeat 2 times\neclipse within 10\norbit follow leo_noon\nend\n", 4),            # the first pass waits first
+])
+def test_a_wait_before_the_orbit_is_chosen_is_an_error(steps, line):
+    errors = dict(check_text(HEAD + steps))
+    assert NOT_YET in errors[line] and "can only time out" in errors[line]
+
+
+@pytest.mark.parametrize("steps", [
+    "orbit follow leo_noon\neclipse within 120\nsunrise within 60\n",
+    "repeat until InUmbra above 0.5 timeout 2 h\norbit follow leo_noon\nhold 10 s\nend\n",   # read again after a pass
+    "repeat 3 times\norbit follow leo_noon\nend\neclipse within 120\n",
+])
+def test_a_wait_after_the_orbit_is_chosen_is_fine(steps):
+    assert check_text(HEAD + steps) == []

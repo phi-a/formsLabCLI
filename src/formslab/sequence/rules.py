@@ -162,9 +162,66 @@ def _worse(first, second):
     return out
 
 
+def _waits_before_start(steps, scripts) -> list[tuple[int, str]]:
+    """(line, message) for each wait on a value that its rScript publishes only
+    once a request has started it (STARTED_BY: rOrbit's `orbit follow`, `orbit
+    replay`), where the plan has sent no such request yet: that wait can only
+    time out. A `repeat until` reads before each pass, so a body that starts it
+    is in time for the second read."""
+    from formslab.rscripts import cast
+
+    labels, _ = cast.owners()
+    starts = {}                                          # variable -> (label, script, request words)
+    for label, module in labels.items():
+        words = tuple(getattr(module, "STARTED_BY", ()))
+        if words and cast.script_name(module) in scripts:
+            for variable, _unit in cast.variables(module):
+                starts[variable.lower()] = (label, cast.script_name(module), words)
+    out: list = []
+
+    def unstarted(variable, started):
+        hit = starts.get(variable.lower())
+        return hit if hit and hit[0] not in started else None
+
+    def read(n, seg, variable, started):
+        if hit := unstarted(variable, started):
+            label, script, words = hit
+            how = " or ".join(f"`{label} {w}`" for w in words)
+            within = f"In {origin_text(seg.origin)}: " if seg.origin else ""
+            out.append((n, f"{within}{variable} has no value yet: {script} publishes it only after {how}. "
+                           f"Add one before this step, or the wait can only time out."))
+
+    def run(items, started):
+        for item in items:
+            if len(item) == 3:                           # a loop
+                n, seg, body = item
+                cond = seg.params.get("until")
+                after = run(body, started)
+                if cond:
+                    read(n, seg, cond["variable"], after)
+                # A pass runs unless a `repeat until` is met at once, which a value
+                # not published yet cannot be.
+                if not cond or unstarted(cond["variable"], started):
+                    started = after
+                continue
+            n, seg = item
+            if seg.verb == "until":
+                read(n, seg, seg.params["variable"], started)
+            elif seg.verb == "command":
+                label, request = seg.params["label"], seg.params["request"]
+                if any(h[0] == label and isinstance(request, dict) and any(w in request for w in h[2])
+                       for h in starts.values()):
+                    started = started | {label}
+        return started
+
+    if starts:
+        run(_tree(steps), frozenset())
+    return out
+
+
 def check(steps, scripts, published: dict) -> tuple[list, list]:
     """(errors, warnings) as (line, message) for `steps`, [(line, Segment)]."""
-    errors, warnings = [], []
+    errors, warnings = list(_waits_before_start(steps, scripts)), []
     for n, findings in walk(steps, scripts, published):
         for f in findings:
             broken = [c["text"] for c in f["conditions"] if c["status"] == BROKEN]

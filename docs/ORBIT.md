@@ -111,7 +111,9 @@ sunrise within 60
 | `sunrise within <minutes>` | a block: waits for it to leave the umbra |
 
 The orbit names offered are the orbit files on the plan path. A file that does not
-read is refused when the step runs, and the run stops there.
+read is refused when the step runs, and the run stops there. Nothing is published
+before `orbit follow` or `orbit replay`, so a plan that waits on one of these values
+before either is refused when it is read: that wait could only time out.
 
 | value | means |
 |---|---|
