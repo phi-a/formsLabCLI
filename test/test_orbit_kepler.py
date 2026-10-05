@@ -1,6 +1,7 @@
-"""Two-body Kepler motion (formslab.orbit.propagate.kepler): the orbit closes,
-energy and angular momentum hold, the anomalies convert both ways, and the umbra
-and beta agree with the circular-orbit formulas beside it."""
+"""Kepler motion (formslab.orbit.propagate.kepler): without J2 the orbit closes,
+energy and angular momentum hold; the anomalies convert both ways; the umbra and
+beta agree with the circular-orbit formulas beside it; and with J2 the node turns
+at the rate that keeps a sun-synchronous orbit's local time."""
 import math
 from datetime import datetime, timedelta, timezone
 import pytest
@@ -16,7 +17,7 @@ EPOCH = datetime(2026, 10, 5, 12, tzinfo=timezone.utc)
 
 
 def circular(raan_deg, a=6928e3, i_deg=97.6):
-    return Elements(a, 0.0, math.radians(i_deg), math.radians(raan_deg), 0.0, 0.0, EPOCH)
+    return Elements(a, 0.0, math.radians(i_deg), math.radians(raan_deg), 0.0, 0.0, EPOCH, j2=False)
 
 
 def norm(v):
@@ -34,7 +35,7 @@ def test_the_period_is_kepler_s_third_law():
 
 
 def test_after_one_period_the_satellite_is_back_where_it_started():
-    el = Elements(7000e3, 0.3, 0.5, 1.0, 2.0, 0.3, EPOCH)
+    el = Elements(7000e3, 0.3, 0.5, 1.0, 2.0, 0.3, EPOCH, j2=False)
     r0, v0 = state(el, EPOCH)
     r1, v1 = state(el, EPOCH + timedelta(seconds=el.period))
     assert max(abs(a - b) for a, b in zip(r0, r1)) < 0.01                  # metres
@@ -42,7 +43,7 @@ def test_after_one_period_the_satellite_is_back_where_it_started():
 
 
 def test_energy_and_angular_momentum_hold_around_an_eccentric_orbit():
-    el = Elements(9000e3, 0.3, 1.1, 0.4, 2.5, 0.0, EPOCH)
+    el = Elements(9000e3, 0.3, 1.1, 0.4, 2.5, 0.0, EPOCH, j2=False)
     energies, momenta = [], []
     for k in range(24):
         r, v = state(el, EPOCH + timedelta(seconds=el.period * k / 24))
@@ -114,7 +115,9 @@ def test_live_says_where_the_satellite_is_and_when_the_umbra_comes():
 
 from formslab.orbit.propagate.orbit import Orbit  # noqa: E402
 
-ECCENTRIC = Elements(8000e3, 0.1, math.radians(40), math.radians(70), math.radians(30), math.radians(50), EPOCH)
+# The sweep is one orbit of two-body motion (see Orbit); compared without J2.
+ECCENTRIC = Elements(8000e3, 0.1, math.radians(40), math.radians(70), math.radians(30), math.radians(50), EPOCH,
+                     j2=False)
 
 
 def test_a_circular_orbit_sweeps_from_the_node_at_the_epoch():
@@ -162,3 +165,77 @@ def test_the_sweeps_umbra_is_where_the_live_propagation_finds_it(elements):
     assert min(abs(entry / orbit.n - s) for s in starts) < 5
     assert min(abs((exit_ % (2 * math.pi)) / orbit.n - e) for e in ends) < 5
     assert orbit.in_eclipse((entry + exit_) / 2) and not orbit.in_eclipse(exit_ + 0.1)
+
+
+def test_a_sweep_at_a_later_date_starts_where_j2_has_carried_the_orbit():
+    el = Elements(8000e3, 0.1, math.radians(40), math.radians(70), math.radians(30), math.radians(50), EPOCH)
+    later = EPOCH + timedelta(days=40)
+    orbit = Orbit(el.at(later))
+    r, _ = state(el, later)
+    assert max(abs(a - b) for a, b in zip(orbit.position_eci(orbit.u0), r)) < 1e-3
+
+
+# --- J2 -------------------------------------------------------------------------------------------
+
+def test_j2_turns_a_sun_synchronous_plane_with_the_sun():
+    raan_dot, _, _ = Elements(6928e3, 0.0, math.radians(97.6), 0.0, 0.0, 0.0, EPOCH).rates
+    assert math.degrees(raan_dot) * 86400 == pytest.approx(360 / 365.2422, rel=0.01)       # 0.9856 deg/day
+
+
+def test_j2_rates_have_their_textbook_signs_and_zeros():
+    def rates(i_deg):
+        return Elements(7000e3, 0.01, math.radians(i_deg), 0.0, 0.0, 0.0, EPOCH).rates
+    assert rates(30)[0] < 0 < rates(150)[0]                         # prograde: the node moves west
+    assert rates(90)[0] == pytest.approx(0, abs=1e-15)              # a polar plane does not turn
+    assert rates(math.degrees(math.asin(math.sqrt(0.8))))[1] == pytest.approx(0, abs=1e-15)   # critical: perigee fixed
+    assert rates(30)[2] > Elements(7000e3, 0.01, 0.5, 0, 0, 0, EPOCH).n * 0.999
+
+
+def test_without_j2_nothing_drifts():
+    el = circular(120)
+    later = el.at(EPOCH + timedelta(days=100))
+    assert (later.raan, later.argp) == (el.raan, el.argp)
+
+
+def test_moving_the_epoch_there_and_back_gives_the_same_orbit():
+    el = Elements(7500e3, 0.05, 1.0, 2.0, 3.0, 4.0, EPOCH)
+    back = el.at(EPOCH + timedelta(days=12, seconds=345)).at(EPOCH)
+    for a, b in ((back.raan, el.raan), (back.argp, el.argp), (back.nu, el.nu)):
+        assert math.remainder(a - b, 2 * math.pi) == pytest.approx(0, abs=1e-9)
+
+
+@pytest.mark.parametrize("name, ltan", [("leo_dawn_dusk", 18.0), ("leo_noon", 12.0)])
+def test_the_shipped_sun_synchronous_orbits_keep_their_local_time_for_a_year(name, ltan):
+    """Without J2 the plane stays put while the Sun moves a degree a day: within a
+    month the local time had moved two hours and the hot case had an eclipse.
+    What is left is the equation of time, measured from the epoch's: +11 min on
+    5 October, -14 min in February, so up to 25 minutes."""
+    from formslab.orbit.file import discover, parse
+    from formslab.orbit.propagate.orbit import ltan_for_raan
+
+    el = parse(next(p for p in discover() if p.stem == name).read_text(encoding="utf-8"))
+    for days in range(0, 366, 30):
+        t = el.epoch + timedelta(days=days)
+        assert abs(ltan_for_raan(t, el.at(t).raan) - ltan) < 0.5
+
+
+def test_the_noon_orbit_is_the_cold_case_all_year():
+    from formslab.orbit.file import discover, parse
+
+    el = parse(next(p for p in discover() if p.stem == "leo_noon").read_text(encoding="utf-8"))
+    for days in range(0, 366, 45):
+        t = el.epoch + timedelta(days=days)
+        spans = umbra_spans(el, t, t + timedelta(seconds=el.period * 2))
+        assert max((b - a).total_seconds() for a, b in spans) > 34 * 60
+
+
+def test_the_panel_and_the_run_read_the_umbra_the_same_way():
+    """The live panel (live) and rOrbit (situation) share one reading."""
+    from formslab.orbit.propagate.kepler import situation, umbra_window
+
+    el = Elements(6928e3, 0.001, math.radians(97.6), math.radians(191.3), 0.0, 0.0, EPOCH)
+    for minutes in (0, 20, 50, 80):
+        t = EPOCH + timedelta(minutes=minutes)
+        panel, run = live(el, t), situation(el, t, umbra_window(el, t)[0])
+        assert panel["umbra"] == run["in_umbra"] and panel["next_umbra_s"] == run["next_umbra_s"]
+        assert panel["umbra_duration_s"] == run["umbra_duration_s"] > 30 * 60

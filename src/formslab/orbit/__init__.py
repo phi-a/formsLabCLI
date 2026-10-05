@@ -3,8 +3,8 @@
 Subpackages, lowest layer first. A layer imports only from layers above it
 in this list.
 
-    propagate    constants, Sun ephemeris, two-body motion from Keplerian
-                 elements (`kepler`), the `Orbit` the models sweep (LVLH/ECI
+    propagate    constants, Sun ephemeris, Kepler motion with J2 drift from
+                 Keplerian elements (`kepler`), the `Orbit` the models sweep (LVLH/ECI
                  frames, umbra) and circular-orbit formulas (beta, eclipse
                  arc, J2 RAAN drift)
     geometry     attitude laws, SO(3) tools, CubeSat body geometry

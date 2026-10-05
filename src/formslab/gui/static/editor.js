@@ -655,7 +655,7 @@
   }
 
   function renderLive(box, r) {
-    const title = el("div", { class: "title" }, "Now, by two-body motion");
+    const title = el("div", { class: "title" }, "Now");
     box.classList.toggle("stale", !!r.error);
     if (r.error) { box.replaceChildren(title, el("p", { class: "details" }, `Not propagated: ${r.error}`)); return; }
     const deg = (x) => `${x.toFixed(1)}°`;

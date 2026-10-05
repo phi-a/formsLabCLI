@@ -23,8 +23,9 @@ jobs:
         with:
           python-version: "3.11"
 
+      # The orbit extra (scipy, matplotlib), so the transient solver and plot tests run too.
       - name: Install
-        run: pip install -e ".[dev]"
+        run: pip install -e ".[dev,orbit]"
 
       - name: Test
         run: pytest -q

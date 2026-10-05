@@ -1,17 +1,19 @@
-"""Two-body Kepler motion from classical orbital elements.
+"""Kepler motion from classical orbital elements, with the Earth's J2 drift.
 
-The satellite moves on a fixed ellipse: the Earth is a point mass, so there is
-no J2 (the plane does not turn, and a sun-synchronous orbit slowly loses its
-local time), no drag and no third body. Altitude is above a spherical Earth.
-Frames are ECI (J2000-like, the Sun ephemeris's), metres, seconds, radians.
+The satellite moves on a Kepler ellipse whose node, perigee and mean anomaly
+drift at J2's secular rates: the Earth's flattening turns the orbit's plane, so
+a sun-synchronous orbit keeps its local time. Left out: J2's short-period
+wobble (kilometres), drag and the Moon's and Sun's pull. Altitude is above a
+spherical Earth. Frames are ECI (J2000-like, the Sun ephemeris's), metres,
+seconds, radians.
 """
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 
-from .constants import MU, R_E, R_SUN
+from .constants import J2, MU, R_E, R_SUN
 from .sun import sun_dist, sun_ra_dec
 
 UMBRA_SAMPLES = 360        # samples per orbit when looking for umbra entry and exit
@@ -28,10 +30,11 @@ class Elements:
     argp: float         # argument of perigee [rad]
     nu: float           # true anomaly at the epoch [rad]
     epoch: datetime     # UTC, timezone-aware
+    j2: bool = True     # drift node, perigee and mean anomaly at J2's secular rates
 
     @property
     def n(self) -> float:
-        """Mean motion [rad/s]."""
+        """Mean motion of the Kepler ellipse [rad/s]."""
         return math.sqrt(MU / self.a ** 3)
 
     @property
@@ -43,6 +46,28 @@ class Elements:
     def perigee_altitude(self) -> float:
         """Lowest altitude above the surface [m]."""
         return self.a * (1 - self.e) - R_E
+
+    @property
+    def rates(self) -> tuple[float, float, float]:
+        """How fast the node, the perigee and the mean anomaly move [rad/s]: J2's
+        first-order secular rates, or 0, 0, n without J2."""
+        if not self.j2:
+            return 0.0, 0.0, self.n
+        k = 1.5 * J2 * (R_E / (self.a * (1 - self.e ** 2))) ** 2 * self.n
+        s2 = math.sin(self.i) ** 2
+        return (-k * math.cos(self.i),
+                k * (2 - 2.5 * s2),
+                self.n + k * math.sqrt(1 - self.e ** 2) * (1 - 1.5 * s2))
+
+    def at(self, t: datetime) -> "Elements":
+        """The same orbit with its epoch moved to `t`: node, perigee and anomaly
+        carried there."""
+        dt = (t - self.epoch).total_seconds()
+        raan_dot, argp_dot, m_dot = self.rates
+        M = mean_from_true(self.nu, self.e) + m_dot * dt
+        return replace(self, raan=(self.raan + raan_dot * dt) % (2 * math.pi),
+                       argp=(self.argp + argp_dot * dt) % (2 * math.pi),
+                       nu=true_from_mean(M, self.e) % (2 * math.pi), epoch=t)
 
 
 # --- anomalies ---------------------------------------------------------------------
@@ -68,8 +93,7 @@ def true_from_mean(M: float, e: float) -> float:
 
 def true_anomaly(el: Elements, t: datetime) -> float:
     """True anomaly [rad, 0..2pi) at time `t`."""
-    M = mean_from_true(el.nu, el.e) + el.n * (t - el.epoch).total_seconds()
-    return true_from_mean(M, el.e) % (2 * math.pi)
+    return el.at(t).nu
 
 
 # --- position and velocity ---------------------------------------------------------
@@ -85,20 +109,22 @@ def _perifocal_axes(el: Elements):
 
 
 def state(el: Elements, t: datetime):
-    """Position [m] and velocity [m/s] in ECI at time `t`, as two 3-tuples."""
-    nu = true_anomaly(el, t)
-    p = el.a * (1 - el.e ** 2)
-    r = p / (1 + el.e * math.cos(nu))
+    """Position [m] and velocity [m/s] in ECI at time `t`, as two 3-tuples: on
+    the ellipse the elements describe at `t`."""
+    now = el.at(t)
+    nu = now.nu
+    p = now.a * (1 - now.e ** 2)
+    r = p / (1 + now.e * math.cos(nu))
     x, y = r * math.cos(nu), r * math.sin(nu)
     k = math.sqrt(MU / p)
-    vx, vy = -k * math.sin(nu), k * (el.e + math.cos(nu))
-    P, Q = _perifocal_axes(el)
+    vx, vy = -k * math.sin(nu), k * (now.e + math.cos(nu))
+    P, Q = _perifocal_axes(now)
     return (tuple(x * P[j] + y * Q[j] for j in range(3)),
             tuple(vx * P[j] + vy * Q[j] for j in range(3)))
 
 
 def orbit_normal(el: Elements):
-    """Unit vector along the angular momentum, in ECI."""
+    """Unit vector along the angular momentum, in ECI, at the elements' epoch."""
     si = math.sin(el.i)
     return (si * math.sin(el.raan), -si * math.cos(el.raan), math.cos(el.i))
 
@@ -112,8 +138,8 @@ def sun_direction(t: datetime):
 
 
 def beta(el: Elements, t: datetime) -> float:
-    """Sun beta angle [rad]: the Sun's elevation above the orbit's plane."""
-    s, h = sun_direction(t), orbit_normal(el)
+    """Sun beta angle [rad] at `t`: the Sun's elevation above the orbit's plane."""
+    s, h = sun_direction(t), orbit_normal(el.at(t))
     return math.asin(max(-1.0, min(1.0, sum(a * b for a, b in zip(s, h)))))
 
 
@@ -169,30 +195,56 @@ def umbra_spans(el: Elements, t0: datetime, t1: datetime) -> list[tuple[datetime
     return spans
 
 
-# --- what the live panel shows -----------------------------------------------------
+# --- where the satellite is: the live panel and rOrbit -----------------------------
+
+def umbra_window(el: Elements, t: datetime):
+    """Umbra spans from one period before `t` to three after, and the time after
+    which they no longer reach far enough: an umbra under way at `t`, and the
+    next one, are always whole in them. Found once, used until then."""
+    period = timedelta(seconds=el.period)
+    return umbra_spans(el, t - period, t + 3 * period), t + period
+
+
+def situation(el: Elements, t: datetime, spans) -> dict:
+    """Whether the satellite is in umbra at `t` and for how long, given the spans
+    `umbra_window` found around `t`: what the live panel shows and rOrbit
+    publishes. Times are seconds; `next_umbra_s` is None when there is none."""
+    current = next(((a, b) for a, b in spans if a <= t < b), None)
+    coming = next(((a, b) for a, b in spans if a > t), None)
+    shown = current or coming
+    r, _ = state(el, t)
+    return {
+        "in_umbra": current is not None,
+        # In umbra, this umbra's whole length; in sunlight, the next one's (rSLTA
+        # sets its exposure from it ahead of time); 0 when there is none.
+        "umbra_duration_s": (shown[1] - shown[0]).total_seconds() if shown else 0.0,
+        "umbra_left_s": (current[1] - t).total_seconds() if current else 0.0,
+        "next_umbra_s": (coming[0] - t).total_seconds() if coming else None,
+        "beta_deg": math.degrees(beta(el, t)),
+        "altitude_km": (math.sqrt(sum(c * c for c in r)) - R_E) / 1000,
+    }
+
 
 def live(el: Elements, now: datetime) -> dict:
-    """The orbit at `now`, for the GUI: where the satellite is, whether it is in
-    sunlight, and the umbra over the coming orbit. Times ahead are in seconds
-    from `now`."""
-    r, v = state(el, now)
-    nu = true_anomaly(el, now)
-    ahead = el.period * 2                          # far enough to find the next change
-    spans = [((a - now).total_seconds(), (b - now).total_seconds())
-             for a, b in umbra_spans(el, now, now + timedelta(seconds=ahead))]
-    shaded = bool(spans) and spans[0][0] <= 0
-    following = [s for s in spans if s[0] > 0]
+    """The orbit at `now`, for the GUI's live panel: `situation`, and the speed,
+    the anomalies, and the umbra over the coming orbit (`spans`, seconds from now)."""
+    spans, _ = umbra_window(el, now)
+    s = situation(el, now, spans)
+    here = el.at(now)
+    _, v = state(el, now)
+    ahead = [((a - now).total_seconds(), (b - now).total_seconds()) for a, b in spans]
     return {
         "now": now.isoformat().replace("+00:00", "Z"),
         "since_epoch_s": (now - el.epoch).total_seconds(),
         "period_s": el.period,
-        "altitude_km": (math.sqrt(sum(c * c for c in r)) - R_E) / 1000,
+        "altitude_km": s["altitude_km"],
         "speed_km_s": math.sqrt(sum(c * c for c in v)) / 1000,
-        "true_anomaly_deg": math.degrees(nu),
-        "latitude_argument_deg": math.degrees((el.argp + nu) % (2 * math.pi)),
-        "beta_deg": math.degrees(beta(el, now)),
-        "umbra": shaded,
-        "umbra_ends_s": spans[0][1] if shaded and spans[0][1] < ahead else None,
-        "next_umbra_s": following[0][0] if following else None,
-        "spans": [[max(0.0, a), min(el.period, b)] for a, b in spans if a < el.period],
+        "true_anomaly_deg": math.degrees(here.nu),
+        "latitude_argument_deg": math.degrees((here.argp + here.nu) % (2 * math.pi)),
+        "beta_deg": s["beta_deg"],
+        "umbra": s["in_umbra"],
+        "umbra_duration_s": s["umbra_duration_s"],
+        "umbra_ends_s": s["umbra_left_s"] if s["in_umbra"] else None,
+        "next_umbra_s": s["next_umbra_s"],
+        "spans": [[max(0.0, a), min(el.period, b)] for a, b in ahead if b > 0 and a < el.period],
     }
