@@ -26,7 +26,7 @@ The host side:
 """
 from .control import RScriptControl
 from .run import Run, Scalar
-from .loader import ENV, disabled, find, load, loaded, search_dirs, shutdown, tick
+from .loader import ENV, disabled, find, load, loaded, reports_results, search_dirs, shutdown, tick
 from .tasks import rTaskRegister, rTaskRunning, rTaskStart, rTaskStop, set_logger
 
 

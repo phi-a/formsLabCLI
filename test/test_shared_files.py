@@ -246,3 +246,64 @@ def test_the_host_is_launched_writing_utf8(monkeypatch):
     ctrlcli._launch_sequence("x.plan")
     assert seen["env"]["PYTHONIOENCODING"] == "utf-8"
     assert seen["stdout"].encoding.lower().replace("-", "") == "utf8"
+
+
+
+# --- command ids and results ---------------------------------------------------------------------
+
+def test_merged_requests_each_get_their_answer():
+    from formslab.console.cast.castutils import CommandState, ReportResult, TakeCommand, WriteCommand
+    a = WriteCommand({"vent": "close"}, "hvc")
+    b = WriteCommand({"rough": "close"}, "hvc")
+    assert CommandState("hvc", a)["state"] == CommandState("hvc", b)["state"] == "pending"
+    request, ids = TakeCommand("hvc")
+    assert request == {"vent": "close", "rough": "close"} and ids == [a, b]
+    assert CommandState("hvc", a)["state"] == "taken"
+    ReportResult("hvc", ids, False, ["rough: refused"])
+    for rid in (a, b):
+        assert CommandState("hvc", rid) == {"state": "done", "ok": False,
+                                            "messages": ["rough: refused"],
+                                            "t": CommandState("hvc", rid)["t"]}
+
+
+def test_a_request_cleared_before_it_was_taken_says_so():
+    from formslab.console.cast.castutils import CommandState, ResetJson, UpdateStatus, WriteCommand
+    rid = WriteCommand({"vent": "close"}, "hvc")
+    ResetJson()
+    assert CommandState("hvc", rid)["state"] == "cleared"
+    UpdateStatus("hvc", {"connected": True})             # a status write keeps results
+    assert CommandState("hvc", rid)["state"] == "cleared"
+
+
+def test_results_are_kept_for_the_last_few_ids_only():
+    from formslab.console.cast.castutils import KEEP_RESULTS, CommandState, TakeCommand, WriteCommand
+    ids = []
+    for _ in range(KEEP_RESULTS + 5):
+        ids.append(WriteCommand({"vent": "close"}, "hvc"))
+        TakeCommand("hvc")
+    assert CommandState("hvc", ids[-1])["state"] == "taken"
+    assert CommandState("hvc", ids[0])["state"] == "cleared"
+
+
+def test_send_request_waits_for_the_take_and_the_result():
+    import threading
+    from formslab.console.cast.castutils import ReportResult, TakeCommand, send_request
+
+    def owner():
+        for _ in range(200):
+            request, ids = TakeCommand("hvc")
+            if request:
+                ReportResult("hvc", ids, True, ["vent verified closed"])
+                return
+            threading.Event().wait(0.01)
+
+    threading.Thread(target=owner, daemon=True).start()
+    out = send_request({"vent": "close"}, "hvc", wait_result=True, take_s=5, result_s=5)
+    assert out["state"] == "done" and out["ok"] and out["messages"] == ["vent verified closed"]
+
+
+def test_send_request_with_nobody_reading():
+    from formslab.console.cast.castutils import send_request
+    t = iter(range(100))
+    out = send_request({"1": {"on": False}}, "psu1", take_s=3, clock=lambda: next(t), tick=lambda: None)
+    assert out["state"] == "not_taken"

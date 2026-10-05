@@ -23,7 +23,7 @@ import time
 from datetime import datetime, timezone
 
 from formslab.config import output_dir
-from formslab.console.cast.castutils import CommandPending, ReadCommand, UpdateStatus
+from formslab.console.cast.castutils import CommandPending, ReportResult, TakeCommand, UpdateStatus
 from formslab.devices.hvc3500.laco import LACO, OPERATIONS, PUMPS, VALVES
 from formslab.rscripts import C2K
 
@@ -34,6 +34,7 @@ RETRY_INTERVAL = 30.0      # seconds between connect attempts while unreachable
 # --- console commands --------------------------------------------------------------
 
 CAST_LABELS = (LABEL,)
+RESULT_LABELS = (LABEL,)   # each request is answered: done, ok or refused with the controller's reason
 
 
 def COMMANDS():
@@ -201,7 +202,7 @@ def _quick(run, laco):
 def rScript(run):
     if rg.disable:
         return
-    request = ReadCommand(label=LABEL)
+    request, ids = TakeCommand(label=LABEL)
     due = time.monotonic() >= rg.next_full
     if not (request or due):
         return
@@ -210,16 +211,26 @@ def rScript(run):
         if request:
             run.log(f"request {request} dropped: chamber not connected",
                       level="ERROR", component=name)
+            ReportResult(LABEL, ids, False, ["chamber not connected"])
         return
     if request:
-        for level, message in laco.apply(request):
-            run.log(message, level=level, component=name)
-            if level == "INFO" and message in ("pump verified on", "rough verified open"):
-                rg.started_pumping = True
-            if level == "INFO" and (message == "pump verified off"
-                                    or message.startswith("stop_pumping:")):
-                rg.started_pumping = False
+        said = []
+        try:
+            for level, message in laco.apply(request):
+                run.log(message, level=level, component=name)
+                said.append((level, message))
+                if level == "INFO" and message in ("pump verified on", "rough verified open"):
+                    rg.started_pumping = True
+                if level == "INFO" and (message == "pump verified off"
+                                        or message.startswith("stop_pumping:")):
+                    rg.started_pumping = False
+        except Exception as e:
+            ReportResult(LABEL, ids, False, [f"{type(e).__name__}: {e}"])
+            raise
+        # The quick re-read comes first, so the next plan step sees the new state.
         _quick(run, laco)
+        errors = [m for level, m in said if level == "ERROR"]
+        ReportResult(LABEL, ids, not errors, errors or [m for _, m in said])
     if due and _read(run, laco):
         rg.next_full = time.monotonic() + rg.POLL_INTERVAL
 

@@ -136,6 +136,16 @@ def call(run, name: str, func) -> None:
             _log(run, f"{name}: recovered")
 
 
+def reports_results(label: str) -> bool:
+    """True when a loaded rScript answers `label`'s requests with a result
+    (it lists the label in RESULT_LABELS), so a sender can wait for ok or why not."""
+    for name, _ in _loaded:
+        module = sys.modules.get(f"rScripts.{name}")
+        if label.lower() in (str(x).lower() for x in getattr(module, "RESULT_LABELS", ())):
+            return True
+    return False
+
+
 def scripts() -> list[tuple[str, object]]:
     """The loaded (name, rScript function) pairs, in load order."""
     return list(_loaded)
