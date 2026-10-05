@@ -13,7 +13,7 @@ from formslab.rscripts import (
 )
 from formslab.devices.slta.imaging import capture
 from formslab.console.cast.castutils import UpdateStatus, ReadCommand, ReadStatus
-from formslab.devices.slta.routine import _init, _init_psu
+from formslab.devices.slta.routine import _init, _init_psu, slta_supply
 from formslab.devices.slta.exposure import ExposureManager
 from formslab.devices.dp832a.commands import (
     build_psu_channel_request,
@@ -27,24 +27,54 @@ name = os.path.splitext(os.path.basename(__file__))[0]
 # --- console commands (see formslab.rscripts.cast) ---------------------------------
 
 CAST_LABELS = ("slta",)
+def READINGS(label, status):
+    return [
+        ("Captures", None, [("SLTARUN", "Umbra captures", ("On", "Off")), ("running", "Capturing"),
+                            ("in_umbra", "In umbra"), ("umbraDuration", "Umbra length (s)"),
+                            ("umbraTimeRemaining", "Umbra left (s)"), ("token", "Image token")]),
+        ("Camera settings", "setting", [
+            ("mode", "Mode"), ("exposure", "Exposure (s)"), ("exposureComputed", "Exposure, computed (s)"),
+            ("exposureLocked", "Exposure locked"), ("exposureOverride", "Exposure override (s)"),
+            ("idle", "Warm-up wait (s)"), ("nsamp", "Samples"), ("clear", "Clear time (s)"),
+            ("version", "Driver version"), ("IMAGEDIR", "Image folder")]),
+    ]
+
+
 COMMANDS = [
-    ("image", "Capture one image now", {"image": True}),
-    ("run on|off", "Umbra-triggered captures (SLTARUN)", lambda s: {"SLTARUN": s == "on"}),
-    ("exposure <s:integer 1..3600 s>", "Exposure time", lambda t: {"exposure": t}),
-    ("exposure auto", "Exposure from the umbra duration", {"exposureAuto": True}),
-    ("idle <s:integer 1..600 s>", "Idle polling interval", lambda t: {"idle": t}),
-    ("nsamp <n:integer 1..1000>", "Samples per pixel", lambda n: {"nsamp": n}),
-    ("clear <s:integer 0..600 s>", "Clear dwell", lambda t: {"clear": t}),
-    ("version v1|v2", "Driver version", lambda v: {"version": v}),
-    ("imagedir <name:text>", "Image subdirectory (no spaces); `default` resets it",
-     lambda n: {"IMAGEDIR": n}),
-    ("startup|shutdown", "Power the camera supply up / down", lambda w: {w: True}),
+    ("image", """Capture one image now
+     One exposure at the current settings, whatever the umbra state.""", {"image": True}),
+    ("run on|off", """Turn umbra-triggered captures on or off
+     On, the camera captures whenever the run says the spacecraft is in umbra, from
+     InUmbra in a FORMS eclipse profile. Until something publishes InUmbra, nothing is
+     captured. Status shows this setting as SLTARUN.""",
+     lambda s: {"SLTARUN": s == "on"}),
+    ("exposure <seconds:integer 1..3600 s>", """Set the exposure time
+     Seconds per exposure, 1 to 3600.""", lambda t: {"exposure": t}),
+    ("exposure auto", """Set the exposure from the umbra
+     Each exposure is set from how long the umbra lasts.""", {"exposureAuto": True}),
+    ("idle <seconds:integer 1..600 s>", """Set the camera warm-up wait
+     Seconds to wait after the camera is powered on, before it is configured and
+     read, 1 to 600.""", lambda t: {"idle": t}),
+    ("nsamp <samples:integer 1..1000>", """Set the number of samples
+     Passed to the version 2 camera driver as nsamp, 1 to 1000. Its read is allowed
+     about the exposure times the samples, so more samples take longer. Its effect on
+     the image is not documented here.""", lambda n: {"nsamp": n}),
+    ("clear <seconds:integer 0..600 s>", """Set the clear time
+     Passed to the version 2 camera driver as clear, in seconds, 0 to 600. Its exact
+     effect is not documented here.""", lambda t: {"clear": t}),
+    ("version v1|v2", """Choose the camera driver version
+     v1 or v2. Only v2 uses the samples and clear settings.""", lambda v: {"version": v}),
+    ("imagedir <folder:text>", """Set the image folder
+     A subfolder for the images, one word with no spaces. default goes back to the
+     usual folder.""", lambda n: {"IMAGEDIR": n}),
+    ("startup|shutdown", """Power the camera supply on or off
+     startup sets up and turns on the camera's supply channel. shutdown turns it off.""",
+     lambda w: {w: True}),
 ]
 VARIABLES = []
 
 # --- Encapsulated State ---
 class rGlobal:
-    disable = False
     useInitialize = False
     useHold = True
     useTick = False
@@ -72,29 +102,20 @@ rg = rGlobal
 
 
 def _power_on_slta_channel():
-    queue_psu_request(
-        "psu2",
-        build_psu_channel_request(1, on=True),
-        update=True,
-    )
-    wait_for_psu_channel("psu2", 1, on=True, timeout=5.0)
+    label, ch = slta_supply()
+    queue_psu_request(label, build_psu_channel_request(ch, on=True), update=True)
+    wait_for_psu_channel(label, ch, on=True, timeout=5.0)
 
 
 def _power_off_slta_channel():
-    queue_psu_request(
-        "psu2",
-        build_psu_channel_request(1, on=False),
-        update=True,
-    )
-    wait_for_psu_channel("psu2", 1, on=False, timeout=5.0)
+    label, ch = slta_supply()
+    queue_psu_request(label, build_psu_channel_request(ch, on=False), update=True)
+    wait_for_psu_channel(label, ch, on=False, timeout=5.0)
 
 
 def _queue_psu2_shutdown():
-    queue_psu_request(
-        "psu2",
-        build_psu_channel_request(1, on=False),
-        update=True,
-    )
+    label, ch = slta_supply()
+    queue_psu_request(label, build_psu_channel_request(ch, on=False), update=True)
 # === Register capture cycle callback once ===
 def _task(stop_event, cmd: dict) -> None:
     try:
@@ -126,8 +147,7 @@ def _umbra(run):
 # --- rScript Entry Point ---
 def rScript(run):
     global rg
-    if rg.disable: return
-    else: _init(run, rg)
+    _init(run, rg)
     # === Refactored execution control ===
     try:
         r = RScriptControl(run, name)
@@ -250,8 +270,8 @@ def rScript(run):
     # === If Startup or Shutdown Logic ===
     if rg.shutdown:
         _queue_psu2_shutdown()
-        run.log("Queued PSU2 shutdown.", component="rSLTA")
-        UpdateStatus(label="psu2", status=ReadStatus("psu2"))
+        run.log(f"Queued {slta_supply()[0].upper()} shutdown.", component="rSLTA")
+        UpdateStatus(label=slta_supply()[0], status=ReadStatus(slta_supply()[0]))
         rg.shutdown = False
         rg._psu2_ready = False
         rg._psu2_request_pending = False

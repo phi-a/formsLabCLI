@@ -2,15 +2,13 @@ import time
 import traceback
 
 from formslab.devices.cryocooler.config import (
-    CRYO_PSU_LABEL,
     CRYO_DEFAULT_OUTPUT_VOLTAGE_V,
     CRYO_DEFAULT_RESISTANCE_OHMS,
-    CRYO_PSU_CHANNEL,
-    CRYO_PSU_COMPONENT,
     CRYO_SUPPLY_CURRENT_A,
     CRYO_SUPPLY_OCP_A,
     CRYO_SUPPLY_OVP_V,
     CRYO_SUPPLY_VOLTAGE_V,
+    cryo_supply,
 )
 from formslab.devices.dp832a.commands import (
     build_psu_channel_request,
@@ -20,6 +18,8 @@ from formslab.devices.dp832a.commands import (
 
 
 def _init_psu2(run, r_global):
+    CRYO_PSU_LABEL, CRYO_PSU_CHANNEL = cryo_supply(r_global)
+    CRYO_PSU_COMPONENT = CRYO_PSU_LABEL.upper()
     readiness = psu_channel_state(
         CRYO_PSU_LABEL,
         CRYO_PSU_CHANNEL,
@@ -126,6 +126,8 @@ def _shutdown_cryo_subsystem(run, r_global, *, close_transport=True, release_han
             tb = traceback.format_exc()
             run.log(f"CryoBoard shutdown failed: {exc}\n{tb}", level="WARNING", component="CRYO")
 
+    CRYO_PSU_LABEL, CRYO_PSU_CHANNEL = cryo_supply(r_global)
+    CRYO_PSU_COMPONENT = CRYO_PSU_LABEL.upper()
     queue_psu_request(
         CRYO_PSU_LABEL,
         build_psu_channel_request(CRYO_PSU_CHANNEL, on=False),
@@ -144,5 +146,6 @@ def _shutdown_cryo_subsystem(run, r_global, *, close_transport=True, release_han
         r_global._init_attempted = False
         r_global._psu2_ready = False
         r_global._psu2_request_pending = False
+        r_global._supply = None             # the next start reads the map again
 
     return r_global

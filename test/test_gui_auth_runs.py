@@ -51,9 +51,9 @@ def test_the_login_file_is_private():
 def test_a_wrong_password_waits(monkeypatch):
     auth.set_login("a", "b")
     monkeypatch.setattr(auth, "FAIL_DELAY_S", 0.3)
-    start = time.monotonic()
+    start = time.perf_counter()                 # monotonic() steps every ~15.6 ms on Windows
     auth.check("a", "nope")
-    assert time.monotonic() - start >= 0.3
+    assert time.perf_counter() - start >= 0.3
 
 
 def test_sessions_expire_and_can_be_dropped(monkeypatch):

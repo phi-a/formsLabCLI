@@ -1,7 +1,7 @@
 """Inspection and query utilities for realized CubeSat geometry.
 
 These helpers work with RealizedGeometry and RectFacet objects but do not
-produce plots. Use geometry.CubeSat.plots for matplotlib visualizations.
+produce plots. Use geometry.cubesat.plots for matplotlib visualizations.
 """
 
 import numpy as np

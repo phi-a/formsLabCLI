@@ -152,7 +152,7 @@ def test_logging_in_out_and_a_wrong_password(monkeypatch):
         resp, _ = c.call("POST", "/api/login", {"user": "tester", "password": "pw-for-tests"})
         cookie = resp.getheader("Set-Cookie")
         assert "HttpOnly" in cookie and "SameSite=Strict" in cookie
-        assert c.json("GET", "/api/me") == (200, {"user": "tester"})
+        assert c.json("GET", "/api/me") == (200, {"user": "tester", "demo": False})
         assert c.json("GET", "/api/status")[0] == 200
         assert c.json("POST", "/api/logout", {})[0] == 200
         assert c.json("GET", "/api/status")[0] == 401                    # the session is gone
@@ -232,7 +232,7 @@ def test_no_gui_module_imports_a_driver():
 
 
 def test_the_page_never_puts_server_text_in_innerhtml():
-    for name in ("app.js", "chart.js", "editor.js", "tvac.js"):
+    for name in ("app.js", "chart.js", "editor.js", "tvac.js", "plantext.js"):
         assert "innerHTML" not in (GUI / "static" / name).read_text(encoding="utf-8")
 
 
@@ -294,3 +294,17 @@ def test_the_help_lists_the_gui(capsys):
     from formslab import cli
     cli.main(["help"])
     assert "labcli gui" in capsys.readouterr().out
+
+
+# --- the demo server must never pass for the bench's own ------------------------------------------
+
+def test_the_login_page_can_tell_a_demo_from_the_real_server(monkeypatch):
+    with running_server(monkeypatch) as server:
+        c = Client(server)
+        assert c.json("GET", "/api/info") == (200, {"demo": False})             # asked before any login
+        assert c.json("GET", "/api/status")[0] == 401                           # and it opens nothing else
+        monkeypatch.setenv("FORMSLAB_GUI_DEMO", "1")
+    with running_server(monkeypatch) as demo:
+        c = Client(demo)
+        assert c.json("GET", "/api/info") == (200, {"demo": True})
+        assert Client(demo).login().json("GET", "/api/me")[1] == {"user": "tester", "demo": True}

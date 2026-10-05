@@ -14,8 +14,9 @@ labcli gui                 # then open http://localhost:8080/
 or over SSH keep running either way.
 
 To try it without the bench (a simulated chamber, a throwaway login and config, nothing real
-touched): `python scripts/gui_demo.py`, then open `http://localhost:8080/` (user `demo`,
-password `demo`).
+touched): `python scripts/gui_demo.py`, then open `http://localhost:8088/` (user `demo`,
+password `demo`). The demo has its own port and an orange DEMO bar, so it cannot be
+mistaken for the bench's own GUI.
 
 ## From another machine
 
@@ -52,10 +53,18 @@ goes), one card per instrument, and the end of the host log. From here:
   The buttons under it are what the instruments' own grammar allows next, with
   limits and units; click one or type. A bad command is refused with what would
   fit and a "did you mean". A command is refused too when no run is going or the
-  instrument is not live, since nothing would take it, and it reports whether the
-  rScript has taken it.
+  instrument is not live, since nothing would take it, or when its prerequisites
+  are not met now (the rough valve open for a vent; docs/SEQUENCE.md). It reports
+  what became of it: taken, done, or refused with the chamber's reason.
+- Under the box, a help card for what you are typing: what the command does, what
+  each input means, and what it needs first, each marked from the chamber's last
+  report (✓ true now, ✗ not, ? not known).
 
 Every action is noted with the user name in `~/.formslab/.run/gui.log`.
+
+Each card shows its readings in groups, by what they are: for the chamber, Valves, Pumps,
+Zones, Thermocouples, Pressure settings; for a supply, one group per channel, named
+with what it feeds. Valves read Open or Closed, pumps On or Off.
 
 Each card says whether it is *live*, and why not when it is not: no run is going, its owner has not updated
 it recently (is its rScript in the plan's `load` line?), or the chamber says it
@@ -65,8 +74,9 @@ are the last ones seen, not current readings.
 **Chamber.** The HVC-3500's own Manual screen, redrawn live: the chamber with
 its pressure and the three zone blocks (platen, shroud, t2) with temperature
 and setpoint, the vent, fill, gate, vacuum (rough) and foreline valves, the
-vacuum and turbo pumps (a green check is open or on, a red cross closed or
-off), the fault banner, and every other thermocouple below. Temperatures can
+vacuum and turbo pumps, in the symbols used across the GUI (a valve is a
+bowtie, a pump a circle with a triangle), green when open or on, red when closed
+or off, with the state written beside it, the fault banner, and every other thermocouple below. Temperatures can
 be shown in Celsius or Kelvin. It follows the same rule as the Status cards:
 when no run is going, or the chamber is not connected, the drawing is greyed
 and says why, because those are the last values seen, not current readings.
@@ -81,13 +91,46 @@ Pick a plan on the left; a plan you open is shown line by line:
 
 - the `load` line is a row of checkboxes, one per rScript;
 - `record every` is a number and a unit;
+- `load` and `record` are header lines, so their place is not yours to pick: a plan
+  starts with `load`, then `record`. If you delete one, the step chooser offers it
+  again (`load  (always first)`, `record  (after load)`) and puts it back where it
+  belongs, whichever row you asked from. A restored `load` already ticks the rScripts
+  your steps use (the one that owns `hvc`, the one that publishes `chamberP`...);
 - every step is a chain of dropdowns. Choosing `hvc` narrows the next choice to
   hvc's commands, choosing `platen` makes the next box a number with its limits
   and unit (`<C -180..200 C>`), and a value that does not fit is flagged under
   the row with what would. The choices come from the same declarations the cast
   tab and `labcli check` use, so they cannot disagree;
 - comments and blank lines are kept, and rows can be moved, inserted and deleted.
-  *Edit as text* shows the plain file for pasting or fine changes.
+  *Edit as text* shows the plain file for pasting or fine changes;
+- beside the rows, a help card follows the row you are on: what the step does,
+  its inputs, and what it needs first, as the plan leaves things at that line
+  (✓ the plan establishes it, ✗ the plan breaks it, ? it depends on the chamber at
+  the start and is checked when the step runs, • checked only then);
+- a step that breaks a prerequisite is red and the plan cannot start; one that
+  depends on the chamber at the start is amber, and the plan can run (the Start
+  list marks it "checks at the start").
+
+Every step is drawn in the same four shapes, in the editor, in a read-only
+plan and in the command box's suggestions, so the grammar can be seen:
+
+| Shape | Means | Example |
+|---|---|---|
+| solid block, in the instrument's colour | the first word: an instrument (`hvc` blue, `psu1`/`psu2` amber, `cryo` teal, `slta` violet, `tc` green) or a step (`hold`, `until`, `log`, `load`, `record`, slate) | `hvc` |
+| tinted pill, same colour | a fixed keyword, so a command reads as one phrase | `platen`, `on`, `timeout` |
+| shaded box, its unit inside | a value you type | `25 °C`, `30` |
+| dashed underline | free text | a `log` message |
+
+A chamber command also shows which kind of part it is about, as a small
+engineering symbol in the instrument's colour before its first word: a bowtie for a
+valve, a circle with a triangle for a pump, a thermometer for a zone (platen,
+shroud), a gauge for a setting (pressure setpoint, hold time, recipe). The part's
+name is in the tooltip and in what a screen reader says. Cycle commands (`start`,
+`abort`, `stop`) carry no symbol.
+
+A word that does not fit (an unknown keyword, a number out of range, an
+instrument whose rScript is not loaded) turns red, and the reason is under the
+row. A legend above the plan shows the four shapes.
 
 Plans that ship with formsLabCLI (and anything in the folder you started from)
 are read-only here. *Save as...* makes your own copy in
@@ -95,7 +138,26 @@ are read-only here. *Save as...* makes your own copy in
 else, and a name already taken by any plan is refused. Saving writes the file
 in one step and refuses to overwrite a plan that changed on disk since you
 opened it. A draft with mistakes can be saved; it is listed as "cannot run"
-until they are fixed. A saved plan appears in the Start list on the Status tab.
+until they are fixed. A saved plan appears in the Start list on the Status tab. *Delete* (your own plans only, and not
+the plan that is running) moves the file to `~/.formslab/plans/.trash`, where it
+is kept with the time it was deleted; move it back to restore it.
+
+Orbit files (`.orbit`, docs/ORBIT.md) are in the same list, with an ellipse before
+the name, and open in the same editor: one Keplerian element per line, drawn in
+the orbit's colour (deep blue), each with a symbol for what it describes (size and
+shape, the plane, the place on the orbit, time). The step chooser offers only the
+elements still missing. Beside them, a panel shows the orbit now, propagated once
+a second: sunlit or in umbra and when that changes, beta angle, altitude, speed,
+and the coming orbit as a strip. *New orbit* starts one. An orbit is never in the
+Start list: nothing runs it.
+
+A **block** (docs/SEQUENCE.md, Blocks) is listed with stacked squares and opens in
+the same editor: its `block` line is the call, each `{input}` an amber value box.
+*New block* starts one; *Register as block* makes one from the open plan (its
+comments, `load` and steps; `record` is the calling plan's). In a plan, a call is
+drawn in the block colour, slate-violet, with the same symbol, and its help card
+lists the steps it runs and every prerequisite inside it. A block is never in the
+Start list: a plan runs it.
 
 **Plots.** Pick a recorded run and any of its variables; each unit gets its own
 chart. Wheel zooms, drag pans, double-click resets, hovering reads values.
@@ -109,9 +171,9 @@ Older files in the output folder with other layouts are not listed.
 
 ## What is not here yet
 
-The space-environment view (orbit, eclipse, view factors and environment
-temperature) is planned (`Notebook/gui.md`); it needs the `orbit` extra and
-its own plan.
+The rest of the space-environment tool (view factors, environment temperature,
+a 3D view, the satellite in the chamber) is planned (`Notebook/gui.md`); the
+orbit files above are its first part.
 
 ## Safeguards
 

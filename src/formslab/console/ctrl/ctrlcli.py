@@ -13,6 +13,7 @@ Windows the pid is the real interpreter, not the venv launcher in front of it.
 
 Every handler returns a CLIResult; nothing prints.
 """
+import os
 import subprocess
 import sys
 import threading
@@ -56,8 +57,12 @@ def _launch_sequence(plan_path: str) -> CLIResult:
         flags = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS}
     else:
         flags = {"start_new_session": True}
-    log = log_path().open("w")
-    proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT,
+    # The host log is UTF-8 whatever the console's codepage: on Windows a redirected
+    # stdout defaults to cp1252, and a log line with a character outside it ("→", "❌")
+    # would otherwise raise inside the host.
+    log = log_path().open("w", encoding="utf-8")
+    env = dict(os.environ, PYTHONIOENCODING="utf-8")
+    proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, env=env,
                             stdin=subprocess.DEVNULL, **flags)
     log.close()                                       # the host has its own copy
     # Collect the host when it exits, so a long-lived caller (the web GUI) does
@@ -105,6 +110,22 @@ def plans_command() -> CLIResult:
         result.append(path.stem.ljust(22), INFO)
         result.append(("until end  " if open_ended else "           "), WARNING)
         result.append(", ".join(plan.rscripts) + "\n", DIM)
+    from formslab.rscripts import cast
+    from formslab.sequence import block as blocks_
+
+    usable, broken = blocks_.available(cast.owners()[0])
+    if usable or broken:
+        result.append("\nBLOCKS (a plan calls them by name)\n", HEADER)
+        from formslab.rscripts.grammar import Grammar
+
+        for b in usable.values():
+            usage = Grammar([(b.pattern, "", None)]).rows()[0][0]
+            result.append("  ■   ", INFO)
+            result.append(usage.ljust(30), INFO)
+            result.append(b.summary + "\n", DIM)
+        for name, why in broken.items():
+            result.append(f"  ✗   {name.ljust(22)}", ERROR)
+            result.append(f"{why}\n", DIM)
     result.append("\nUsage: ", DIM)
     result.append("run <plan>   (run tvac: manual operation until `end`)\n", INFO)
     return CLIResult(result, clear=True)
@@ -247,7 +268,7 @@ def help_panel() -> CLIResult:
     result.append("PROCESS CONTROL\n", HEADER)
     for cmd, desc in (("status", "Is the sequence host running"),
                       ("ps", "List all sequence host processes"),
-                      ("pause", "Pause the running plan or mode"),
+                      ("pause", "Pause the running plan"),
                       ("resume", "Resume it"),
                       ("end", "Stop it; rShutdown leaves the hardware safe")):
         result.append(f"  {cmd:<16}", LABEL)
@@ -257,9 +278,6 @@ def help_panel() -> CLIResult:
 
 COMMANDS = {
     "plans": plans_command,
-    "missions": plans_command,   # the old name
-    "modes": plans_command,      # tvac is a plan now
-    "list": plans_command,
     "status": status_panel,
     "ps": list_sequence,
     "end": end_sequence,
@@ -276,9 +294,10 @@ def execute_command(args: list[str]) -> CLIResult:
     handler = COMMANDS.get(cmd)
     if handler:
         return handler()
-    # pause, resume, reset: straight to the host through ctrl
-    WriteCommand(cmd, args[1] if len(args) > 1 else None)
-    return CLIResult(f"✔ dispatched '{cmd}'", clear=False)
+    if cmd in ("pause", "resume", "reset"):           # straight to the host through ctrl
+        WriteCommand(cmd, args[1] if len(args) > 1 else None)
+        return CLIResult(f"✔ dispatched '{cmd}'", clear=False)
+    return CLIResult(Text(f"✗ unknown command {cmd!r}; `help` lists them", style=ERROR), ok=False)
 
 
 if __name__ == "__main__":

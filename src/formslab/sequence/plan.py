@@ -18,10 +18,11 @@ Steps:
 
     <label> <words>     a command to the rScript that owns the label -- the same
                         words as the cast tab (``hvc vent open``). Sent and
-                        awaited until that rScript takes it (10 s limit)
-    hold <n> s|min|h    run the loaded rScripts for a while
+                        awaited until that rScript takes it (10 s limit), and
+                        for one that reports results until it is done or refused
+    hold <time> s|min|h run the loaded rScripts for a while
     hold until end      until the operator's ctrl `end` (plans/tvac.plan)
-    until <variable> above|below <value> [C|K] timeout <n> s|min|h
+    until <variable> above|below <limit> [C|K] timeout <time> s|min|h
                         run until a published value crosses a limit, or fail
                         at the timeout (required: a wait on hardware always has
                         a limit). C or K converts from the variable's own unit
@@ -29,7 +30,9 @@ Steps:
 
 ``#`` starts a comment on its own line. Commands and variable names come from
 what the loaded rScripts declare (COMMANDS, VARIABLES), checked while the plan
-is read; a mistake is reported with its line number before anything runs.
+is read; a mistake is reported with its line number before anything runs. So
+are the owners' prerequisites (RULES; formslab.sequence.rules): a step that
+breaks one is an error, one the plan does not establish a warning.
 Orbit content (``orbit.*``, ``propagate``, ``@procedure``) is FORMS': a plan
 runs on the wall clock.
 """
@@ -58,9 +61,11 @@ class PlanError(ValueError):
     for the first problem; `errors` lists every one found as (line, message),
     line 0 meaning the document as a whole."""
 
-    def __init__(self, message: str, errors: list[tuple[int, str]] | None = None) -> None:
+    def __init__(self, message: str, errors: list[tuple[int, str]] | None = None,
+                 warnings: list[tuple[int, str]] | None = None) -> None:
         super().__init__(message)
         self.errors = errors if errors is not None else [(0, message)]
+        self.warnings = warnings or []
 
 
 class _LineError(Exception):
@@ -79,6 +84,8 @@ class Plan:
     record_interval: float
     record_unit: str
     sequence: Sequence
+    # (line, message): a rule this plan does not establish, checked when the step runs
+    warnings: tuple[tuple[int, str], ...] = ()
 
 
 # --- finding plans -----------------------------------------------------------
@@ -136,12 +143,14 @@ def load_plan(path) -> Plan:
     return parse_plan(path.read_text(encoding="utf-8"), path=path)
 
 
-def parse_plan(source: str, *, path: Path | None = None) -> Plan:
+def parse_plan(source: str, *, path: Path | None = None, steps_out: list | None = None) -> Plan:
     """The plan in `source`. Every problem found is in `PlanError.errors` (the
-    editor shows them all); the message is the first."""
+    editor shows them all); the message is the first. `steps_out`, when given,
+    receives the steps that did read, as (line, Segment), even if others did not."""
     where = path.name if path else "<plan>"
     name = path.stem if path else "plan"
     errors: list[tuple[int, str]] = []
+    warnings: list[tuple[int, str]] = []
 
     def fail(n, message):
         raise _LineError(n, message)
@@ -157,7 +166,8 @@ def parse_plan(source: str, *, path: Path | None = None) -> Plan:
         if errors:
             errors.sort(key=lambda e: e[0])
             n, message = errors[0]
-            raise PlanError(f"{where}:{n}: {message}" if n else f"{where}: {message}", list(errors))
+            raise PlanError(f"{where}:{n}: {message}" if n else f"{where}: {message}", list(errors),
+                            list(warnings))
 
     if "sequence.operations" in source:
         errors.append((0, "this is the old plan format (sequence.operations = [...]); "
@@ -213,11 +223,15 @@ def parse_plan(source: str, *, path: Path | None = None) -> Plan:
         errors.append((0, "the plan has no steps"))
 
     from formslab.rscripts import cast
+    from formslab.sequence import block as blocks_
 
     grammar, owner, published = _grammar(scripts)
+    blocks, broken = blocks_.available(owner)
 
     def check_step(n, words):
         head = words[0].lower()
+        if head in broken and head not in owner:              # (an instrument's name stays the instrument's)
+            fail(n, broken[head])
         if module := owner.get(head):
             if cast.script_name(module) not in scripts:
                 fail(n, f"{head} is declared by {cast.script_name(module)}; add it to `load`")
@@ -230,33 +244,146 @@ def parse_plan(source: str, *, path: Path | None = None) -> Plan:
                 if not published:
                     fail(n, "no loaded rScript publishes a value to wait on")
             if "timeout" not in (w.lower() for w in words):
-                fail(n, "until needs `timeout <n> s|min|h`: a wait on hardware always has a limit")
+                fail(n, "until needs `timeout <time> s|min|h`: a wait on hardware always has a limit")
         return replace(_parse(fail, n, grammar, words), label=" ".join(words))
 
-    segments = [seg for n, words in steps if (seg := attempt(check_step, n, words)) is not None]
+    def expand(n, seg, stack):
+        """A block call's steps, inputs replaced, each checked as a step of this plan
+        and labelled with the block (`pumpdown > hvc rough open`)."""
+        b = blocks[seg.params["name"]]
+        chain = " > ".join((*stack, b.name))
+        if b.name in stack:
+            fail(n, f"block {b.name} calls itself: {chain}")
+        if len(stack) >= blocks_.MAX_DEPTH:
+            fail(n, f"blocks nest more than {blocks_.MAX_DEPTH} deep: {chain}")
+        if missing := [s for s in b.scripts if s not in scripts]:
+            fail(n, f"{b.name} needs {', '.join(missing)}; add {'it' if len(missing) == 1 else 'them'} to `load`")
+        out = []
+        for ln, words in b.body(seg.params["values"]):
+            try:
+                inner = check_step(n, words)
+                parts = expand(n, inner, (*stack, b.name)) if inner.verb == "block" else [inner]
+            except _LineError as e:
+                fail(n, f"In {b.name} (line {ln}): {e.message}")
+            out += [replace(p, label=f"{b.name} > {p.label}", origin=((b.name, ln), *p.origin))
+                    for p in parts]
+        return out
+
+    def check_line(n, words):
+        seg = check_step(n, words)
+        return expand(n, seg, ()) if seg.verb == "block" else [seg]
+
+    numbered = [(n, seg) for n, words in steps for seg in (attempt(check_line, n, words) or [])]
+    if steps_out is not None:
+        steps_out.extend(numbered)
+    from formslab.sequence.rules import check as check_rules
+
+    broken, warnings[:] = check_rules(numbered, scripts, published)
+    errors.extend(broken)
     done()
 
     interval, unit = record
+    segments = tuple(seg for _, seg in numbered)
     return Plan(name=name, path=path, rscripts=scripts, record_interval=interval, record_unit=unit,
-                sequence=Sequence(name=name, segments=tuple(segments), rscripts=scripts))
+                sequence=Sequence(name=name, segments=segments, rscripts=scripts),
+                warnings=tuple(sorted(warnings)))
 
 
-def check_text(text: str) -> list[tuple[int, str]]:
-    """Every problem in plan `text` as (line, message), line 0 for the document
-    as a whole; [] for a plan that can run. Also notes rScripts on the `load`
-    line that cannot be found, which reading alone does not mind."""
+def review(text: str) -> tuple[list[tuple[int, str]], list[tuple[int, str]]]:
+    """(errors, warnings) in plan `text`, each (line, message), line 0 for the
+    document as a whole. An error keeps the plan from running; a warning is a
+    rule the plan does not establish, checked when its step runs. Also notes
+    rScripts on the `load` line that cannot be found, which reading alone does
+    not mind."""
     try:
         plan = parse_plan(text)
-        errors: list[tuple[int, str]] = []
+        errors, warnings = [], list(plan.warnings)
     except PlanError as e:
-        plan, errors = None, list(e.errors)
+        errors, warnings = list(e.errors), list(e.warnings)
     from formslab import rscripts
 
     for n, line in enumerate(text.splitlines(), 1):
         words = line.split()
         if words and words[0].lower() == "load":
             errors += [(n, f"rScript {w} not found") for w in words[1:] if rscripts.find(w) is None]
-    return sorted(errors, key=lambda e: e[0])
+    return sorted(errors, key=lambda e: e[0]), sorted(warnings, key=lambda e: e[0])
+
+
+def check_text(text: str) -> list[tuple[int, str]]:
+    """Every error in plan `text` (see `review`); [] for a plan that can run."""
+    return review(text)[0]
+
+
+def describe_step(text: str, line: int) -> dict:
+    """For the editor's help panel: {cards, rules} for line `line` of plan `text`.
+    `cards` are the commands the line is or begins (Grammar.describe); `rules`
+    are the prerequisites of the command it is, each {why, conditions: [{text,
+    status}]}, status as this plan leaves it there: ok, broken, unknown (checked
+    when the step runs) or live (checkable only then)."""
+    from formslab.rscripts import cast
+    from formslab.sequence import rules as plan_rules
+
+    lines = text.splitlines()
+    words = lines[line - 1].split() if 0 < line <= len(lines) else []
+    if not words or words[0].startswith("#"):
+        return {"cards": [], "rules": []}
+    head = words[0].lower()
+    if head == "load":
+        return {"cards": [_LOAD_CARD], "rules": []}
+    if head == "record":
+        return {"cards": _RECORD.describe(words) or _RECORD.describe(["record"]), "rules": []}
+    load = next((ln.split() for ln in lines if ln.split()[:1] and ln.split()[0].lower() == "load"), [])
+    scripts = tuple(load[1:])
+    grammar, _, published = _grammar(scripts)
+    cards = [{**c, "part": cast.card_part(c)} for c in grammar.describe(words)]
+    from formslab.sequence import block as blocks_
+
+    blocks, _ = blocks_.available(cast.owners()[0])
+    for c in cards:
+        if (b := blocks.get(c["words"][0]["text"].lower()) if c.get("words") else None):
+            c["steps"] = [" ".join(w) for _, w in b.steps]
+    rules = []
+    if cards and cards[0]["complete"]:
+        steps: list = []
+        try:
+            parse_plan(text, steps_out=steps)
+        except PlanError:
+            pass
+        rules = plan_rules.at_line(steps, scripts, published, line)
+    return {"cards": cards, "rules": rules}
+
+
+def needed_rscripts(text: str) -> list[str]:
+    """The rScripts the steps in plan `text` use: the owner of each instrument a
+    step commands, and of each value an `until` waits on. For the editor, to put a
+    deleted `load` line back as it was."""
+    from formslab.rscripts import cast
+
+    labels, _ = cast.owners()
+    value_owner: dict[str, str] = {}
+    for module in {id(m): m for m in labels.values()}.values():
+        for name, _unit in cast.variables(module):
+            value_owner.setdefault(name.lower(), cast.script_name(module))
+    from formslab.sequence import block as blocks_
+
+    blocks, _ = blocks_.available(labels)
+    need: set[str] = set()
+
+    def visit(lines, seen):
+        for words in lines:
+            if not words or words[0].startswith("#") or words[0].lower() in ("load", "record", "block"):
+                continue
+            head = words[0].lower()
+            if head in labels:
+                need.add(cast.script_name(labels[head]))
+            elif head == "until" and len(words) > 1 and words[1].lower() in value_owner:
+                need.add(value_owner[words[1].lower()])
+            elif head in blocks and head not in seen:             # a block: what its steps use
+                need.update(blocks[head].scripts)
+                visit([list(w) for _, w in blocks[head].steps], seen | {head})
+
+    visit([line.split() for line in text.splitlines()], set())
+    return [n for n in available_rscripts() if n in need]
 
 
 def available_rscripts() -> list[str]:
@@ -271,13 +398,17 @@ def line_options(scripts, words) -> dict:
 
     {'positions': [options before word 0, before word 1, ..., after the last],
      'complete': the words are a whole step, 'error': why not, or None}. Each
-    option is {kind, text, help, lo, hi, unit}. A line that is merely unfinished
-    has no error: it is a valid start."""
+    option is {kind, text, help, lo, hi, unit, part}; `part` is the kind of part it
+    names or belongs to (cast.option_parts). A line that is merely unfinished has
+    no error: it is a valid start."""
     from formslab.rscripts import cast
 
     scripts, words = tuple(scripts), list(words)
     grammar, owner, _ = _grammar(scripts)
-    positions = [[_option(o) for o in grammar.complete(words[:k])] for k in range(len(words) + 1)]
+    positions = []
+    for k in range(len(words) + 1):
+        options = grammar.complete(words[:k])
+        positions.append([_option(o, p) for o, p in zip(options, cast.option_parts(words[:k], options))])
     result = {"positions": positions, "complete": False, "error": None}
     if not words:
         return result
@@ -298,8 +429,45 @@ def line_options(scripts, words) -> dict:
     return result
 
 
-def _option(o) -> dict:
-    return {"kind": o.kind, "text": o.text, "help": o.help, "lo": o.lo, "hi": o.hi, "unit": o.unit}
+# What each word of a plan is, so the GUI can draw the grammar. A role is one of
+#   verb     the first word: a step (hold, until, log, load, record) or an instrument
+#   kw       a fixed keyword after it (platen, on, rate, every, s, min...)
+#   value    a number or a one-word value typed in a slot
+#   text     free text (a log message)
+#   script   an rScript named on the load line ("bad" when it cannot be found)
+#   comment  a whole comment line
+#   bad      a word that fits nothing here (it, and every word after it)
+def tokens(text: str) -> list[list[dict]]:
+    """Every line of plan `text` as [{text, role, part?}, ...]; [] for a blank line.
+    A command's keywords carry its part (`hvc gate open`: valve)."""
+    from formslab import rscripts
+    from formslab.rscripts import cast
+
+    lines = text.splitlines()
+    load = next((ln.split() for ln in lines if ln.split()[:1] and ln.split()[0].lower() == "load"), [])
+    grammar = _grammar(tuple(load[1:]))[0]
+    out = []
+    for line in lines:
+        t = line.strip()
+        words = t.split()
+        if not words:
+            out.append([])
+        elif t.startswith("#"):
+            out.append([{"text": t, "role": "comment"}])
+        elif words[0].lower() == "load":
+            out.append([{"text": words[0], "role": "verb"}]
+                       + [{"text": w, "role": "script" if rscripts.find(w) else "bad"} for w in words[1:]])
+        else:
+            g = _RECORD if words[0].lower() == "record" else grammar
+            part = cast.part_of(words[0], words)
+            out.append([{"text": w, "role": r, **({"part": part} if part and r == "kw" else {})}
+                        for w, r in zip(words, g.roles(words))])
+    return out
+
+
+def _option(o, part=None) -> dict:
+    return {"kind": o.kind, "text": o.text, "help": o.help, "lo": o.lo, "hi": o.hi, "unit": o.unit,
+            "part": part}
 
 
 def _parse(fail, n, grammar, words):
@@ -340,8 +508,17 @@ def _command(label, request):
     return Segment("command", {"label": label, "request": request, "timeout_s": COMMAND_TIMEOUT_S})
 
 
-_RECORD = Grammar([("record every <n:number 0..> s|min|h", "CSV cadence",
+_RECORD = Grammar([("record every <interval:number 0..> s|min|h", """Set how often values are recorded
+                     How often every published value is written to the run's CSV file,
+                     in the outputs folder. It is the line after load.""",
                     lambda n, u: (_positive("record", n), _RECORD_UNIT[u]))])
+
+_LOAD_CARD = {"usage": "load <rScript> ...", "help": "Choose the rScripts this plan runs", "complete": True,
+              "inputs": [], "details": (
+                  "Each rScript owns instruments: rLACO the chamber (hvc), rPSU the supplies (psu1, "
+                  "psu2), rSMTC08 the thermocouples (tc), rCryoBoard the cryocooler board (cryo), "
+                  "rSLTA the camera (slta). A step can only command, or wait on a value of, a loaded "
+                  "rScript. Always the first line.")}
 
 
 def _grammar(scripts):
@@ -355,21 +532,38 @@ def _grammar(scripts):
         if cast.script_name(module) in scripts:
             published.update(cast.variables(module))
     steps = [
-        ("hold <n:number 0..> s|min|h", "Run the loaded rScripts for a while", _hold),
-        ("hold until end", "Until ctrl `end` (manual operation)",
+        ("hold <time:number 0..> s|min|h", """Wait while the rScripts run
+         Nothing is sent; the instruments keep being read and recorded. Time paused
+         from the console or the GUI does not count.""", _hold),
+        ("hold until end", """Wait until the run is ended
+         The plan stays here, recording, until someone ends the run: End run in the
+         GUI, or labcli end. Use it to operate by hand from the command box.""",
          lambda: Segment("hold", {"seconds": None})),
-        ("log <message:rest>", "One line in the run log", lambda m: Segment("log", {"message": m})),
+        ("log <message:rest>", """Write a line in the run log
+         The text goes to the host log with the time, to mark where a phase begins.""",
+         lambda m: Segment("log", {"message": m})),
     ]
     if published:
         var = f"<variable:{'|'.join(published)}>"
-        until = f"until {var} above|below <value:number>"
+        until = f"until {var} above|below <limit:number>"
+        why = """
+         Runs until the value is past the limit, then goes on. If it is not past it
+         within the timeout, the plan stops here and each rScript's shutdown runs. A
+         wait on hardware always has a timeout. Just before a command, it also proves
+         that command's prerequisite: until platenT below 60 C before hvc vent open."""
         steps += [
-            (f"{until} timeout <t:number 0..> s|min|h", "Wait for a value, with a limit",
+            (f"{until} timeout <time:number 0..> s|min|h", "Wait for a value to pass a limit" + why,
              _until(published)),
-            (f"{until} C|K timeout <t:number 0..> s|min|h", "The same, the value in C or K",
-             _until(published)),
+            (f"{until} C|K timeout <time:number 0..> s|min|h",
+             "Wait for a temperature in °C or K to pass a limit" + why, _until(published)),
         ]
-    return Grammar(steps + cast.label_commands(scripts, build=_command)), labels, published
+    from formslab.sequence import block as blocks_
+
+    blocks, _ = blocks_.available(labels)
+    calls = [(b.pattern, b.help, lambda *captured, b=b: Segment("block", {"name": b.name,
+                                                                            "values": b.values(captured)}))
+             for b in blocks.values()]
+    return Grammar(steps + cast.label_commands(scripts, build=_command) + calls), labels, published
 
 
 def _publisher(variable, scripts):

@@ -11,7 +11,30 @@
     return e;
   };
 
-  window.App = { api: (...a) => api(...a), el, $ };    // for editor.js, loaded next
+  // The colour family of a phrase is the step or instrument it starts with; an
+  // orbit file's lines all start with an element, and are all the orbit's colour.
+  const FAMILY = { hvc: "hvc", psu1: "psu", psu2: "psu", cryo: "cryo", slta: "slta", tc: "tc",
+                   epoch: "orbit", a: "orbit", e: "orbit", i: "orbit", raan: "orbit", argp: "orbit", nu: "orbit" };
+  const STEP_WORDS = ["hold", "until", "log", "load", "record"];
+  // The names of the blocks the editor lists: a step that calls one has the block colour.
+  const BLOCKS = new Set();
+  const famOf = (word) => {
+    const w = (word || "").toLowerCase();
+    return FAMILY[w] || (STEP_WORDS.includes(w) ? "flow" : BLOCKS.has(w) ? "block" : "other");
+  };
+  const setBlocks = (names) => { BLOCKS.clear(); for (const n of names) BLOCKS.add(n.toLowerCase()); };
+  const unitText = (u) => (u || "").replace(/^C(?=\/|$)/, "\u00b0C");
+
+  // The kind of part a command is about, drawn as a small symbol in the instrument's
+  // colour. Its name is in the title, so it never rests on colour alone.
+  // An orbit element is drawn with what it describes, the same way.
+  const PART_NAMES = { valve: "Valve", pump: "Pump", zone: "Zone", setting: "Setting" };
+  const ORBIT_PARTS = { shape: "Size and shape", plane: "The orbit's plane", place: "Place on the orbit", time: "Time" };
+  const partName = (part) => PART_NAMES[part] || ORBIT_PARTS[part] || part;
+  const partIcon = (part, fam) => el("span", { class: "part-icon", "data-part": part, "data-fam": fam || "other",
+                                               title: partName(part), role: "img", "aria-label": partName(part) });
+
+  window.App = { api: (...a) => api(...a), el, $, famOf, setBlocks, unitText, PART_NAMES, ORBIT_PARTS, partName, partIcon };   // for editor.js, loaded next
 
   const state = {
     view: "status", timer: null, runs: [], run: null, selected: new Set(), data: null,
@@ -59,6 +82,7 @@
 
   async function startApp(user) {
     clearTimeout(state.headerTimer);
+    showDemo();
     pollHeader();
     $("#login").hidden = true;
     $("#app").hidden = false;
@@ -119,13 +143,6 @@
     if (typeof v === "number") return Number.isInteger(v) ? String(v) : String(Number(v.toPrecision(5)));
     return String(v);
   }
-  function flatten(obj, prefix, out) {
-    for (const [k, v] of Object.entries(obj || {})) {
-      if (v && typeof v === "object" && !Array.isArray(v)) flatten(v, `${prefix}${k} `, out);
-      else out.push([prefix + k, Array.isArray(v) ? v.join(", ") : v]);
-    }
-    return out;
-  }
 
   function renderStatus(s) {
     const banner = $("#run-banner");
@@ -148,12 +165,20 @@
       card.append(h);
       if (!b.live && b.reason) card.append(el("div", { class: "why" }, b.reason));
       if (b.pending) card.append(el("div", { class: "pending" }, "a command is waiting to be taken"));
-      const rows = flatten(b.status, "", []);
-      if (rows.length) {
+      // The readings in their owner's groups (Valves, Pumps, Zones...), each headed
+      // by its name and the part's symbol; a yes/no reads Open/Closed, On/Off.
+      const fam = famOf(label);
+      for (const g of b.groups || []) {
+        if (g.title) {
+          const head = el("div", { class: "group" });
+          if (g.part) head.append(partIcon(g.part, fam));
+          head.append(el("span", {}, g.title));
+          card.append(head);
+        }
         const t = el("table");
-        for (const [k, v] of rows) {
+        for (const r of g.rows) {
           const tr = el("tr");
-          tr.append(el("td", {}, k), el("td", {}, fmtValue(v)));
+          tr.append(el("td", r.name !== r.key ? { title: r.key } : {}, r.name), el("td", {}, r.text ?? fmtValue(r.value)));
           t.append(tr);
         }
         card.append(t);
@@ -194,10 +219,12 @@
       const r = await api("/api/plans");
       const sel = $("#plan"), keep = sel.value;
       sel.replaceChildren();
-      for (const p of r.plans) {
+      for (const p of r.plans.filter((p) => p.kind === "plan")) {          // a block or an orbit is opened, never run
         const o = el("option", { value: p.name },
-          p.error ? `${p.name} (cannot run)` : `${p.name} - ${p.rscripts.join(", ")}${p.open_ended ? " - until you end it" : ""}`);
+          p.error ? `${p.name} (cannot run)`
+            : `${p.name} - ${p.rscripts.join(", ")}${p.open_ended ? " - until you end it" : ""}${p.warnings?.length ? " - \u26a0 checks at the start" : ""}`);
         if (p.error) { o.disabled = true; o.title = p.error; }
+        else if (p.warnings?.length) o.title = p.warnings.join("\n");
         sel.append(o);
       }
       if (keep) sel.value = keep;
@@ -244,7 +271,10 @@
     const options = r.options.filter((o) => o.kind !== "word" || o.text.toLowerCase().startsWith(prefix));
     for (const o of options.slice(0, 40)) {
       if (o.kind === "word") {
-        const b = el("button", { type: "button", title: o.help || "" }, o.text);
+        const fam = famOf(done.length ? done[0] : o.text);
+        const b = el("button", { type: "button", class: "tok " + (done.length ? "kw" : "verb"), "data-fam": fam,
+                                 title: (o.part ? PART_NAMES[o.part] + ": " : "") + (o.help || "") }, o.text);
+        if (o.part && done.length === 1) b.prepend(partIcon(o.part, fam));
         b.addEventListener("click", () => {
           $("#cmd").value = done.concat(o.text).join(" ") + " ";
           $("#cmd").focus();
@@ -253,10 +283,15 @@
         box.append(b);
       } else {
         const lim = o.lo !== null || o.hi !== null ? ` ${o.lo ?? ""}..${o.hi ?? ""}` : "";
-        box.append(el("span", { class: "slot", title: o.help || "" }, `<${o.text}${lim}${o.unit ? " " + o.unit : ""}>`));
+        box.append(el("span", { class: "tok value", title: o.help || "" }, `${o.text}${lim}${o.unit ? " " + unitText(o.unit) : ""}`));
       }
     }
     if (!options.length && done.length) box.append(el("span", { class: "note" }, "Nothing more to add: press Send."));
+    // The help card for what is typed, its prerequisites checked against the chamber now.
+    const typed = $("#cmd").value.trim().split(/\s+/).filter(Boolean);
+    let info = { cards: [] };
+    if (typed.length) { try { info = await api("/api/describe", { words: typed }); } catch (e) { /* keep the hints */ } }
+    if (mine === hintSeq && window.InfoCard) window.InfoCard.render($("#cmd-info"), info, "live");
   }
 
   $("#cmd").addEventListener("input", () => { clearTimeout(hintTimer); hintTimer = setTimeout(updateHints, 150); });
@@ -269,9 +304,8 @@
     if (!line) return;
     try {
       const r = await api("/api/cast", { line });
-      say(out, `${r.label} <- ${JSON.stringify(r.request)}  ${r.taken ? "(taken)" : "(sent; not taken yet)"}`, false);
-      $("#cmd").value = "";
-      updateHints();
+      say(out, `${r.label} <- ${JSON.stringify(r.request)}  ${r.text}`, !r.ok);
+      if (r.ok) { $("#cmd").value = ""; updateHints(); }
     } catch (e) {
       say(out, e.message, true);
     }
@@ -299,7 +333,10 @@
     $("#tvac-fault").textContent = vm.faults ? `Fault${vm.severity && vm.severity !== "N" ? " (severity " + vm.severity + ")" : ""}: ${vm.faults}` : "";
     $("#tvac-info").textContent = (vm.recipe !== null ? `Recipe ${vm.recipe}${vm.recipeStep ? ", step " + vm.recipeStep : ""}. ` : "")
       + "Heater output, turbo speed, foreline pressure and each zone's own on/off are not reported by the controller.";
-    T.render($("#tvac-svg"), vm, b.live);
+    // the parts' names, from the server (the hvc card's readings): one table for every view
+    const names = {};
+    for (const grp of b.groups || []) for (const r of grp.rows) names[r.key] = r.name;
+    T.render($("#tvac-svg"), vm, b.live, names);
     const box = $("#tvac-sensors");
     box.className = "sensors" + (b.live ? "" : " stale");
     box.replaceChildren(...vm.sensors.map((x) => {
@@ -523,6 +560,17 @@
   });
 
   // --- start -------------------------------------------------------------------------
+
+  // Is this the demo server? Asked before login, so the login page can say so.
+  async function showDemo() {
+    try {
+      const { demo } = await (await fetch("/api/info")).json();
+      $("#demo-bar").hidden = !demo;
+      $("#login-demo").hidden = !demo;
+      if (demo) document.title = "DEMO - formsLabCLI";
+    } catch (e) { /* the page works without it */ }
+  }
+  showDemo();
 
   api("/api/me").then((r) => startApp(r.user)).catch(() => showLogin());
 })();

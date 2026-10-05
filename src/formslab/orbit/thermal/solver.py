@@ -14,8 +14,6 @@ import warnings
 from dataclasses import dataclass
 
 import numpy as np
-from scipy.integrate import solve_ivp
-from scipy.interpolate import interp1d
 
 from .background import Background
 from .materials import SIGMA_SB
@@ -201,6 +199,10 @@ def transient(bg_front, bg_back, *,
               n_orbits=10,
               tol=0.5):
     """Integrate a two-sided panel temperature history to periodic steady state."""
+    # scipy is the orbit extra; only this solver needs it.
+    from scipy.integrate import solve_ivp
+    from scipy.interpolate import interp1d
+
     _validate_paired_backgrounds(bg_front, bg_back)
     alpha_front, epsilon_front = _validate_material_properties(
         alpha_solar=alpha_front,

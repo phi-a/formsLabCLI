@@ -7,7 +7,8 @@
 # Every 2 s a CSV row lands in outputs/psu1_smtc08_first_<UTC>.csv.
 #
 # CHECK BEFORE RUNNING: what is wired to PSU1 CH1, and that 1.0 V / 0.10 A is
-# safe for it. On the TVAC bench CH1 and CH2 feed the shroud heaters.
+# safe for it. The hardware map (usbmap.json, "channels") records it: on this
+# bench psu1 CH1 feeds the cryocooler board, so do not load rCryoBoard with it.
 #
 # If the run stops early (ctrl `end`, a timeout, a crash), rPSU's rShutdown
 # turns CH1 back off.

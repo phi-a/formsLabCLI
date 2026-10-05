@@ -1,6 +1,0 @@
-{
-  "status":   { "key": null, "processed": true, "desc": "Show entire log file" },
-  "tail":   { "key": null, "processed": true, "desc": "Show last N lines of the log" },
-  "grep":   { "key": null, "processed": true, "desc": "Show lines matching PAT" },
-  "help":   { "key": null, "processed": true, "desc": "Display help panel for available commands" }
-}

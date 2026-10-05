@@ -46,6 +46,12 @@ DEVICE_CODES = {label: code for code, label in DEVICE_LABELS.items()}
 VALVES = ("rough", "vent", "fill", "foreline", "gate")
 PUMPS = ("pump", "turbo")
 
+# What each part is called wherever it is shown: the names on the chamber's own
+# screen (the HMI). The command words stay short (`hvc rough open`).
+PART_NAMES = {"rough": "Vacuum valve", "vent": "Vent valve", "fill": "Fill valve",
+              "foreline": "Foreline valve", "gate": "Gate valve",
+              "pump": "Vacuum pump", "turbo": "Turbo pump"}
+
 # Cycle-level vacuum operations (manual appendix 9.1).
 OPERATIONS = {"vent2atm": "VA", "fill2atm": "FA", "purge": "PS", "close_all": "NA"}
 
@@ -462,7 +468,7 @@ class LACO:
                 out.append(("WARNING", f"{name}: expected {'/'.join(words)}, got {request[name]!r}"))
                 continue
             attempt(name, lambda n=name, v=v: self.device(n, v),
-                    lambda got, n=name, w=words: f"{n} verified {w[0] if got else w[1]}")
+                    lambda got, n=name, w=words: f"{n} verified {w[0] if got else 'closed' if w[1] == 'close' else w[1]}")
 
         known.add("stop_pumping")
         if request.get("stop_pumping") is True:

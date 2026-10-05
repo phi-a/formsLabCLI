@@ -12,7 +12,7 @@
   function niceStep(range, target) {
     const raw = range / Math.max(1, target);
     const mag = Math.pow(10, Math.floor(Math.log10(raw)));
-    const f = raw / mag;
+    const f = raw / mag * (1 - 1e-9);        // Math.pow may land a hair off a power of ten
     return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * mag;
   }
 

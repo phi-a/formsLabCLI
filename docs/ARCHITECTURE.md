@@ -11,7 +11,11 @@ hardware test sequences against them. Running those sequences is its central job
  │ psu   direct control │                 │ plan step (hold/command/until/log) │
  │ log   host output    │◀── host.log ─── │ CSV row when due                   │
  └──────────────────────┘                 │ rShutdown on any exit              │
-                                          └───────────────────────────────────┘
+ labcli gui (web page)                    └───────────────────────────────────┘
+ ┌──────────────────────┐                                  ▲
+ │ status, chamber,     │── the same ctrl and CAST files, ─┘
+ │ plans, plots         │   lock and log; it never opens an instrument
+ └──────────────────────┘
 ```
 
 ## Layers
@@ -20,16 +24,18 @@ hardware test sequences against them. Running those sequences is its central job
 |---|---|---|
 | Drivers | `formslab.devices` | One folder per instrument (`hvc3500`, `dp832a`, `smtc08`, `cryocooler`, `slta`, `powerswitch`), plus device objects (`hvc3500.LACO`). Opens ports, speaks protocols; knows nothing about runs. |
 | Routines | `rScripts/*.py` on `formslab.rscripts` | The instrument during a run: apply CAST requests for it, publish its readings as variables, leave it safe in `rShutdown`. One owner per instrument. |
-| Grammar | `formslab.rscripts.grammar`, `cast` | The commands each routine declares, as data: parses a cast-tab line or a plan step, lists what can come next (completion, a future GUI), and builds the help. |
+| Grammar | `formslab.rscripts.grammar`, `cast` | The commands each routine declares, as data: parses a cast-tab line or a plan step, lists what can come next (completion, the GUI's dropdowns), and builds the help cards. |
 | Sequences | `formslab.sequence` | Lab plans, one step per line: which routines run, and the ordered steps of a test. Steps talk to routines through CAST, never to a driver. |
 | Host | `formslab.host` | One run of one plan. Lock, ctrl, pacing, recording, shutdown. |
+| Orbits | `formslab.orbit` | `.orbit` files (`file`: Keplerian elements, read with the same `Grammar`; the GUI opens them, nothing runs them, docs/ORBIT.md), and the models they feed, in layers: `propagate` (two-body motion, the `Orbit` the models sweep), `geometry` (attitude, spacecraft), `viewfactor`, `thermal` (flux, environment temperature), `visibility` and `imaging`. numpy; the transient solver needs scipy and the plots matplotlib (the `orbit` extra). |
 | Console | `formslab.console`, `formslab.app` | The operator: start and stop runs, watch and command instruments. |
 
 CAST (`castfile.json`) is the bus between them: a request block per instrument
 label (`hvc`, `tc`, `psu1`, `psu2`, `cryo`, `slta`), written by the console or a
 plan and taken by the routine that owns that label, which writes back a status
 block. Each routine declares its own commands and published values as data
-(`CAST_LABELS`, `COMMANDS`, `VARIABLES` -- see rScripts/README.md), read by one
+(`CAST_LABELS`, `COMMANDS`, `VARIABLES`, and what must be true first, `RULES`
+-- see rScripts/README.md), read by one
 grammar (`rscripts/grammar.py`), so the cast tab, a plan and the routine always
 agree on what a command means, and the same declarations answer "what can come
 next" for completion.
@@ -67,14 +73,22 @@ routines as ordinary variables (rSLTA reads `InUmbra`, `UmbraDuration`,
 `UmbraTimeRemaining`). The replay step itself (a plan step that follows a
 profile file) is not built yet.
 
+An orbit file is lab-side configuration, not FORMS: one orbit by two-body motion,
+which the GUI shows live and the environment models in `formslab.orbit` sweep
+(`file.load` gives the `Orbit`). `formslab.orbit` is part of formsLabCLI; its
+models import no other part of it, and only the orbit file reaches into the
+grammar (`test/test_orbit_layout.py`).
+
 ## Known conflicts
 
 - **One controller connection:** the HVC-3500 takes one TCP client. While a
   host runs rLACO, `scripts/vent_test.py` and `scripts/pumpdown.py` cannot
   connect; use the cast tab or the `laco_*` plans.
-- **PSU1 CH1:** the cryocooler supply (`cryo_config`). Do not command that
-  channel from a plan or the console while rCryoBoard runs.
-- **PSU2:** disabled in the shipped usbmap, but rSLTA powers the camera from
-  PSU2 CH1 (12 V, 2.0 A). Enable it in the live usbmap before an sLTA run.
+- **Owned supply channels:** `usbmap.json` records what each channel feeds and
+  which rScript drives it (`"channels"`; shipped: PSU1 CH1 → cryocooler board,
+  rCryoBoard; PSU2 CH1 → sLTA camera, rSLTA). Do not command an owned channel
+  from a plan or the console while its owner runs.
+- **PSU2:** disabled in the shipped usbmap, but rSLTA powers the camera from it
+  (12 V, 2.0 A). Enable it in the live usbmap before an sLTA run.
 - **Console PSU tab:** it opens its own VISA session. Do not use it on a supply
   a run is commanding; watch the run from `cast`.

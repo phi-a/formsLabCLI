@@ -7,18 +7,9 @@ from formslab.devices.dp832a.driver import PSU
 from formslab.config import usbmap_path
 from formslab.devices.dp832a.config import enabled_psu_labels
 
-# Load command definitions
-env = Path(__file__).parent
-CONFIG = env / "psufile.json"
 # The powerswitch driver is also runnable as a module; psucli shells out to it
 # for outlet control. `lab/` became `formslab/devices/` in the extraction.
 POWERSWITCH_CMD = [sys.executable, "-m", "formslab.devices.powerswitch"]
-
-def load_commands():
-    try:
-        return json.loads(CONFIG.read_text())
-    except Exception:
-        return {}
 
 # Only the PSU targets enabled in the shared USB map, built on first use.
 #

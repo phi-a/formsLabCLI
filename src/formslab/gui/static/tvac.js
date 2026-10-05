@@ -9,6 +9,10 @@
 
   const VALVES = ["vent", "fill", "rough", "foreline", "gate"];
   const PUMPS = ["pump", "turbo"];
+  // The chamber screen's names (laco.PART_NAMES); the page passes the server's own,
+  // from the hvc card's readings, so these are only what is drawn before it has them.
+  const NAMES = { vent: "Vent valve", fill: "Fill valve", rough: "Vacuum valve", foreline: "Foreline valve",
+                  gate: "Gate valve", pump: "Vacuum pump", turbo: "Turbo pump" };
   const ZONE_TITLES = { platen: "Platen (Cntrl P)", shroud: "Shroud (Cntrl S)", t2: "t2 (monitor)" };
 
   const state = (v, on, off) => (v === true ? on : v === false ? off : "unknown");
@@ -64,7 +68,9 @@
   }
   const tip = (e, text) => { e.append(node("title", {}, text)); return e; };
 
-  function render(svg, vm, live) {
+  // `names`: {part key: name}, the server's (see NAMES).
+  function render(svg, vm, live, names) {
+    const nameOf = (key) => (names && names[key]) || NAMES[key];
     svg.replaceChildren();
     const css = getComputedStyle(document.documentElement);
     const c = { fg: css.getPropertyValue("--fg").trim() || "#222", muted: css.getPropertyValue("--muted").trim() || "#777",
@@ -103,40 +109,54 @@
         vm.holding ? c.ok : c.muted);
     });
 
-    // valves and pumps
-    // `side`: where the label goes -- below the part, or to its right (off a pipe that runs through it)
-    const part = (x, y, label, st, side) => {
-      const colour = st === "open" || st === "on" ? c.ok : st === "unknown" ? c.muted : c.bad;
-      const grp = node("g", { "data-part": label });
-      grp.append(node("circle", { cx: x, cy: y, r: 15, fill: colour, stroke: c.panel, "stroke-width": 2 }));
-      grp.append(node("text", { x, y: y + 5, "text-anchor": "middle", "font-size": 16, "font-weight": "700", fill: "#fff",
-                                "font-family": "system-ui, sans-serif" }, st === "unknown" ? "?" : st === "open" || st === "on" ? "✓" : "✕"));
+    // valves and pumps, in the engineering-drawing symbols the GUI uses everywhere
+    // (a valve is a bowtie across its pipe, a pump a circle with a triangle), filled
+    // by state: green open or on, red closed or off, grey unknown. The state is also
+    // written beside it, so it never rests on colour alone.
+    // `side`: where the label goes -- below the part, or to its right; `vertical`: a
+    // valve on an up-down pipe.
+    const symbol = (kind, x, y, colour, vertical) => {
+      if (kind === "pump") {
+        return [node("circle", { cx: x, cy: y, r: 15, fill: colour, stroke: c.panel, "stroke-width": 2 }),
+                node("path", { d: `M${x - 5} ${y - 8} V${y + 8} L${x + 8} ${y} Z`, fill: "#fff" })];
+      }
+      const d = vertical
+        ? `M${x - 11} ${y - 15} H${x + 11} L${x} ${y} Z M${x - 11} ${y + 15} H${x + 11} L${x} ${y} Z`
+        : `M${x - 15} ${y - 11} V${y + 11} L${x} ${y} Z M${x + 15} ${y - 11} V${y + 11} L${x} ${y} Z`;
+      return [node("path", { d, fill: colour, stroke: c.panel, "stroke-width": 1.5, "stroke-linejoin": "round" })];
+    };
+    const part = (kind, key, x, y, st, side, vertical) => {
+      const label = nameOf(key);
+      const on = st === "open" || st === "on";
+      const colour = on ? c.ok : st === "unknown" ? c.muted : c.bad;
+      const grp = node("g", { "data-part": key, "data-kind": kind });
+      for (const shape of symbol(kind, x, y, colour, vertical)) grp.append(shape);
       grp.append(node("title", {}, `${label}: ${st}`));
       g.append(grp);
-      const stateColour = st === "open" || st === "on" ? c.ok : c.muted;
+      const said = st === "unknown" ? "unknown" : st;
       if (side === "right") {
         text(x + 24, y - 1, label, 12, c.fg, "start");
-        text(x + 24, y + 13, st === "unknown" ? "" : st, 11, stateColour, "start");
+        text(x + 24, y + 13, said, 11, on ? c.ok : c.muted, "start");
       } else {
         text(x, y + 32, label, 12, c.fg);
-        text(x, y + 45, st === "unknown" ? "" : st, 11, stateColour);
+        text(x, y + 45, said, 11, on ? c.ok : c.muted);
       }
     };
-    part(100, 125, "Vent Valve", vm.valves.vent);
-    part(100, 215, "Fill Valve", vm.valves.fill);
-    part(620, 125, "Gate Valve", vm.valves.gate);
-    part(690, 210, "Turbo Pump", vm.pumps.turbo, "right");
+    part("valve", "vent", 100, 125, vm.valves.vent);
+    part("valve", "fill", 100, 215, vm.valves.fill);
+    part("valve", "gate", 620, 125, vm.valves.gate);
+    part("pump", "turbo", 690, 210, vm.pumps.turbo, "right");
     text(714, 241, "speed n/a", 11, c.muted, "start");
-    part(500, 370, "Vacuum Valve", vm.valves.rough, "right");
-    part(600, 415, "Foreline Valve", vm.valves.foreline);
+    part("valve", "rough", 500, 370, vm.valves.rough, "right", true);
+    part("valve", "foreline", 600, 415, vm.valves.foreline);
     text(600, 473, "pressure n/a", 11, c.muted);
-    part(500, 445, "Vacuum Pump", vm.pumps.pump);
+    part("pump", "pump", 500, 445, vm.pumps.pump);
 
     text(280, 355, "LN2 DEWAR", 11, c.muted);
     g.append(node("rect", { x: 232, y: 340, width: 96, height: 22, rx: 3, fill: "none", stroke: c.line }));
   }
 
-  const api = { viewModel, fmtPressure, fmtTemp, render };
+  const api = { viewModel, fmtPressure, fmtTemp, render, NAMES };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.TvacView = api;
 })(typeof window !== "undefined" ? window : globalThis);

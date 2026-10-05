@@ -5,7 +5,8 @@ import shutil
 import sys
 import time
 import threading
-from typing import Tuple
+import uuid
+from typing import Callable, Optional, Tuple
 
 from formslab.console.safefile import atomic_write_text, file_lock, read_json
 from formslab.state import build_default_cast_state, cast_state_path
@@ -134,8 +135,7 @@ def ReadAllCommands(labels: list, path: Path = None) -> dict:
             changed = changed or block_changed
             request = block.get("request") or {}
             if request:
-                block["processed"] = True
-                block["request"] = {}
+                _mark_taken(block)
                 changed = True
                 results[normalized] = request
         if changed:
@@ -143,40 +143,150 @@ def ReadAllCommands(labels: list, path: Path = None) -> dict:
     return results
 
 
-def ReadCommand(label: str, path: Path = None) -> dict:
+# --- command ids and results --------------------------------------------------
+#
+# Every request written gets an id, kept on the block (never inside the request,
+# which goes to the instrument as it is). A request merged into one not yet read
+# keeps every sender's id. Taking a request marks each id "taken"; an owner that
+# reports results then marks each "done" with ok and messages. A sender can
+# therefore tell taken from refused from cleared (a ctrl reset or a host restart
+# empties the request without taking it). Results are kept for the last
+# KEEP_RESULTS ids, apart from `status`, so a status write cannot erase them.
+
+KEEP_RESULTS = 20
+
+
+def _trim(results: dict) -> None:
+    while len(results) > KEEP_RESULTS:
+        results.pop(next(iter(results)))
+
+
+def _mark_taken(block: dict) -> list:
+    ids = list(block.get("request_ids") or [])
+    results = block.setdefault("results", {})
+    now = time.time()
+    for rid in ids:
+        results[rid] = {"state": "taken", "t": now}
+    _trim(results)
+    block["processed"] = True
+    block["request"] = {}
+    block["request_ids"] = []
+    return ids
+
+
+def TakeCommand(label: str, path: Path = None) -> Tuple[dict, list]:
+    """The owner's read: the pending request and its senders' ids, marked taken."""
     if path is None:
         path = cast_state_path()
     with _locked(path):
-        data  = _safe_read_json(path)
+        data = _safe_read_json(path)
         _, block, changed = _get_or_create_block(data, label)
         request = block.get("request") or {}
         if not request:
             if changed:
                 AtomicJsonWrite(data, path)
-            return {}
-        block["processed"] = True
-        block["request"]   = {}
+            return {}, []
+        ids = _mark_taken(block)
         AtomicJsonWrite(data, path)
-    return request
+    return request, ids
 
-def WriteCommand(request: dict, label: str, path: Path = None):
-    if path is None or not path.exists():
+
+def ReadCommand(label: str, path: Path = None) -> dict:
+    return TakeCommand(label, path)[0]
+
+
+def ReportResult(label: str, ids, ok: bool, messages=(), path: Path = None) -> None:
+    """The owner's answer for the requests it took: ok, and why not."""
+    ids = [i for i in (ids or []) if i]
+    if not ids:
+        return
+    if path is None:
         path = cast_state_path()
     with _locked(path):
         data = _safe_read_json(path)
         _, block, _ = _get_or_create_block(data, label)
-        # Merge into any existing unprocessed request instead of replacing
+        results = block.setdefault("results", {})
+        now = time.time()
+        for rid in ids:
+            results[rid] = {"state": "done", "ok": bool(ok), "messages": [str(m) for m in messages], "t": now}
+        _trim(results)
+        AtomicJsonWrite(data, path)
+
+
+def CommandState(label: str, rid: str, path: Path = None) -> dict:
+    """What became of request `rid`: {"state": "pending" | "taken" | "done" |
+    "cleared", "ok"?, "messages"?}. Read-only."""
+    if path is None or not path.exists():
+        path = cast_state_path()
+    try:
+        data = read_json(path)
+    except (OSError, ValueError):
+        return {"state": "unknown"}
+    block = next((b for k, b in data.items() if isinstance(k, str) and k.lower() == label.lower()), {}) \
+        if isinstance(data, dict) else {}
+    if rid in (block.get("request_ids") or []) and block.get("request") and not block.get("processed", True):
+        return {"state": "pending"}
+    found = (block.get("results") or {}).get(rid)
+    return dict(found) if found else {"state": "cleared"}
+
+
+TAKE_S = 10.0      # an owner reads its block at about 10 Hz; this is plenty
+RESULT_S = 60.0    # a valve toggle settles ~1 s and is verified; `stop` does two; a reconnect can take 3 s
+
+
+def send_request(request: dict, label: str, *, wait_result: bool = False, take_s: float = TAKE_S,
+                 result_s: float = RESULT_S, clock: Optional[Callable[[], float]] = None,
+                 tick: Optional[Callable[[], None]] = None, path: Path = None) -> dict:
+    """Write `request` to `label`, wait for its owner to take it, and with
+    `wait_result` for the owner's result. Returns {"id", "state", "ok"?,
+    "messages"?}, where state is "not_taken" (nobody read it in `take_s`),
+    "cleared", "taken" (no result asked for, or none within `result_s`) or
+    "done". `clock` and `tick` let the plan runner count only active time."""
+    clock = clock or time.monotonic
+    tick = tick or (lambda: time.sleep(0.05))
+    rid = WriteCommand(request, label, path)
+    start = clock()
+    while True:
+        st = CommandState(label, rid, path)
+        if st["state"] not in ("pending", "unknown"):
+            break
+        if clock() - start >= take_s:
+            return {"id": rid, "state": "not_taken"}
+        tick()
+    if st["state"] == "cleared" or not wait_result:
+        return {"id": rid, **st}
+    start = clock()
+    while st["state"] in ("taken", "unknown"):
+        if clock() - start >= result_s:
+            return {"id": rid, "state": "taken"}
+        tick()
+        st = CommandState(label, rid, path)
+    return {"id": rid, **st}
+
+def WriteCommand(request: dict, label: str, path: Path = None) -> str:
+    """Write a request for `label`'s owner; returns its id (see CommandState)."""
+    if path is None or not path.exists():
+        path = cast_state_path()
+    rid = uuid.uuid4().hex
+    with _locked(path):
+        data = _safe_read_json(path)
+        _, block, _ = _get_or_create_block(data, label)
+        # Merge into any existing unprocessed request instead of replacing; every
+        # sender's id is kept, so each can learn what became of its part.
         existing = block.get("request")
         if existing and isinstance(existing, dict) and not block.get("processed", True):
             block["request"] = _merge_nested_dicts(existing, request)
+            block["request_ids"] = list(block.get("request_ids") or []) + [rid]
         else:
             block['request'] = request
+            block["request_ids"] = [rid]
         block['processed'] = False
         # `timestamp` is when the block's owner last reported; a command is not a
         # report, so it is recorded apart (otherwise sending a command to an
         # instrument nobody is running would make it look as if it had just spoken).
         block['request_timestamp'] = time.time()
         AtomicJsonWrite(data, path)
+    return rid
 
 def CommandPending(label: str, path: Path = None) -> bool:
     """True while a request written to ``label`` has not been taken by its
@@ -220,7 +330,25 @@ def ResetJson(path: Path = None):
             if isinstance(block, dict):
                 block['request'] = {}
                 block['processed'] = True
+                block['request_ids'] = []
         AtomicJsonWrite(data, path)
+
+def DropUnknownBlocks(path: Path = None) -> list:
+    """Remove blocks for labels no rScript owns any more (an older version's
+    `tvac`); returns their names."""
+    if path is None:
+        path = cast_state_path()
+    if not path.exists():
+        return []
+    with _locked(path):
+        data = _safe_read_json(path)
+        stale = [k for k in data if not (isinstance(k, str) and k.lower() in _KNOWN_CAST_LABELS)]
+        if stale:
+            for k in stale:
+                data.pop(k)
+            AtomicJsonWrite(data, path)
+    return stale
+
 
 def GenerateCleanCast(path: Path = None):
     if path is None:

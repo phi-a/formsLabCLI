@@ -25,12 +25,16 @@ POLL_INTERVAL = 2.0
 RETRY_INTERVAL = 30.0
 
 CAST_LABELS = ("tc",)          # read-only: no commands
+
+
+def READINGS(label, status):
+    """`TC01 C` -> `TC01 (°C)` on the status page."""
+    return [("Thermocouples", None, [(k, f"{k[:-2]} (°C)") for k in status if k.endswith(" C")])]
 COMMANDS = []
 VARIABLES = [(f"TC{first + i:02d}", "K") for first in BOARDS.values() for i in range(CHANNELS)]
 
 
 class rGlobal:
-    disable = False
     boards = {}          # label -> SMTC08, while open
     absent = set()       # labels not in usbmap: never retried
     retry_at = {}        # label -> time.monotonic() of the next open attempt
@@ -85,8 +89,6 @@ def _board(run, label, first):
 
 
 def rScript(run):
-    if rg.disable:
-        return
     if RScriptControl(run, name).tick(seconds=POLL_INTERVAL):
         return
     for label, first in BOARDS.items():

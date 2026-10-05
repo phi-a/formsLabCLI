@@ -11,6 +11,8 @@ loading  ->  background   (W/m^2 per patch)
 ``view`` -> ``flux`` -> ``env``/``steady``/``transient``). Import it as a
 module: its ``steady``/``transient`` work on layers, not single backgrounds.
 ``passes`` reduces one orbit to radiator pass measures (``evaluate_pass``).
+``transient`` needs scipy and ``plots`` needs matplotlib (the ``orbit`` extra);
+``plots`` is not imported here, so the rest works on a base install.
 """
 
 from .materials import (                                     # noqa: F401
@@ -41,9 +43,6 @@ from .background import Background, background                # noqa: F401
 from .solver import (Thermal, Env,                            # noqa: F401
                      steady, steady_two_sided,
                      transient, environment)
-from .plots import (plot_temperature_trace,                   # noqa: F401
-                    plot_temperature_heatmap,
-                    plot_flux_trace)
 from .serialize import save_temperatures, load_temperatures   # noqa: F401
 from .passes import (BracketResult, RadiatorMeasures,          # noqa: F401
                      ThermalPassResult, evaluate_pass)

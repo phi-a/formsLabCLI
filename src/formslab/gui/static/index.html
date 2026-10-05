@@ -8,9 +8,12 @@
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+  <div id="demo-bar" hidden>DEMO: a simulated chamber, not the bench. Its login is demo / demo.</div>
   <section id="login" hidden>
     <form id="login-form" autocomplete="on">
       <h1>formsLabCLI</h1>
+      <p id="login-demo" class="demo-note" hidden>This is the <strong>demo</strong> server. Log in as <code>demo</code> / <code>demo</code>.
+        Your own login works on <code>labcli gui</code> (port 8080), not here.</p>
       <label>User <input id="login-user" name="username" autocomplete="username" required autofocus></label>
       <label>Password <input id="login-password" name="password" type="password" autocomplete="current-password" required></label>
       <button type="submit">Log in</button>
@@ -52,6 +55,7 @@
           <button type="submit">Send</button>
         </form>
         <div id="cmd-hints" class="hints"></div>
+        <div id="cmd-info" class="info" hidden></div>
         <div id="cmd-result" class="note" role="status"></div>
         <div id="cards" class="cards"></div>
         <h2>Host log</h2>
@@ -77,6 +81,8 @@
           <aside>
             <div id="plan-list"></div>
             <button id="plan-new">New plan</button>
+            <button id="orbit-new">New orbit</button>
+            <button id="block-new">New block</button>
           </aside>
           <section>
             <div class="plan-head">
@@ -85,13 +91,24 @@
               <span class="spacer"></span>
               <button id="plan-save">Save</button>
               <button id="plan-saveas">Save as...</button>
+              <button id="plan-register" title="Make a block from this plan, so other plans can call it by name">Register as block</button>
               <button id="plan-revert">Revert</button>
               <button id="plan-raw">Edit as text</button>
+              <button id="plan-delete" class="danger-outline" title="Move this plan to the trash">Delete</button>
             </div>
             <div id="plan-msg" class="note" role="status"></div>
             <div id="plan-doc-errors" class="error"></div>
-            <div id="plan-rows"></div>
-            <textarea id="plan-text" spellcheck="false" hidden aria-label="Plan text"></textarea>
+            <div id="plan-legend" class="legend"></div>
+            <div class="plan-body">
+              <div>
+                <div id="plan-rows"></div>
+                <textarea id="plan-text" spellcheck="false" hidden aria-label="Plan text"></textarea>
+              </div>
+              <div class="plan-side">
+                <aside id="plan-info" class="info" hidden aria-live="polite"></aside>
+                <aside id="orbit-live" class="info" hidden aria-label="The orbit now"></aside>
+              </div>
+            </div>
           </section>
         </div>
       </section>
@@ -125,6 +142,8 @@
   <script src="/static/chart.js"></script>
   <script src="/static/tvac.js"></script>
   <script src="/static/app.js"></script>
+  <script src="/static/info.js"></script>
+  <script src="/static/plantext.js"></script>
   <script src="/static/editor.js"></script>
 </body>
 </html>

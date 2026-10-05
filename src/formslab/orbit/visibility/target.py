@@ -4,7 +4,7 @@ import math
 from dataclasses import dataclass
 
 from ..propagate.constants import R_E
-from ..propagate.orbit import eclipse_half_angle, mean_motion
+from ..propagate.orbit import beta_uc, eclipse_half_angle, mean_motion
 
 # Named targets (J2000 equatorial)
 SGR_A_RA_DEG = 266.4168   # deg      Sgr A* right ascension
@@ -88,18 +88,7 @@ def target_beta_uc(
     uc : float
         Argument of latitude of target culmination (rad).
     """
-    sd, cd = math.sin(target.dec_rad), math.cos(target.dec_rad)
-    si, ci = math.sin(i), math.cos(i)
-    d_ra = omega - target.ra_rad
-
-    sin_beta = si * cd * math.sin(d_ra) + ci * sd
-    beta = math.asin(max(-1.0, min(1.0, sin_beta)))
-
-    g_x = cd * math.cos(target.ra_rad - omega)
-    g_y = ci * cd * math.sin(target.ra_rad - omega) + si * sd
-    uc = math.atan2(g_y, g_x)
-
-    return beta, uc
+    return beta_uc(i, omega, target.ra_rad, target.dec_rad)
 
 
 def clear_half_angle(

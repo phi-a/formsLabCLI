@@ -90,9 +90,8 @@ instrument.
   words that fit, then number boxes showing limits and units.
 - Every row is checked live by the real parser, with the error beside it.
 - Save writes the plain text back, comments and blank lines kept.
-- **Needs (not built):** a `plan_options(loaded_scripts, words)` function (the plan's
-  `hold`, `until`, `log` completion exists inside the parser but is not exposed), and a
-  test that parse, edit, save round-trips every shipped plan unchanged.
+- **Built:** `line_options(scripts, words)` in sequence/plan.py (what was sketched as
+  `plan_options`), and the test that every shipped plan round-trips unchanged.
 
 ### 2. Control
 - Run state, Start (plan list), End (always visible), Pause and Resume.
@@ -153,6 +152,28 @@ Other needs:
   carries its age.
 
 ### 4. Space environment and orbit viewer
+
+Stage 1, built 2026-10-05: orbit files (`.orbit`, docs/ORBIT.md) in the Plans tab,
+classical elements with their own grammar, colour and symbols, and a live panel
+propagating them by two-body motion. The goal is simulating the satellite's
+background temperatures; the stages after it, each to get its own plan:
+
+1. **Environment profile.** Orbit file + spacecraft model -> `orbit.thermal.pipeline`
+   -> per-face environment temperature over one orbit, written as a
+   recorder-format CSV so the Plots tab shows it with no new code. Since
+   2026-10-05 the pipeline's `Orbit` is built from the orbit file's elements
+   (eccentric included) and numpy is in the base install, so view, flux and
+   environment temperature run anywhere; the transient solver needs scipy. Open:
+   how the spacecraft is described (a file with its own grammar?).
+2. **3D view.** Orbit, Earth, Sun direction, the spacecraft's attitude. Open: plotly
+   (`scene3d`) is multi-MB; a small vendored WebGL library or hand-drawn canvas,
+   given no internet and no build step.
+3. **The satellite in the chamber.** A Chamber-view-style drawing with per-face
+   thermal overlays, from the profile, live or replayed.
+4. **Replay.** A plan step that follows a profile against the chamber (shroud
+   targets, `InUmbra` for rSLTA).
+
+Notes from the first draft:
 - Orbit geometry, beta angle and eclipse timeline, view factors over the orbit, and
   environment temperature versus time, from `formslab.orbit`.
 - **Constraint:** `formslab.orbit` needs numpy, scipy and matplotlib (the `orbit`
@@ -219,7 +240,8 @@ Functional
 
 Non-functional
 - N1 Runs on Windows, Linux (Pi included) and, ideally, Mac; any current browser.
-- N2 No build step, no internet, no new base dependency (the orbit extra stays optional).
+- N2 No build step, no internet, no new base dependency beyond numpy (added 2026-10-05 for the
+  orbit models; scipy and matplotlib stay in the optional `orbit` extra).
 - N3 Does not open any instrument, ever.
 - N4 Usable with no host running (plans, plots, orbit view still work).
 - N5 A page reload loses nothing: state lives in files.
@@ -228,7 +250,7 @@ Non-functional
 ## Build order (each stage useful alone)
 
 1. Server skeleton, login, status, run and end, Control screen.
-2. Plans editor (plus `plan_options` and the round-trip test).
+2. Plans editor (plus `line_options` and the round-trip test). Done.
 3. TVAC viewer.
 4. Plot viewer.
 5. Space environment viewer (after deciding the 3D and replay questions).

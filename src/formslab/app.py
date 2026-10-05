@@ -10,8 +10,6 @@ console runs from any working directory.
 """
 import os
 import sys
-import io
-from contextlib import redirect_stdout
 
 try:
     if hasattr(sys.stdout, "reconfigure"):
@@ -337,17 +335,11 @@ def read_command(prompt):
                 continue
             _echo(prompt, buf)
 
-def capture_stdout(func, *args, **kwargs):
-    buffer = io.StringIO()
-    with redirect_stdout(buffer):
-        func(*args, **kwargs)
-    return Text(buffer.getvalue(), style=style.TEXT)
-
 def main():
     global current_tab
     # `labcli <command>` runs one command and exits (SSH, scripts); a bare
     # `labcli` or a `--<tab>` flag opens the console.
-    if len(sys.argv) > 1 and not sys.argv[1].startswith("--"):
+    if len(sys.argv) > 1 and (not sys.argv[1].startswith("--") or sys.argv[1] == "--help"):
         from formslab.cli import main as one_command
         sys.exit(one_command(sys.argv[1:]))
     # The CTRL command table and CAST device state are regenerated from code

@@ -23,7 +23,7 @@ import time
 from datetime import datetime, timezone
 
 from formslab.config import output_dir
-from formslab.console.cast.castutils import CommandPending, ReadCommand, UpdateStatus
+from formslab.console.cast.castutils import CommandPending, ReportResult, TakeCommand, UpdateStatus
 from formslab.devices.hvc3500.laco import LACO, OPERATIONS, PUMPS, VALVES
 from formslab.rscripts import C2K
 
@@ -34,45 +34,161 @@ RETRY_INTERVAL = 30.0      # seconds between connect attempts while unreachable
 # --- console commands --------------------------------------------------------------
 
 CAST_LABELS = (LABEL,)
+RESULT_LABELS = (LABEL,)   # each request is answered: done, ok or refused with the controller's reason
 
 
 def COMMANDS():
     """Every hvc command. Zone names and setpoint limits come from this bench's
-    tvac_bench.json, so the list is built on use, not at import."""
+    tvac_bench.json, so the list is built on use, not at import. Each help is a
+    summary line, then details (docs/WRITING.md)."""
     from formslab.devices.hvc3500 import load_profile
 
     profile = load_profile()
     cmds = []
-    for z in profile.zones:
+    for z, n in profile.zones.items():
         lo, hi = profile.setpoint_bounds(z)
         cmds += [
-            (f"{z} <C:number {lo:g}..{hi:g} C>", f"{z} setpoint (refused outside the profile limits)",
+            (f"{z} <temperature:number {lo:g}..{hi:g} C>", f"""Set the {z} temperature
+             The temperature the {z} controls to, from {lo:g} to {hi:g} °C: the limits in
+             this bench's tvac_bench.json. A value outside them is refused before it is
+             sent. It takes effect while the {z}'s thermal control is on, and the {z}
+             moves toward it at its ramp rate. The controller reads it back to confirm.
+             Controller command: !Z{n}.""",
              lambda c, z=z: {z: c}),
-            (f"{z} on|off", f"{z} thermal control (!ZS/!ZO)", lambda s, z=z: {f"{z}_control": s == "on"}),
-            (f"{z} rate <rate:number 0.. C/min>", f"{z} rate setpoint", lambda r, z=z: {f"{z}_rate": r}),
-            (f"{z} range <range:number 0.. C>", f"{z} control range", lambda r, z=z: {f"{z}_range": r}),
+            (f"{z} on|off", f"""Turn {z} thermal control on or off
+             On, the controller heats or cools the {z} toward its setpoint. Off, it does
+             neither, and the {z}'s effective setpoint follows its own temperature.
+             Controller command: !ZS{n}, !ZO{n}.""",
+             lambda s, z=z: {f"{z}_control": s == "on"}),
+            (f"{z} rate <rate:number 0.. C/min>", f"""Set the {z} ramp rate
+             How fast the {z}'s setpoint moves, in °C per minute.
+             Controller command: !ZR{n}.""",
+             lambda r, z=z: {f"{z}_rate": r}),
+            (f"{z} range <range:number 0.. C>", f"""Set the {z} control range
+             The {z}'s temperature control range, in °C. Its exact effect is in the
+             HVC-3500 manual and is not documented here. Controller command: !RT{n}.""",
+             lambda r, z=z: {f"{z}_range": r}),
         ]
     unit = profile.pressure_unit
     ops = "|".join(op for op in OPERATIONS if op != "close_all")
     return cmds + [
-        (f"vacuum <P:number 0.. {unit}>", "Vacuum setpoint", lambda p: {"vacuum": p}),
-        (f"vacuum range <P:number 0.. {unit}>", "Vacuum control range", lambda p: {"vacuum_range": p}),
-        ("vacuum rate <rate:number 0..>", "Vacuum rate control", lambda r: {"vacuum_rate": r}),
-        ("hold <s:number 0.. s>", "Hold time", lambda t: {"hold_s": t}),
-        ("recipe <n:integer 1..20>", "Select recipe n", lambda n: {"recipe": n}),
-        ("recipe start|stop", "Run / stop the selected recipe (!RS/!RO)",
-         lambda w: {"recipe_run": w == "start"}),
-        ("start", "Start the cycle, or continue a held step (!CS)", {"start": True}),
-        ("abort", "Abort the running cycle (!CA)", {"abort": True}),
-        ("reset", "Reset the controller; starts its recovery (!CR)", {"reset": True}),
-        (f"<operation:{ops}>", "Cycle vacuum operation (!VA/!FA/!PS); acts only inside a running cycle",
-         lambda op: {op: True}),
-        ("closeall", "Close all valves in a running cycle (!NA)", {"close_all": True}),
-        (f"<valve:{'|'.join(VALVES)}> open|close", "A valve: read first, verified; PLC interlocks apply",
+        (f"vacuum <pressure:number 0.. {unit}>", f"""Set the pressure setpoint
+         The pressure the controller's own vacuum process aims for, in {unit}. Whether
+         the valve and pump commands use it is not documented here.
+         Controller command: !VS.""", lambda p: {"vacuum": p}),
+        (f"vacuum range <pressure:number 0.. {unit}>", f"""Set the pressure control range
+         A pressure, in {unit}, used by the controller's vacuum process. Its exact effect
+         is not documented here. Controller command: !VR.""", lambda p: {"vacuum_range": p}),
+        ("vacuum rate <rate:number 0..>", """Set the pressure rate control
+         A setting of the controller's vacuum process. Its unit and exact effect are not
+         documented here. Controller command: !VD.""", lambda r: {"vacuum_rate": r}),
+        ("hold <seconds:number 0.. s>", """Set the vacuum process hold time
+         How long the controller's vacuum process holds, in seconds. This is not the
+         plan step hold, which waits in the plan. Controller command: !VH.""",
+         lambda t: {"hold_s": t}),
+        ("recipe <recipe:integer 1..20>", """Choose a stored recipe
+         Which of the controller's stored recipes, 1 to 20, hvc recipe start runs.
+         Controller command: !TR.""", lambda n: {"recipe": n}),
+        ("recipe start|stop", """Start or stop the chosen recipe
+         A recipe runs the chamber by itself. Until it ends, its valves, pumps and zones
+         are the controller's, and a plan treats their states as unknown.
+         Controller command: !RS, !RO.""", lambda w: {"recipe_run": w == "start"}),
+        ("start", """Start the cycle or continue a held step
+         What it does depends on the controller: it starts a cycle, or continues a recipe
+         held at a step. It is never repeated automatically. Controller command: !CS.""",
+         {"start": True}),
+        ("abort", """Abort the running cycle
+         Ends the cycle and sends the controller through its recovery sequence. Allowed
+         during a fault. Controller command: !CA.""", {"abort": True}),
+        ("reset", """Reset the controller
+         The controller homes and recovers. This is how a fault is cleared once its cause
+         is fixed; a hard over-temperature also needs a physical reset at the Watlow
+         controller. Allowed during a fault. Controller command: !CR.""", {"reset": True}),
+        (f"<operation:{ops}>", """Run a cycle vacuum operation
+         It acts only inside a running cycle. vent2atm vents to atmosphere, fill2atm fills
+         to atmosphere with the process gas, and purge purges the system. The controller
+         runs its own valve sequence, so a plan treats every valve and pump as unknown
+         afterwards. Controller command: !VA, !FA, !PS.""", lambda op: {op: True}),
+        ("closeall", """Close all valves in a running cycle
+         Allowed during a fault. Controller command: !NA.""", {"close_all": True}),
+        (f"<valve:{'|'.join(VALVES)}> open|close", """Open or close a valve
+         rough is the vacuum valve: it joins the chamber to the vacuum pump. vent lets
+         air in. fill lets in the process gas. foreline joins the turbo pump's exhaust to
+         the vacuum pump. gate joins the chamber to the turbo pump. The valve is read
+         first and switched only if it must change, then read again about a second later
+         to verify. Closing a valve is always allowed, even during a fault.
+         Controller command: !OR, !OV, !OF, !O4, !OG.""",
          lambda v, a: {v: a}),
-        (f"<pump:{'|'.join(PUMPS)}> on|off", "A pump: read first, verified; PLC interlocks apply",
+        (f"<pump:{'|'.join(PUMPS)}> on|off", """Turn a pump on or off
+         pump is the vacuum pump, which roughs the chamber. The controller wants it
+         running for 10 s before the vacuum or foreline valve opens. turbo is the turbo
+         pump. It needs the foreline valve open and the foreline pressure at or below
+         0.2 Torr. To stop the vacuum pump, hvc stop closes the vacuum valve first.
+         Controller command: !OP, !OT.""",
          lambda p, s: {p: s}),
-        ("stop", "End pumping: rough valve closed, then pump off", {"stop_pumping": True}),
+        ("stop", """Stop roughing safely
+         Closes the vacuum valve, then stops the vacuum pump, verifying each. A run that
+         started pumping does this itself when it ends.""",
+         {"stop_pumping": True}),
+    ]
+
+
+def PARTS():
+    """Which kind of part each command word names: shown as an icon beside the word
+    (valve, pump, zone, setting). Cycle words (start, abort, stop...) name none."""
+    from formslab.devices.hvc3500 import load_profile
+
+    out = {v: "valve" for v in VALVES}
+    out.update({p: "pump" for p in PUMPS})
+    out.update({z: "zone" for z in load_profile().zones})
+    out.update({w: "setting" for w in ("vacuum", "hold", "recipe")})
+    return out
+
+
+def RULES():
+    """What each command needs first (devices/hvc3500/rules.py), thresholds from
+    this bench's tvac_bench.json."""
+    from formslab.devices.hvc3500 import load_profile
+    from formslab.devices.hvc3500.rules import laco_rules
+
+    return laco_rules(load_profile())
+
+
+def RULE_STATE(status):
+    from formslab.devices.hvc3500.rules import laco_state
+
+    return laco_state(status)
+
+
+def RULE_EFFECTS(request):
+    from formslab.devices.hvc3500.rules import laco_effects
+
+    return laco_effects(request)
+
+
+def READINGS(label, status):
+    """The status page's groups, in the chamber screen's names (laco.PART_NAMES)."""
+    from formslab.devices.hvc3500 import load_profile
+    from formslab.devices.hvc3500.laco import PART_NAMES
+
+    unit = status.get("pressure_unit") or "Torr"
+    zones = []
+    for z in load_profile().zones:
+        zones += [(f"{z} C", f"{z.capitalize()} (°C)"), (f"{z} setpoint C", f"{z.capitalize()} setpoint (°C)")]
+    zones.append(("thermal_control", "Holding temperature", ("On", "Off")))
+    zoned = {k for k, *_ in zones}
+    sensors = [(k, f"{k[:-2]} (°C)") for k in status if k.endswith(" C") and k not in zoned]
+    return [
+        ("Chamber", None, [("connected", "Connected"), ("error", "Error"), ("mode", "Mode"),
+                           ("test_status", "Test status"), ("pressure", f"Chamber pressure ({unit})"),
+                           ("pressure_unit", None), ("fault_severity", "Fault severity"),
+                           ("faults", "Faults")]),
+        ("Valves", "valve", [(v, PART_NAMES[v]) for v in VALVES]),
+        ("Pumps", "pump", [(p, PART_NAMES[p]) for p in PUMPS]),
+        ("Zones", "zone", zones),
+        ("Thermocouples", None, sensors),
+        ("Pressure settings", "setting", [("vacuum_setpoint", f"Pressure setpoint ({unit})")]),
+        ("Recipe", None, [("recipe", "Recipe"), ("recipe_step", "Recipe step")]),
     ]
 
 
@@ -90,7 +206,6 @@ def VARIABLES():
 # --- the routine -------------------------------------------------------------------
 
 class rGlobal:
-    disable = False
     POLL_INTERVAL = 5          # replaced by the profile's poll_interval_s
     LOG_INTERVAL = 30.0
 
@@ -199,9 +314,7 @@ def _quick(run, laco):
 
 
 def rScript(run):
-    if rg.disable:
-        return
-    request = ReadCommand(label=LABEL)
+    request, ids = TakeCommand(label=LABEL)
     due = time.monotonic() >= rg.next_full
     if not (request or due):
         return
@@ -210,16 +323,26 @@ def rScript(run):
         if request:
             run.log(f"request {request} dropped: chamber not connected",
                       level="ERROR", component=name)
+            ReportResult(LABEL, ids, False, ["chamber not connected"])
         return
     if request:
-        for level, message in laco.apply(request):
-            run.log(message, level=level, component=name)
-            if level == "INFO" and message in ("pump verified on", "rough verified open"):
-                rg.started_pumping = True
-            if level == "INFO" and (message == "pump verified off"
-                                    or message.startswith("stop_pumping:")):
-                rg.started_pumping = False
+        said = []
+        try:
+            for level, message in laco.apply(request):
+                run.log(message, level=level, component=name)
+                said.append((level, message))
+                if level == "INFO" and message in ("pump verified on", "rough verified open"):
+                    rg.started_pumping = True
+                if level == "INFO" and (message == "pump verified off"
+                                        or message.startswith("stop_pumping:")):
+                    rg.started_pumping = False
+        except Exception as e:
+            ReportResult(LABEL, ids, False, [f"{type(e).__name__}: {e}"])
+            raise
+        # The quick re-read comes first, so the next plan step sees the new state.
         _quick(run, laco)
+        errors = [m for level, m in said if level == "ERROR"]
+        ReportResult(LABEL, ids, not errors, errors or [m for _, m in said])
     if due and _read(run, laco):
         rg.next_full = time.monotonic() + rg.POLL_INTERVAL
 

@@ -22,12 +22,10 @@ from __future__ import annotations
 
 import json
 import sys
-import time
 
 from rich.console import Console
 
 USAGE = 2
-CAST_TAKE_S = 10.0
 
 
 def _console() -> Console:
@@ -106,11 +104,12 @@ def _log(out, args) -> int:
 
 
 def _cast(out, args) -> int:
-    """Send one command and wait until the owning rScript takes it. Refused
-    when no run is going: the host clears CAST when it starts, so a request
-    written beforehand would be silently lost."""
+    """Send one command and wait until the owning rScript takes it, and, for an
+    owner that reports (rLACO), until it is done or refused. Refused when no run
+    is going: the host clears CAST when it starts, so a request written
+    beforehand would be silently lost."""
     from formslab.console.cast import castcli
-    from formslab.console.cast.castutils import CommandPending, WriteCommand
+    from formslab.console.cast.castutils import RESULT_S
     from formslab.console.ctrl import ctrlcli
     from formslab.rscripts import cast
 
@@ -126,20 +125,8 @@ def _cast(out, args) -> int:
     except cast.GrammarError as e:
         out.print(f"✗ {e}", markup=False)
         return 1
-    host = ctrlcli.running()
-    if host is None:
-        out.print("✗ no run is going, so nothing would apply it; nothing sent "
-                  "(`labcli run tvac` starts manual operation)", markup=False)
-        return 1
-    label = args[0].lower()
-    WriteCommand(request, label)
-    deadline = time.monotonic() + CAST_TAKE_S
-    while CommandPending(label):
-        if time.monotonic() > deadline:
-            out.print(f"✗ {label} ← {json.dumps(request)} was not taken within {CAST_TAKE_S:g} s "
-                      f"(it stays queued until plan {host['plan']} ends): does that plan load the "
-                      f"rScript that owns {label}?", markup=False)
-            return 1
-        time.sleep(0.1)
-    out.print(f"✔ {label} ← {json.dumps(request)} (taken by plan {host['plan']})", markup=False)
-    return 0
+    sent = cast.send(args[0], request, host=ctrlcli.running(), result_s=RESULT_S)
+    hint = " (`labcli run tvac` starts manual operation)" if sent["state"] == "refused" else ""
+    out.print(f"{'✔' if sent['ok'] else '✗'} {sent['label']} ← {json.dumps(request)}: "
+              f"{sent['text']}{hint}", markup=False)
+    return 0 if sent["ok"] else 1

@@ -1,0 +1,17 @@
+# Bring the chamber back to air within a safe window
+# Closes the gate and vacuum valves, waits for the platen and shroud to be
+# between 10 and 60 °C, opens the vent valve and waits for 700 Torr. Each
+# temperature wait is bounded by the minutes given; after a cold soak it can be
+# long. It leaves the vacuum pump running, since it may be backing the turbo
+# pump. The vent valve is left open, as the chamber's own screen leaves it.
+block vent within <minutes:number 1..600 min>
+load rLACO
+
+hvc gate close
+hvc rough close
+until platenT above 10 C timeout {minutes} min
+until platenT below 60 C timeout {minutes} min
+until shroudT above 10 C timeout {minutes} min
+until shroudT below 60 C timeout {minutes} min
+hvc vent open
+until chamberP above 700 timeout 10 min

@@ -11,7 +11,8 @@
 The commands are not defined here. Each rScript declares its own (CAST_LABELS,
 COMMANDS -- see formslab.rscripts.cast); this tab turns the words into that
 script's request and writes it to CAST, where the script, running in the host,
-applies it. With no host running a request waits, shown as pending.
+applies it, and says what became of it: taken, done, or refused and why. With
+no run going a command is refused, since nothing would apply it.
 """
 import json
 import time
@@ -20,7 +21,7 @@ from rich.console import Group
 from rich.table import Table
 from rich.text import Text
 
-from formslab.console.cast.castutils import GenerateCleanCast, WriteCommand
+from formslab.console.cast.castutils import GenerateCleanCast
 from formslab.console.sessions.base import CLIResult
 from formslab.console.style import (
     DIM, ERROR, HEADER, INFO, LABEL, NUMBER, STATE_ERR, STATE_OFF, STATE_ON, SUCCESS, TEXT,
@@ -98,6 +99,7 @@ def _render_psu(name: str, entry: dict) -> Text:
         st = stats[ch]
         rq = (reqs.get(ch) if isinstance(reqs, dict) else None) or {}
         result.append(f"{ch}  ", INFO)
+        feeds = _feeds(name, ch)
         for key, fmt, width, unit in (("vset", "5.2f", 5, "V "), ("cset", "5.3f", 5, "A "),
                                       ("vmeas", "6.3f", 6, "V "), ("cmeas", "6.3f", 6, "A ")):
             v = st.get(key)
@@ -109,26 +111,46 @@ def _render_psu(name: str, entry: dict) -> Text:
                       STATE_ERR if on is None else STATE_ON if on else STATE_OFF)
         if rq.get("voltage") is not None or rq.get("current") is not None:
             result.append(f" ← pending {rq.get('voltage')}V {rq.get('current')}A", WARNING)
+        if feeds:
+            result.append(f"  {feeds}", DIM)
         result.append("\n")
     return result
 
 
+def _feeds(label: str, ch: str) -> str:
+    """What the hardware map says a supply channel feeds, or ""."""
+    try:
+        from formslab.devices.dp832a.wiring import channel
+        return channel(label, ch).get("feeds") or ""
+    except Exception:
+        return ""
+
+
 def _render_generic(name: str, entry: dict) -> Text:
-    """Any block as key: value, plus a pending request if one is waiting."""
+    """Any block in its owner's groups (READINGS), as name: value, plus a pending
+    request if one is waiting."""
     result = Text()
     ts_val = entry.get("timestamp", 0)
     result.append(f"  {name.upper()}", HEADER)
     result.append(f"  {_ago(ts_val) if ts_val else 'unknown'}\n", DIM)
 
     stats = entry.get("status", {}) or {}
-    if not stats:
+    try:
+        groups = cast.readings(name, stats)
+    except Exception:                               # a broken rScript must not break the tab
+        groups = []
+    rows = [r for g in groups for r in g["rows"]]
+    if not rows:
         result.append("  (no status data)\n", DIM)
-    else:
-        width = max(len(str(k)) for k in stats) + 2
-        for k, v in stats.items():
-            result.append(f"  {str(k).ljust(width)}", LABEL)
+    width = max((len(r["name"]) for r in rows), default=0) + 2
+    for g in groups:
+        if g["title"]:
+            result.append(f"  {g['title']}\n", HEADER)
+        for r in g["rows"]:
+            v = r["value"]
+            result.append(f"    {r['name'].ljust(width)}", LABEL)
             if isinstance(v, bool):
-                result.append("ON/OPEN" if v else "off/closed", STATE_ON if v else STATE_OFF)
+                result.append(r["text"], STATE_ON if v else STATE_OFF)
             elif isinstance(v, float):
                 result.append(f"{v:.4g}", NUMBER)
             elif isinstance(v, int):
@@ -211,9 +233,12 @@ def execute_command(args: list[str]) -> CLIResult:
         return CLIResult(Text(f"✗ {e}", style=ERROR), ok=False)
     except Exception as e:                      # a broken rScript must not crash the tab
         return CLIResult(Text(f"✗ {cmd}: {type(e).__name__}: {e}", style=ERROR), ok=False)
-    WriteCommand(request, cmd)
+    from formslab.console.ctrl.ctrlcli import running
+
+    sent = cast.send(cmd, request, host=running())
     r = Text()
-    r.append("✔ ", SUCCESS)
+    r.append("✔ " if sent["ok"] else "✗ ", SUCCESS if sent["ok"] else ERROR)
     r.append(f"{cmd} ← ", TEXT)
     r.append(json.dumps(request), INFO)
-    return CLIResult(r)
+    r.append(f"  {sent['text']}", TEXT if sent["ok"] else ERROR)
+    return CLIResult(r, ok=sent["ok"])

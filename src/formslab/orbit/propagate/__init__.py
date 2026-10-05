@@ -1,12 +1,11 @@
-"""Shared constants, Sun ephemeris, and orbit geometry."""
+"""Shared constants, Sun ephemeris, two-body motion and orbit geometry."""
 
 from .constants import *  # noqa: F401,F403
+from .kepler import Elements, live, state, umbra_spans  # noqa: F401
 from .orbit import (  # noqa: F401
-    NADIR,
     Orbit,
     beta_angle,
     beta_uc,
-    direction,
     eclipse_duration,
     eclipse_half_angle,
     j2_raan_rate,

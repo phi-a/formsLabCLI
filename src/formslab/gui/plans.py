@@ -1,6 +1,9 @@
-"""Plan files for the GUI's editor.
+"""Plan, block and orbit files for the GUI's editor.
 
-A plan is named by a short name and found only through the server's own plan
+The editor opens three kinds of file: plans (`.plan`, sequence.plan), blocks
+(`.block`, sequence.block: steps a plan calls by name) and orbits (`.orbit`,
+orbit.file). They share one list and one set of names, so a name says which
+file it is. A plan is named by a short name and found only through the server's own plan
 list (`discover`), never through a path from a request. Plans that ship with the
 checkout, or sit in the folder `labcli` was started from, are read-only here;
 a copy saved from the editor goes in this machine's own plans folder
@@ -9,19 +12,26 @@ change what `run <name>` does for everyone, and a name already taken by any plan
 is refused.
 
 Saving writes the file in one step and refuses to overwrite a file that changed
-since it was opened (compared by a hash of its contents).
+since it was opened (compared by a hash of its contents). Deleting moves the file
+into ``<config>/plans/.trash`` rather than erasing it.
 """
 from __future__ import annotations
 
 import hashlib
 import os
 import re
+import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 
 from formslab.console.safefile import atomic_write_text
-from formslab.sequence.plan import ENV, SUFFIX, check_text, discover, user_plans_dir
+from formslab.orbit import file as orbitfile
+from formslab.sequence import block as blockfile
+from formslab.sequence.plan import ENV, SUFFIX, discover, review, user_plans_dir
 
 NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+SUFFIXES = {"plan": SUFFIX, "block": blockfile.SUFFIX, "orbit": orbitfile.SUFFIX}
+KINDS = {suffix: kind for kind, suffix in SUFFIXES.items()}
 
 
 class PlanFileError(Exception):
@@ -51,8 +61,14 @@ def is_editable(path: Path) -> bool:
 
 
 def find(name: str) -> Path | None:
-    """The plan called `name`, as the host would find it (first match wins)."""
-    return next((p for p in discover() if p.stem == name), None)
+    """The plan, block or orbit called `name`, as the host would find it (first
+    match wins; a plan, then a block, then an orbit of the same name)."""
+    return next((p for p in [*discover(), *blockfile.discover(), *orbitfile.discover()]
+                 if p.stem == name), None)
+
+
+def kind_of(path: Path) -> str:
+    return KINDS.get(path.suffix, "plan")
 
 
 def read(name: str) -> dict:
@@ -61,14 +77,23 @@ def read(name: str) -> dict:
         raise PlanFileError(404, f"no plan {name!r}")
     data = path.read_bytes()
     text = data.decode("utf-8", errors="replace").replace("\r\n", "\n")      # a Windows checkout may have CRLF
-    return {"name": name, "text": text, "hash": content_hash(data), "editable": is_editable(path),
-            "errors": [{"line": n, "message": m} for n, m in check_text(text)]}
+    return {"name": name, "kind": kind_of(path), "text": text, "hash": content_hash(data),
+            "editable": is_editable(path), **problems(text, kind_of(path))}
 
 
-def save(name: str, text: str, base_hash: str | None, as_new: bool) -> dict:
-    """Write plan `text`. `as_new` makes a new plan in this machine's folder;
-    otherwise the named editable plan is overwritten, if it is unchanged since
-    `base_hash`. A draft with mistakes is saved too: the errors come back."""
+def problems(text: str, kind: str = "plan") -> dict:
+    """{errors, warnings}: [{line, message}] each (see sequence.plan.review,
+    sequence.block.review and orbit.file.review)."""
+    errors, warnings = {"orbit": orbitfile.review, "block": blockfile.review}.get(kind, review)(text)
+    return {"errors": [{"line": n, "message": m} for n, m in errors],
+            "warnings": [{"line": n, "message": m} for n, m in warnings]}
+
+
+def save(name: str, text: str, base_hash: str | None, as_new: bool, kind: str = "plan") -> dict:
+    """Write plan `text`. `as_new` makes a new file of this `kind` (plan, block or orbit)
+    in this machine's folder; otherwise the named editable file is overwritten, if
+    it is unchanged since `base_hash`, and keeps its kind. A draft with mistakes is
+    saved too: the errors come back."""
     if not NAME.match(name or ""):
         raise PlanFileError(400, "a plan name is letters, digits, - and _ (at most 64, starting with a letter or digit)")
     text = text.replace("\r\n", "\n").replace("\r", "\n")
@@ -77,8 +102,10 @@ def save(name: str, text: str, base_hash: str | None, as_new: bool) -> dict:
     existing = find(name)
     if as_new:
         if existing is not None:
-            raise PlanFileError(409, f"a plan named {name!r} already exists; choose another name")
-        target = user_plans_dir() / f"{name}{SUFFIX}"
+            raise PlanFileError(409, f"a plan, block or orbit named {name!r} already exists; choose another name")
+        if kind not in SUFFIXES:
+            raise PlanFileError(400, f"a file is a plan, a block or an orbit, not {kind!r}")
+        target = user_plans_dir() / f"{name}{SUFFIXES[kind]}"
         target.parent.mkdir(parents=True, exist_ok=True)
     else:
         if existing is None:
@@ -91,5 +118,28 @@ def save(name: str, text: str, base_hash: str | None, as_new: bool) -> dict:
                                      "(or save under another name) so nothing is overwritten")
         target = existing
     atomic_write_text(target, text)
-    return {"name": name, "hash": content_hash(text.encode("utf-8")), "editable": True,
-            "errors": [{"line": n, "message": m} for n, m in check_text(text)]}
+    return {"name": name, "kind": kind_of(target), "hash": content_hash(text.encode("utf-8")),
+            "editable": True, **problems(text, kind_of(target))}
+
+
+def trash_dir() -> Path:
+    return user_plans_dir() / ".trash"
+
+
+def delete(name: str, base_hash: str | None) -> dict:
+    """Move an editable plan to the trash (never a shipped one), if it is
+    unchanged since `base_hash`. It is kept as ``<name>_<UTC>.plan`` (or
+    ``.orbit``) there and
+    can be put back by moving it out again."""
+    path = find(name) if NAME.match(name or "") else None
+    if path is None:
+        raise PlanFileError(404, f"no plan {name!r}")
+    if not is_editable(path):
+        raise PlanFileError(403, f"{name!r} ships with formsLabCLI and cannot be deleted here")
+    if base_hash != content_hash(path.read_bytes()):
+        raise PlanFileError(409, f"{name!r} changed on disk since you opened it; reload it first")
+    trash_dir().mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    target = trash_dir() / f"{name}_{stamp}{path.suffix}"
+    shutil.move(str(path), str(target))
+    return {"deleted": name, "trash": str(target)}

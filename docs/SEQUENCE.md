@@ -21,10 +21,10 @@ log done
 
 | step | does | fails the plan when |
 |---|---|---|
-| `<label> <words>` | a command to the routine that owns the label (`hvc vent open`, `psu1 ch1 on`, `cryo ccv 14`) -- the cast tab's words; waits until the routine has taken it | not taken within 10 s |
-| `hold <n> s\|min\|h` | runs the routines for a while | — |
+| `<label> <words>` | a command to the routine that owns the label (`hvc vent open`, `psu1 ch1 on`, `cryo ccv 14`) -- the cast tab's words; waits until the routine has taken it, and for the chamber (rLACO) until it is done | a prerequisite is not met (below); not taken within 10 s; the chamber refuses it |
+| `hold <time> s\|min\|h` | runs the routines for a while | — |
 | `hold until end` | runs until ctrl `end` (`tvac.plan`: manual operation) | — |
-| `until <value> above\|below <n> [C\|K] timeout <n> s\|min\|h` | runs until a published value crosses a limit; `C`/`K` converts from the value's own unit | not met by the timeout (required: a wait on hardware always has a limit) |
+| `until <variable> above\|below <limit> [C\|K] timeout <time> s\|min\|h` | runs until a published value crosses a limit; `C`/`K` converts from the value's own unit | not met by the timeout (required: a wait on hardware always has a limit) |
 | `log <text>` | one line in the run log | — |
 
 `#` starts a comment, on a line of its own (a `#` after a step is an error,
@@ -44,13 +44,96 @@ tvac.plan:4: expected s, min or h after 'hold 30', got 'sec'; did you mean 's'?
 To see what can follow some words, end them with `?` in the cast tab
 (`hvc platen ?`) or `labcli cast hvc platen ?`.
 
+### Prerequisites
+
+Some commands are only safe in some states, and the routine that owns them
+says which (`RULES`, rScripts/README.md). The chamber's, with limits from
+`tvac_bench.json`:
+
+Parts are named as on the chamber's screen (docs/WRITING.md): `rough` is the
+vacuum valve, `pump` the vacuum pump.
+
+| command | needs first |
+|---|---|
+| `hvc vent open`, `hvc fill open` | Vacuum valve and Gate valve closed; Platen and Shroud each at least 10 and at most 60 °C |
+| `hvc rough open` | Turbo pump off; Vent, Fill, Foreline and Gate valves closed; Chamber pressure at least 0.01 Torr (opening the roughing line to a chamber already at high vacuum can let roughing-pump oil flow back into it) |
+| `hvc pump off` | Vacuum valve and Foreline valve closed, Turbo pump off (`hvc stop` does it in order) |
+| `hvc foreline open` | Vacuum valve closed |
+| `hvc foreline close` | Turbo pump off: the foreline is a running turbo's only backing |
+| `hvc turbo on` | Foreline valve open |
+| `hvc gate open` | Turbo pump on, Foreline valve open, Chamber pressure at most 0.01 Torr (the crossover) |
+| `cryo on` | Board supply at least 20 V |
+| anything, during a fault (severity F) | refused, except closing valves, `stop`, zones off, `closeall`, `reset`, `abort` |
+| a supply channel the hardware map gives an owner | refused while that owner runs (psu1 ch1: rCryoBoard) |
+
+They are checked when the plan is read. A step that breaks one is an error
+and the plan cannot start:
+
+```
+bad.plan:5: Needs Vacuum valve closed (line 4 changed it). Air may only come in with the chamber sealed ...
+```
+
+A step whose conditions the plan does not itself establish is a **warning**
+(amber in the editor; the plan can run). It says what would settle it:
+
+```
+Checked when the step runs: Vacuum valve closed and Gate valve closed. To settle it here,
+add hvc rough close and hvc gate close before this step.
+```
+
+The plan establishes a state by commanding it (`hvc rough close`), or a value
+with an `until` just before the step (`until platenT below 60 C ...`, as
+`laco_vent` does). Every rule is then
+checked again, live, when the step runs, against what the chamber last reported:
+a step it fails stops the plan, before anything is sent. The command box, the
+cast tab and `labcli cast` check the same rules and refuse with the reason.
+
+### Blocks
+
+A block is a named group of steps a plan calls by name, kept in its own
+`.block` file beside the plans (the same folders):
+
+```
+# Rough the chamber down to a pressure, then seal it
+# Closes the vent, fill and gate valves, starts the vacuum pump ...
+block pumpdown to <pressure:number 0.01..760 Torr>
+load rLACO
+
+hvc vent close
+...
+until chamberP below {pressure} timeout 20 min
+hvc stop
+```
+
+- The leading comments are its help: the first line the summary, the rest the
+  details (docs/WRITING.md).
+- The `block` line is its name and the words a plan writes to call it. Each input
+  is a number, declared as the grammar declares one, and written `{name}` where a
+  step uses it.
+- `load` names the rScripts it needs; a plan that calls it must load them too. A
+  block has no `record` (the plan's) and no `hold until end`.
+
+A plan calls it like any step (`pumpdown to 5`). Reading the plan puts the
+block's steps in place of the call, with the inputs filled in, and checks each
+as a step of the plan; the log shows `pumpdown > hvc rough open`. So the rules
+see inside: what a block sets holds after it, and a finding from inside names
+where (`In pumpdown line 16: ...`). Blocks may call blocks, eight deep; a block
+that calls itself is an error. A block's steps tolerate many starting states,
+since every valve and pump command reads first and an `until` already met ends at
+once, but not every one: where its steps do not establish a prerequisite, the
+live check refuses and the run stops there.
+
+Shipped blocks: `pumpdown to <pressure>` and `vent within <minutes>`; the plan
+`pump_soak_vent` is built from them. `labcli plans` lists the blocks too.
+
 Shipped plans: `tvac` (manual operation from the cast tab, until `end`),
 `psu1_smtc08_first` (PSU1 + thermocouples), `laco_pumpdown`
-(pump on, rough open, until below 5 Torr, stop) and `laco_vent` (temperature
-guards, vent valve open, until atmosphere).
+(pump on, rough open, until below 5 Torr, stop), `laco_vent` (temperature
+guards, vent valve open, until atmosphere) and `pump_soak_vent` (the blocks).
 
 Orbit content (`orbit.*`, `propagate`, `@procedure`) is refused: that is FORMS'
-part, done offline (see ARCHITECTURE.md). A file in the old format
+part, done offline (see ARCHITECTURE.md). An orbit is described in its own file,
+beside the plans, and never run (docs/ORBIT.md). A file in the old format
 (`sequence.operations = [...]`) is refused with a pointer here.
 
 ## Running

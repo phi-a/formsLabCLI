@@ -1,6 +1,6 @@
 """Season sweeps and RAAN envelopes, built from the canonical pass model.
 
-Everything here is a list of :class:`~orbit.imaging.pass_case.PassCase` objects.
+Everything here is a list of :class:`~formslab.orbit.imaging.pass_case.PassCase` objects.
 There is deliberately no second geometry implementation: a season landscape and
 a single-pass timeline must agree by construction, not by two routines
 happening to compute the same thing.

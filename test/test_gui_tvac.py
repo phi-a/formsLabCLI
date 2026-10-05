@@ -118,3 +118,10 @@ def test_the_script_is_valid_and_never_uses_innerhtml():
     out = subprocess.run([NODE, "--check", str(TVAC)], capture_output=True, text=True, timeout=30)
     assert out.returncode == 0, out.stderr
     assert "innerHTML" not in TVAC.read_text(encoding="utf-8")
+
+
+def test_the_views_names_are_the_servers_names():
+    """One name per part (docs/WRITING.md): the names the view draws before it has
+    the server's are the same table, laco.PART_NAMES."""
+    from formslab.devices.hvc3500.laco import PART_NAMES
+    assert run_js({}, "T.NAMES") == PART_NAMES

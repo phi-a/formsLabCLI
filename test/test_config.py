@@ -113,14 +113,22 @@ class TestRuntimeState:
         assert set(cast) == set(state.build_default_cast_state())
         assert set(ctrl) == set(state.build_default_ctrl_commands())
 
-    def test_existing_state_is_not_reset(self):
+    def test_existing_state_is_kept_and_what_an_older_version_left_is_dropped(self):
         state.ensure_runtime_files()
-        path = state.ctrl_state_path()
-        path.write_text(json.dumps({"mine": True}), encoding="utf-8")
+        ctrl, cast = state.ctrl_state_path(), state.cast_state_path()
+        ctrl.write_text(json.dumps({"end": {"key": None, "processed": False, "desc": "Stop"},
+                                    "missions": {"key": None, "processed": True}}), encoding="utf-8")
+        blocks = json.loads(cast.read_text(encoding="utf-8"))
+        blocks["hvc"]["status"] = {"pressure": 4.4}
+        blocks["tvac"] = {"status": {"old": 1}}
+        cast.write_text(json.dumps(blocks), encoding="utf-8")
 
         state.ensure_runtime_files()
 
-        assert json.loads(path.read_text(encoding="utf-8")) == {"mine": True}
+        table = json.loads(ctrl.read_text(encoding="utf-8"))
+        assert set(table) == set(state.CTRL_LABELS) and table["end"] == {"key": None, "processed": False}
+        blocks = json.loads(cast.read_text(encoding="utf-8"))
+        assert "tvac" not in blocks and blocks["hvc"]["status"] == {"pressure": 4.4}
 
 
 def test_nothing_is_written_inside_the_installed_package():

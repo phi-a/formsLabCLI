@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Optional
 
 from formslab import rscripts
-from formslab.console.cast.castutils import CommandPending, WriteCommand
+from formslab.console.cast.castutils import RESULT_S, send_request
 from formslab.sequence.events import (
     NullSink, Progress, SegmentFinished, SegmentStarted, SequenceFinished, SequenceStarted,
 )
@@ -131,16 +131,42 @@ def _command(runner, run, segment) -> int:
     label = segment.params["label"]
     request = segment.params["request"]
     timeout = segment.params["timeout_s"]
-    WriteCommand(request, label)
-    start, n = runner.elapsed, 0
-    while CommandPending(label):
-        if runner.elapsed - start >= timeout:
-            loaded = ", ".join(rscripts.loaded()) or "none"
-            raise SequenceError(
-                f"{label}: request {request} not taken within {timeout:g} s. Is the rScript "
-                f"that reads '{label}' loaded and connected? (loaded: {loaded})")
+    from formslab.rscripts.rules import assess
+
+    n = 0
+
+    def tick():
+        nonlocal n
         n += 1
         runner.step(segment.verb, n)
+
+    # The owner's rules first. One the chamber's last report breaks stops the plan
+    # here; one it cannot tell yet (the owner has not reported since the start) is
+    # waited for, within the step's limit.
+    start = runner.elapsed
+    while problems := assess(label, request):
+        if any(definite for _, definite in problems) or runner.elapsed - start >= timeout:
+            raise SequenceError(f"{label}: {request} not sent. " + " ".join(w for w, _ in problems))
+        tick()
+    # The step ends when the request is taken, or, for an owner that reports
+    # results (rLACO), when it has been carried out: a refusal stops the plan.
+    wait = rscripts.reports_results(label)
+
+    out = send_request(request, label, wait_result=wait, take_s=timeout,
+                       clock=lambda: runner.elapsed, tick=tick)
+    state = out["state"]
+    if state == "not_taken":
+        loaded = ", ".join(rscripts.loaded()) or "none"
+        raise SequenceError(
+            f"{label}: request {request} not taken within {timeout:g} s. Is the rScript "
+            f"that reads '{label}' loaded and connected? (loaded: {loaded})")
+    if state == "cleared":
+        raise SequenceError(f"{label}: request {request} was cleared before it was taken")
+    if state == "taken" and wait:
+        raise SequenceError(f"{label}: request {request} taken, but no result within {RESULT_S:g} s")
+    if state == "done" and not out.get("ok"):
+        why = "; ".join(out.get("messages") or ()) or "no reason given"
+        raise SequenceError(f"{label}: {request} refused: {why}")
     return n
 
 

@@ -78,11 +78,8 @@ def _orbit_sweep(orbit, law, n, *,
                  need_sun=False):
     """Return sampled orbit state shared by the public propagators."""
     u_arr = propagation_grid(orbit, law, n)
-    quad = (
-        EarthDiskQuadrature.build(orbit.rho, n_mu=n_mu, n_az=n_az)
-        if need_earth_samples else None
-    )
     sun_eci = orbit.sun_eci() if need_sun else None
+    quads = {}                       # by the Earth's angular radius: one, on a circular orbit
 
     samples = []
     for uk in u_arr:
@@ -92,8 +89,11 @@ def _orbit_sweep(orbit, law, n, *,
         earth_samples = None
         dirs_body = None
         albedo_weight = None
-        if quad is not None:
-            earth_samples = quad.sample(orbit.nadir_eci(uk), orbit.a)
+        if need_earth_samples:
+            rho = orbit.rho(uk)
+            if rho not in quads:
+                quads[rho] = EarthDiskQuadrature.build(rho, n_mu=n_mu, n_az=n_az)
+            earth_samples = quads[rho].sample(orbit.nadir_eci(uk), orbit.radius(uk))
             dirs_body = earth_samples.dirs_eci @ rotation.m
             if sun_eci is not None:
                 albedo_weight = earth_samples.surface_solar_cosine(sun_eci)

@@ -201,19 +201,27 @@ def test_pause_with_no_run_is_refused(client, monkeypatch):
 
 # --- commands -------------------------------------------------------------------------------------------------
 
-@pytest.fixture
-def owner():
-    """The rScript that owns `hvc`: takes each command as it arrives."""
+def _owner(answer):
+    """The rScript that owns `hvc`: takes each command as it arrives and answers
+    as rLACO does, with answer(request) -> (ok, messages)."""
     taken, stop = [], threading.Event()
 
     def run():
         while not stop.is_set():
-            if req := castutils.ReadCommand("hvc"):
+            req, ids = castutils.TakeCommand("hvc")
+            if req:
                 taken.append(req)
+                castutils.ReportResult("hvc", ids, *answer(req))
             time.sleep(0.02)
 
     thread = threading.Thread(target=run, daemon=True)
     thread.start()
+    return taken, stop, thread
+
+
+@pytest.fixture
+def owner():
+    taken, stop, thread = _owner(lambda req: (True, ["verified"]))
     yield taken
     stop.set()
     thread.join(2)
@@ -221,13 +229,16 @@ def owner():
 
 def live_hvc():
     castutils.GenerateCleanCast()
-    castutils.UpdateStatus("hvc", {"connected": True, "pressure": 4.4})
+    castutils.UpdateStatus("hvc", {"connected": True, "fault_severity": "N", "pressure": 700.0, "platen C": 20.0,
+                                        "shroud C": 20.0, "rough": False, "vent": False, "fill": False,
+                                        "foreline": False, "gate": False, "pump": False, "turbo": False})
 
 
 def test_a_command_is_sent_and_taken(client, host_up, owner):
     live_hvc()
     code, body = client.json("POST", "/api/cast", {"line": "hvc platen 35"})
-    assert code == 200 and body == {"label": "hvc", "request": {"platen": 35.0}, "taken": True}
+    assert code == 200 and body == {"label": "hvc", "request": {"platen": 35.0}, "state": "done",
+                                    "ok": True, "messages": ["verified"], "text": "done: verified"}
     assert owner == [{"platen": 35.0}]
     assert "tester cast hvc platen 35" in (config.run_dir() / "gui.log").read_text(encoding="utf-8")
 
@@ -241,8 +252,30 @@ def test_a_command_nobody_takes_is_reported_as_not_taken(client, host_up, monkey
     live_hvc()
     monkeypatch.setattr(api, "CAST_TAKE_S", 0.3)
     code, body = client.json("POST", "/api/cast", {"line": "hvc stop"})
-    assert code == 200 and body["taken"] is False
+    assert code == 200 and body["state"] == "not_taken" and body["ok"] is False
     assert castutils.CommandPending("hvc")
+
+
+def test_a_command_the_chamber_refuses_says_why(client, host_up):
+    live_hvc()
+    taken, stop, thread = _owner(lambda req: (False, ["rough: still closed (interlock)"]))
+    try:
+        code, body = client.json("POST", "/api/cast", {"line": "hvc rough open"})
+    finally:
+        stop.set()
+        thread.join(2)
+    assert code == 200 and body["ok"] is False
+    assert body["text"] == "refused: rough: still closed (interlock)"
+    assert "cast hvc rough open (refused: rough" in (config.run_dir() / "gui.log").read_text(encoding="utf-8")
+
+
+def test_a_command_the_rules_forbid_is_not_sent(client, host_up, owner):
+    live_hvc()
+    castutils.UpdateStatus("hvc", {**castutils.ReadStatus("hvc"), "platen C": 85.0})
+    code, body = client.json("POST", "/api/cast", {"line": "hvc vent open"})
+    assert code == 200 and body["ok"] is False and body["state"] == "refused"
+    assert "Needs Platen at most 60 \u00b0C." in body["text"] and "between 10 and 60 \u00b0C" in body["text"]
+    assert owner == []
 
 
 def test_a_bad_command_says_what_would_fit_and_sends_nothing(client, host_up):
@@ -279,8 +312,8 @@ def test_completion_lists_what_can_come_next(server, client):
     assert code == 200 and {"hvc", "psu1", "psu2", "cryo", "slta"} <= set(first) and "tc" not in first
 
     after = client.json("GET", "/api/complete?words=hvc%20platen")[1]["options"]
-    assert after[0] == {"kind": "number", "text": "C", "help": "platen setpoint (refused outside the profile limits)",
-                        "lo": -180.0, "hi": 200.0, "unit": "C"}
+    assert after[0] == {"kind": "number", "text": "temperature", "help": "Set the platen temperature",
+                        "lo": -180.0, "hi": 200.0, "unit": "C", "part": "zone"}
     assert [o["text"] for o in after[1:]] == ["on", "off", "rate", "range"]
     assert client.json("GET", "/api/complete?words=hvc%20platen%2020")[1]["options"] == []
     assert Client(server).json("GET", "/api/complete?words=")[0] == 401           # not without a login
@@ -322,7 +355,7 @@ def test_the_actions_work_with_every_instrument_door_shut(client, monkeypatch, o
             m.setattr(serial.Serial, "__init__", shut)
         except ImportError:
             pass
-        assert client.json("POST", "/api/cast", {"line": "hvc stop"})[1]["taken"] is True
+        assert client.json("POST", "/api/cast", {"line": "hvc stop"})[1]["ok"] is True
         assert client.json("POST", "/api/pause", {})[0] == 200
         assert client.json("POST", "/api/resume", {})[0] == 200
         assert client.json("GET", "/api/complete?words=psu1%20ch1")[0] == 200

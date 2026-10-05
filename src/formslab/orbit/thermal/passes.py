@@ -75,10 +75,6 @@ def _radiative_mean(Tenv_patches: np.ndarray) -> np.ndarray:
     return np.power(np.nanmean(Tenv_patches**4, axis=(1, 2)), 0.25)
 
 
-def _wrap_pi(a: np.ndarray) -> np.ndarray:
-    return (a + np.pi) % (2 * np.pi) - np.pi
-
-
 def _arc_mask(u_grid: np.ndarray, arcs: Sequence[tuple[float, float]]) -> np.ndarray:
     """Boolean mask over u_grid for membership in any of the (u_start, u_end) arcs.
 
@@ -94,10 +90,7 @@ def _arc_mask(u_grid: np.ndarray, arcs: Sequence[tuple[float, float]]) -> np.nda
 
 
 def _eclipse_mask(orbit: Orbit, u_grid: np.ndarray) -> np.ndarray:
-    if orbit.nu <= 0:
-        return np.zeros_like(u_grid, dtype=bool)
-    delta = _wrap_pi(u_grid - orbit.uc_sun - np.pi)
-    return np.abs(delta) < orbit.nu
+    return np.array([orbit.in_eclipse(float(u)) for u in u_grid], dtype=bool)
 
 
 # ---------------------------------------------------------------------------
@@ -125,9 +118,9 @@ def evaluate_pass(
     Parameters
     ----------
     orbit
-        Orbit configuration (``Orbit.from_epoch(...)``); supplies u→UTC mapping.
+        The orbit (``file.load(...)`` or ``Orbit.from_epoch(...)``); supplies u→UTC mapping.
     law
-        Attitude law (any callable accepted by ``cubesat.view``).
+        Attitude law (any callable accepted by ``pipeline.view``).
     geometry
         Realized CubeSat geometry. Must contain all radiator and panel facets.
     observable_arcs
@@ -150,11 +143,11 @@ def evaluate_pass(
         Optional Tenv threshold [K]. If provided, ``time_above_threshold_s`` is
         populated; otherwise it is None.
     vf_kw
-        View-factor quadrature kwargs forwarded to ``cubesat.view``. Defaults to
+        View-factor quadrature kwargs forwarded to ``pipeline.view``. Defaults to
         the production settings (n=60, n_mu=24, n_az=72, hemi_n_az=73, hemi_n_el=33)
         — tens of seconds per call. Use a coarser grid for development.
     n_orbits, tol_K
-        Forwarded to ``cubesat.transient`` (panel transient solver convergence).
+        Forwarded to ``pipeline.transient`` (panel transient solver convergence).
     """
     vf_kw = {**_VF_DEFAULTS, **(vf_kw or {})}
 

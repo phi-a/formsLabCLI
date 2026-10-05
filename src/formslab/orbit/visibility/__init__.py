@@ -1,4 +1,8 @@
-"""Inertial-target visibility primitives and observation-window models."""
+"""Inertial-target visibility primitives and observation-window models.
+
+A circular-orbit analysis: arcs in argument of latitude, from (a, i, RAAN) and
+the epoch. Eccentric orbits go through ``propagate.Orbit`` and the models above
+it, not here."""
 
 from .arcs import ArcWindow, CircularArc, intersect_arc_range, intersect_arcs  # noqa: F401
 from .observation import (  # noqa: F401

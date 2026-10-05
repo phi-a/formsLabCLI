@@ -112,6 +112,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._static("index.html")
         if path.startswith("/static/"):
             return self._static(path[len("/static/"):])
+        if path == "/api/info":                       # no login: the login page says which server this is
+            return self._json(200, {"demo": self.server.demo})
         if not path.startswith("/api/"):
             return self._error(HTTPStatus.NOT_FOUND, "not found")
         user = self._user()
@@ -129,7 +131,7 @@ class Handler(BaseHTTPRequestHandler):
             return query.get(name, [default])[0]
 
         if path == "/api/me":
-            return self._json(200, {"user": user})
+            return self._json(200, {"user": user, "demo": self.server.demo})
         if path == "/api/status":
             return self._json(200, api.status(int(arg("log", 40))))
         if path == "/api/plans":
@@ -213,22 +215,41 @@ class Handler(BaseHTTPRequestHandler):
         elif path in ("/api/pause", "/api/resume"):
             result = api.ctrl(path[len("/api/"):])
             audit(user, path[len("/api/"):])
+        elif (kind := body.get("kind", "plan")) not in ("plan", "block", "orbit"):
+            return self._error(HTTPStatus.BAD_REQUEST, "kind is plan, block or orbit")
         elif path == "/api/plan/check":
-            return self._json(200, {"errors": api.plan_check(str(body.get("text", "")))})
+            return self._json(200, api.plan_check(str(body.get("text", "")), kind))
+        elif path == "/api/describe":
+            words, text, line = body.get("words", []), body.get("text"), body.get("line")
+            if not (isinstance(words, list) and all(isinstance(w, str) for w in words)) \
+                    or (text is not None and not isinstance(text, str)) \
+                    or (line is not None and not isinstance(line, int)):
+                return self._error(HTTPStatus.BAD_REQUEST, "words is a list of strings, text a string, line a number")
+            return self._json(200, api.describe(words, text, line, kind))
         elif path == "/api/plan/line":
             scripts, words = body.get("scripts", []), body.get("words", [])
             if not all(isinstance(w, str) for w in [*scripts, *words]):
                 return self._error(HTTPStatus.BAD_REQUEST, "scripts and words are lists of strings")
-            return self._json(200, api.plan_line(scripts, words))
+            return self._json(200, api.plan_line(scripts, words, kind))
+        elif path == "/api/plan/needs":
+            return self._json(200, {"rscripts": api.plan_needs(str(body.get("text", "")))})
+        elif path == "/api/plan/tokens":
+            return self._json(200, {"lines": api.plan_tokens(str(body.get("text", "")), kind)})
+        elif path == "/api/orbit/live":
+            return self._json(200, api.orbit_live(str(body.get("text", ""))))
+        elif path == "/api/plan/delete":
+            name = str(body.get("name", ""))
+            result = api.plan_delete(name, body.get("base_hash"))
+            audit(user, f"delete plan {name} (moved to {result['trash']})")
         elif path == "/api/plan/save":
             name = str(body.get("name", ""))
             result = api.plan_save(name, str(body.get("text", "")), body.get("base_hash"),
-                                   bool(body.get("as_new")))
-            audit(user, f"save plan {name}" + (" (new)" if body.get("as_new") else ""))
+                                   bool(body.get("as_new")), kind)
+            audit(user, f"save {result['kind']} {name}" + (" (new)" if body.get("as_new") else ""))
         elif path == "/api/cast":
             line = str(body.get("line", ""))
             result = api.send_command(line)
-            audit(user, f"cast {line.strip()}" + ("" if result["taken"] else " (not taken yet)"))
+            audit(user, f"cast {line.strip()}" + ("" if result["ok"] else f" ({result['text']})"))
         else:
             return self._error(HTTPStatus.NOT_FOUND, "not found")
         self._json(200, result)
@@ -252,6 +273,8 @@ class Server(ThreadingHTTPServer):
     def __init__(self, address, sessions: auth.Sessions | None = None) -> None:
         super().__init__(address, Handler)
         self.sessions = sessions or auth.Sessions()
+        # scripts/gui_demo.py sets this: a demo must never be mistaken for the bench's own GUI
+        self.demo = os.environ.get("FORMSLAB_GUI_DEMO") == "1"
         host, port = self.server_address[:2]
         self.allowed_hosts = (
             {f"{h}:{port}" for h in ("localhost", "127.0.0.1", "[::1]")}

@@ -4,11 +4,10 @@ from formslab.console.cast.castutils import ReadCommand, UpdateStatus
 from formslab.rscripts import RScriptControl
 from formslab.devices.cryocooler.owner import _init_cryo_board, _init_psu2, _shutdown_cryo_subsystem
 from formslab.devices.cryocooler.config import (
-    CRYO_PSU_LABEL,
-    CRYO_PSU_CHANNEL,
     CRYO_SUPPLY_CURRENT_A,
     CRYO_SUPPLY_VOLTAGE_V,
     ccvres_ohms_from_code,
+    cryo_supply,
 )
 from formslab.devices.dp832a.commands import read_psu_channel_status
 
@@ -19,20 +18,50 @@ name = os.path.splitext(os.path.basename(__file__))[0]
 
 CAST_LABELS = ("cryo",)
 COMMANDS = [
-    ("ccv <V:number 12..20 V>", "Cryocooler output voltage", lambda v: {"voltage": v}),
-    ("on|off", "Cryocooler output", lambda s: {"enabled": s == "on"}),
-    ("ccvres <ohm:number 62..1120>", "Variable resistor (nearest 6-bit code)", lambda r: {"resistance": r}),
-    ("code <n:integer 0..63>", "Variable resistor by code", lambda n: {"code": n}),
-    ("startup|shutdown|update", "Bring the board up / down, or read it now", lambda w: {w: True}),
+    ("ccv <volts:number 12..20 V>", """Set the cryocooler voltage
+     The board's output to the cooler, 12 to 20 V, the band formsLabCLI drives it in.
+     It is applied while the output is on.""", lambda v: {"voltage": v}),
+    ("on|off", """Turn the cryocooler output on or off
+     On needs the board's supply at 20 V or more: below that the converter cannot
+     produce an output. This is checked before the command is sent.""",
+     lambda s: {"enabled": s == "on"}),
+    ("ccvres <ohms:number 62..1120>", """Set the variable resistor in ohms
+     The board's variable resistor, 62 to 1120 ohms, set to the nearest of its 64
+     steps. cryo code sets the step itself.""", lambda r: {"resistance": r}),
+    ("code <step:integer 0..63>", """Set the variable resistor step
+     The resistor's step, 0 to 63.""", lambda n: {"code": n}),
+    ("startup|shutdown|update", """Start, stop or read the board
+     startup turns its supply channel on and initializes the board with the output
+     off. shutdown turns the output off, then the supply channel. update reads the
+     board now.""",
+     lambda w: {w: True}),
 ]
 VARIABLES = []
+def READINGS(label, status):
+    return [
+        ("Board", None, [("LINK", "Board link", ("Up", "Down")), ("ON", "Output", ("On", "Off")),
+                         ("CCV", "Cooler voltage (V)"), ("CCVRES", "Variable resistor (ohm)"),
+                         ("CCVRES#", "Resistor step")]),
+        ("Supply", None, [("PSU", "Supply channel"), ("PSUON", "Supply output", ("On", "Off")),
+                          ("CCVIN", "Set (V)"), ("CCIIN", "Limit (A)"), ("CCVINM", "Measured (V)"),
+                          ("CCIINM", "Measured (A)")]),
+    ]
+
+
+def RULES():
+    from formslab.devices.cryocooler.config import CRYO_OUTPUT_SUPPLY_THRESHOLD_V as V
+    from formslab.rscripts.rules import Rule, value
+
+    return [Rule("cryo", {"enabled": True},
+                 (value("supplyV", "above", V, shown="V", live=True, called="Board supply"),),
+                 f"The board's converter cannot produce an output with less than about {V:g} V in.")]
+
+
+def RULE_STATE(status):
+    return {"supplyV": status.get("CCVINM")}
 
 
 class rGlobal:
-    disable = False
-    useInitialize = False
-    useHold = False
-    useTick = True
     TICK_INTERVAL = 1.0
 
     cryo = None
@@ -55,6 +84,7 @@ def _merge_request(existing, incoming):
     return merged
 
 def _refresh_status(run, r_global):
+    CRYO_PSU_LABEL, CRYO_PSU_CHANNEL = cryo_supply(r_global)
     status = {
         "LINK": r_global.cryo is not None,
         "ON": False,
@@ -234,17 +264,10 @@ def _apply_request(run, r_global, request):
 def rScript(run):
     global rg
 
-    if rg.disable:
-        return
 
     try:
         control = RScriptControl(run, name)
-        if rg.useInitialize:
-            control.initialize()
-        if rg.useHold:
-            control.hold(seconds=1.0)
-        if rg.useTick:
-            control.tick(seconds=rg.TICK_INTERVAL)
+        control.tick(seconds=rg.TICK_INTERVAL)
         if control:
             return
     except Exception as exc:

@@ -73,10 +73,10 @@ def test_every_shipped_plan_checks_clean(name):
 def test_options_at_every_position_of_a_step():
     r = line_options(["rLACO"], ["hvc", "platen"])
     first, second, third = r["positions"]
-    assert [o["text"] for o in first] == ["hold", "log", "until", "hvc"]
+    assert [o["text"] for o in first] == ["hold", "log", "until", "hvc", "pumpdown", "vent"]   # blocks last
     assert [o["text"] for o in second][:3] == ["platen", "shroud", "vacuum"]
-    assert third[0] == {"kind": "number", "text": "C", "help": "platen setpoint (refused outside the profile limits)",
-                        "lo": -180.0, "hi": 200.0, "unit": "C"}
+    assert third[0] == {"kind": "number", "text": "temperature", "help": "Set the platen temperature",
+                        "lo": -180.0, "hi": 200.0, "unit": "C", "part": "zone"}
     assert [o["text"] for o in third[1:]] == ["on", "off", "rate", "range"]
     assert r["complete"] is False and r["error"] is None               # unfinished is a valid start
 
@@ -225,9 +225,14 @@ def test_reading_an_unknown_or_path_like_name_is_a_404():
 # --- over HTTP ----------------------------------------------------------------------------------------
 
 @pytest.fixture
-def client(monkeypatch):
-    with running_server(monkeypatch) as server:
-        yield Client(server).login()
+def server(monkeypatch):
+    with running_server(monkeypatch) as srv:
+        yield srv
+
+
+@pytest.fixture
+def client(server):
+    return Client(server).login()
 
 
 def test_the_editor_routes_need_a_login_and_the_header(monkeypatch):
@@ -294,3 +299,119 @@ def test_the_example_in_the_plan_docs_is_a_plan_that_checks_clean():
     assert block.lstrip().startswith("# PSU1 CH1") and "load rPSU rSMTC08" in block
     assert check_text(block) == []
     assert parse_plan(block).rscripts == ("rPSU", "rSMTC08")
+
+
+# --- each word's role, for drawing the grammar -------------------------------------------------------
+
+def roles(text):
+    from formslab.sequence.plan import tokens
+    return [[(t["text"], t["role"]) for t in line] for line in tokens(text)]
+
+
+def test_every_word_gets_its_role_in_the_grammar():
+    got = roles("# pump down\nload rLACO rNope\nrecord every 5 s\n\nhvc pump on\nhold 15 s\n"
+                "until platenT above 10 C timeout 30 s\nlog pumpdown done: closed\n")
+    assert got == [
+        [("# pump down", "comment")],
+        [("load", "verb"), ("rLACO", "script"), ("rNope", "bad")],
+        [("record", "verb"), ("every", "kw"), ("5", "value"), ("s", "kw")],
+        [],
+        [("hvc", "verb"), ("pump", "kw"), ("on", "kw")],
+        [("hold", "verb"), ("15", "value"), ("s", "kw")],
+        [("until", "verb"), ("platenT", "kw"), ("above", "kw"), ("10", "value"), ("C", "kw"),
+         ("timeout", "kw"), ("30", "value"), ("s", "kw")],
+        [("log", "verb"), ("pumpdown", "text"), ("done:", "text"), ("closed", "text")],
+    ]
+
+
+def test_what_does_not_fit_is_marked_bad():
+    got = roles("load rLACO\nhvc platen 900\nhvc teleport now\npsu1 ch1 on\nhvc platen 25\n")
+    assert got[1] == [("hvc", "verb"), ("platen", "kw"), ("900", "bad")]          # out of range
+    assert got[2] == [("hvc", "verb"), ("teleport", "bad"), ("now", "bad")]       # and all after it
+    assert got[3] == [("psu1", "bad"), ("ch1", "bad"), ("on", "bad")]             # rPSU not loaded
+    assert got[4] == [("hvc", "verb"), ("platen", "kw"), ("25", "value")]
+
+
+@pytest.mark.parametrize("name", SHIPPED)
+def test_a_shipped_plan_has_no_bad_words(name):
+    flat = [r for line in roles(find_plan(name).read_text(encoding="utf-8")) for _, r in line]
+    assert "bad" not in flat and "verb" in flat
+
+
+# --- delete ----------------------------------------------------------------------------------------------
+
+def test_deleting_your_plan_moves_it_to_the_trash():
+    saved = plans.save("mine", "load rSMTC08\nhold 1 s\n", None, as_new=True)
+    out = plans.delete("mine", saved["hash"])
+    trashed = Path(out["trash"])
+    assert out["deleted"] == "mine" and trashed.parent == plans.trash_dir()
+    assert trashed.read_text(encoding="utf-8") == "load rSMTC08\nhold 1 s\n"           # kept, not erased
+    assert not (user_plans_dir() / "mine.plan").exists() and find_plan("mine") is None
+    assert "mine" not in {p.stem for p in discover()}                                   # the trash is not searched
+
+
+def test_a_shipped_plan_cannot_be_deleted():
+    before = find_plan("tvac").read_bytes()
+    with pytest.raises(plans.PlanFileError) as e:
+        plans.delete("tvac", sha(find_plan("tvac")))
+    assert e.value.code == 403 and find_plan("tvac").read_bytes() == before
+
+
+def test_a_plan_changed_since_it_was_opened_is_not_deleted():
+    plans.save("mine", "load rSMTC08\nhold 1 s\n", None, as_new=True)
+    with pytest.raises(plans.PlanFileError, match="changed on disk") as e:
+        plans.delete("mine", "stale-hash")
+    assert e.value.code == 409 and (user_plans_dir() / "mine.plan").exists()
+
+
+def test_deleting_an_unknown_or_path_like_name_is_a_404():
+    for name in ("nope", "../tvac", "", "tvac.plan"):
+        with pytest.raises(plans.PlanFileError) as e:
+            plans.delete(name, "x")
+        assert e.value.code == 404
+
+
+def test_delete_and_tokens_over_http(client, monkeypatch):
+    saved = plans.save("mine", "load rSMTC08\nhold 1 s\n", None, as_new=True)
+    assert client.json("POST", "/api/plan/delete", {"name": "tvac", "base_hash": "x"})[0] == 403
+    monkeypatch.setattr(api, "host", lambda: {"pid": 1, "plan": "mine", "started": "t", "output": "/x"})
+    code, body = client.json("POST", "/api/plan/delete", {"name": "mine", "base_hash": saved["hash"]})
+    assert code == 409 and "is running" in body["error"]                                # not the plan running
+    monkeypatch.setattr(api, "host", lambda: None)
+    code, body = client.json("POST", "/api/plan/delete", {"name": "mine", "base_hash": saved["hash"]})
+    assert code == 200 and body["deleted"] == "mine"
+    assert "tester delete plan mine" in (config.run_dir() / "gui.log").read_text(encoding="utf-8")
+    code, body = client.json("POST", "/api/plan/tokens", {"text": "load rLACO\nhvc vent open\n"})
+    assert code == 200 and [t["role"] for t in body["lines"][1]] == ["verb", "kw", "kw"]
+
+
+# --- which rScripts a plan's steps use (to put a deleted load line back) -----------------------------------
+
+def test_the_rscripts_the_steps_use_are_found_from_the_steps():
+    from formslab.sequence.plan import needed_rscripts
+    assert needed_rscripts("hvc vent open\nuntil chamberP above 700 timeout 1 min\n") == ["rLACO"]
+    assert needed_rscripts("psu1 ch1 on\nuntil TC01 above 30 C timeout 1 min\nhvc stop\n") == ["rLACO", "rPSU", "rSMTC08"]
+    assert needed_rscripts("# a note\nload rLACO\nrecord every 2 s\nlog hi\nhold 5 s\n") == []   # nothing uses an instrument
+    assert needed_rscripts("") == [] and needed_rscripts("hvc teleport now\nnonsense\n") == ["rLACO"]
+
+
+@pytest.mark.parametrize("name", SHIPPED)
+def test_what_the_steps_need_is_always_part_of_the_plans_load_line(name):
+    """A plan may load more than its steps use (psu1_smtc08_first loads rSMTC08 only to
+    record), never less: the inferred scripts are a subset of what the plan loads."""
+    from formslab.sequence.plan import needed_rscripts
+    text = find_plan(name).read_text(encoding="utf-8")
+    loaded = next(ln.split()[1:] for ln in text.splitlines() if ln.split()[:1] == ["load"])
+    assert set(needed_rscripts(text)) <= set(loaded)
+
+
+@pytest.mark.parametrize("name, expected", [("laco_vent", ["rLACO"]), ("laco_pumpdown", ["rLACO"]),
+                                            ("psu1_smtc08_first", ["rPSU"]), ("tvac", [])])
+def test_the_load_line_comes_back_as_the_steps_need_it(name, expected):
+    from formslab.sequence.plan import needed_rscripts
+    assert needed_rscripts(find_plan(name).read_text(encoding="utf-8")) == expected
+
+
+def test_needs_over_http(server, client):
+    assert client.json("POST", "/api/plan/needs", {"text": "hvc vent open\n"}) == (200, {"rscripts": ["rLACO"]})
+    assert Client(server).json("POST", "/api/plan/needs", {"text": ""})[0] == 401

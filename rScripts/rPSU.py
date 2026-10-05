@@ -24,17 +24,45 @@ from formslab.rscripts import RScriptControl
 # --- console commands (see formslab.rscripts.cast) ---------------------------------
 
 CAST_LABELS = ("psu1", "psu2")
-_CH = "<ch:ch1|ch2|ch3>"
+_CH = "<channel:ch1|ch2|ch3>"
 COMMANDS = [
-    (f"{_CH} set <V:number 0..32 V> <A:number 0..3.2 A>", "Channel setpoints: volts and current limit",
+    (f"{_CH} set <volts:number 0..32 V> <amps:number 0..3.2 A>", """Set a channel's voltage and current limit
+     The channel's output voltage, 0 to 32 V, and the most current it may supply, 0 to
+     3.2 A. Its output is switched on and off separately. A channel the hardware map
+     gives to an rScript, such as psu1 ch1 for the cryocooler board, is refused while
+     that rScript runs.""",
      lambda ch, v, a: {ch[2:]: {"voltage": v, "current": a}}),
-    (f"{_CH} on|off", "Channel output", lambda ch, s: {ch[2:]: {"on": s == "on"}}),
-    (f"{_CH} protect <OVP:number 0.01..33 V> <OCP:number 0.001..3.3 A>",
-     "Over-voltage / over-current protection on",
+    (f"{_CH} on|off", """Turn a channel's output on or off
+     Switches the channel's output, at its setpoints.""", lambda ch, s: {ch[2:]: {"on": s == "on"}}),
+    (f"{_CH} protect <max_volts:number 0.01..33 V> <max_amps:number 0.001..3.3 A>",
+     """Turn on over-voltage and over-current protection
+     The supply cuts the channel off above the maximum voltage or current. Set them
+     a little above the setpoints.""",
      lambda ch, v, a: {ch[2:]: {"ovp": v, "ocp": a, "protect": True}}),
-    (f"{_CH} protect off", "Protection off", lambda ch: {ch[2:]: {"protect": False}}),
-    ("update", "Read the supply now", {"update": True}),
+    (f"{_CH} protect off", """Turn protection off
+     The channel then has no over-voltage or over-current cut-off.""",
+     lambda ch: {ch[2:]: {"protect": False}}),
+    ("update", """Read the supply now
+     Refreshes its readings without waiting for the next poll.""", {"update": True}),
 ]
+_READINGS = (("on", "Output", ("On", "Off")), ("vset", "Set (V)"), ("cset", "Limit (A)"),
+             ("vmeas", "Measured (V)"), ("cmeas", "Measured (A)"), ("ovp", "OVP (V)"),
+             ("ocp", "OCP (A)"), ("protect", "Protection", ("On", "Off")))
+
+
+def READINGS(label, status):
+    """One group per channel, titled with what the hardware map says it feeds."""
+    from formslab.devices.dp832a.wiring import channel
+
+    channels = sorted({k.split(" ")[0] for k in status if k.split(" ")[0].isdigit()}, key=int)
+    groups = [("Supply", None, [("error", "Error")])]
+    for ch in channels:
+        feeds = channel(label, ch).get("feeds")
+        groups.append((f"CH{ch}" + (f" - {feeds}" if feeds else ""), None,
+                       [(f"{ch} {key}", *rest) for key, *rest in _READINGS]))
+    return groups
+
+
 VARIABLES = [(f"PSU{n}_CH{c}_{q}", unit) for n in (1, 2) for c in (1, 2, 3)
              for q, unit in (("V", "V"), ("I", "A"), ("ON", None))]
 
@@ -47,10 +75,6 @@ PSU1_POLL_INTERVAL      = 5.0    # seconds between PSU1 readbacks published as s
 
 
 class rGlobal:
-    disable = False
-    useInitialize = False
-    useHold = False
-    useTick = True
     TICK_INTERVAL = 1.0
 
     _vars_initialized = False
@@ -256,19 +280,12 @@ def _handle_psu_request(run, label, psu, request):
 def rScript(run):
     global rg
 
-    if rg.disable:
-        return
 
     rg = _init(run, rg)
 
     try:
         control = RScriptControl(run, name)
-        if rg.useInitialize:
-            control.initialize()
-        if rg.useHold:
-            control.hold(seconds=1.0)
-        if rg.useTick:
-            control.tick(seconds=rg.TICK_INTERVAL)
+        control.tick(seconds=rg.TICK_INTERVAL)
         if control:
             return
     except Exception as exc:

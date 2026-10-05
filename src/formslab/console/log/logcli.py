@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import sys, re, json
+import sys, re
 from pathlib import Path
 from rich.text import Text
 from formslab.console.sessions.base import CLIResult
@@ -7,7 +7,6 @@ from formslab.config import run_dir
 from formslab.console.style import console, TEXT, ERROR
 
 # Paths
-CONFIG_FILE = Path(__file__).resolve().parent / "logfile.json"
 
 
 def log_path() -> Path:
@@ -20,17 +19,13 @@ def log_path() -> Path:
     return run_dir() / "host.log"
 
 
-# Load command definitions from logfile.json
-def load_commands():
-    try:
-        return json.loads(CONFIG_FILE.read_text())
-    except Exception:
-        return {}
+HELP = {"status": "Show entire log file", "tail": "Show last N lines of the log",
+        "grep": "Show lines matching PAT", "help": "Display help panel for available commands"}
 
 # Command handlers
 def show_log(args):
     try:
-        data = log_path().read_text().splitlines()
+        data = log_path().read_text(encoding="utf-8", errors="replace").splitlines()
     except Exception as e:
         return CLIResult(Text(f"Error reading log: {e}", style=ERROR))
     return CLIResult(Text("\n".join(data), style=TEXT), clear=True, suppress_prompt=True)
@@ -49,7 +44,7 @@ def tail_log(args):
     if n > 10000:
         return CLIResult(Text("✗ Count too large (max: 10000 lines)", style=ERROR))
 
-    data = log_path().read_text().splitlines()
+    data = log_path().read_text(encoding="utf-8", errors="replace").splitlines()
     return CLIResult(Text("\n".join(data[-n:]), style=TEXT))
 
 def grep_log(args):
@@ -63,18 +58,16 @@ def grep_log(args):
     except re.error as e:
         return CLIResult(Text(f"✗ Invalid regex pattern: {e}", style=ERROR))
 
-    data = log_path().read_text().splitlines()
+    data = log_path().read_text(encoding="utf-8", errors="replace").splitlines()
     hits = [l for l in data if re.search(pat, l)]
     return CLIResult(Text("\n".join(hits), style=TEXT))
 
 # Help panel
 
 def help_panel() -> CLIResult:
-    cmds = load_commands()
     lines = ["LOG Commands:"]
-    max_key = max((len(k) for k in cmds), default=0)
-    for k, meta in cmds.items():
-        desc = meta.get("desc", "")
+    max_key = max(len(k) for k in HELP)
+    for k, desc in HELP.items():
         lines.append(f"  {k.ljust(max_key)}   {desc}")
     return CLIResult(Text("\n".join(lines), style=TEXT), clear=False, suppress_prompt=True)
 

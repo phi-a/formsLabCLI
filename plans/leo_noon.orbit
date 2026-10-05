@@ -1,0 +1,17 @@
+# ============================================================
+# orbit: leo_noon -- sun-synchronous, 550 km, noon to midnight
+# ============================================================
+# The Sun lies in the plane (beta near 0 degrees), so every orbit has its
+# longest eclipse, about 35 minutes of 96: the cold case. Open it in the GUI's
+# Plans tab to see it propagated on the wall clock (docs/ORBIT.md).
+#
+# Two-body motion: the plane does not turn with the Sun, so over weeks it
+# drifts away from noon. Move the epoch forward to start it again.
+
+epoch 2026-10-05T12:00:00Z
+a 6928 km
+e 0.001
+i 97.6 deg
+raan 191.3 deg
+argp 0 deg
+nu 0 deg

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from formslab import config
@@ -20,11 +20,14 @@ from formslab.console.log.logcli import log_path
 from formslab.console.safefile import read_json
 from formslab.gui import plans, runs
 from formslab.host.sequence import is_host, read_lock
+from formslab.orbit import file as orbitfile
+from formslab.orbit.propagate.kepler import live
+from formslab.sequence import block as blockfile
 from formslab import rscripts
 from formslab.rscripts import cast
 from formslab.rscripts.grammar import GrammarError
 from formslab.sequence import PlanError, discover, load_plan
-from formslab.sequence.plan import available_rscripts, check_text, line_options
+from formslab.sequence.plan import available_rscripts, describe_step, line_options, needed_rscripts, tokens
 from formslab.state import cast_state_path
 
 # How often each block is republished while its owner runs (seconds). A block
@@ -33,7 +36,7 @@ CADENCE_S = {"tc": 2.0, "hvc": 6.0, "psu1": 1.0, "psu2": 1.0, "cryo": 1.0, "slta
 DEFAULT_CADENCE_S = 5.0
 SLACK_S = 2.0
 LOG_TAIL_BYTES = 64 * 1024
-CAST_TAKE_S = 3.0          # how long a command waits to be taken before the page is told "queued"
+CAST_TAKE_S = castutils.TAKE_S     # how long a command may wait to be taken
 END_WAIT_S = 120.0         # how long an `end` is kept being sent to a host that is still up
 END_RESEND_S = 3.0
 
@@ -100,7 +103,13 @@ def status(log_lines: int = 40) -> dict:
     for label, block in (data or {}).items():
         if not isinstance(block, dict):
             continue
-        blocks[label] = {"status": block.get("status") or {},
+        status_ = block.get("status") or {}
+        with _lock:
+            try:
+                groups = cast.readings(label, status_) if isinstance(status_, dict) else []
+            except Exception:                        # a broken rScript must not break the page
+                groups = []
+        blocks[label] = {"status": status_, "groups": groups,
                          "pending": bool(block.get("request")) and not block.get("processed", True),
                          **freshness(label, block, running, now)}
     return {"now": now, "host": running, "last_run": None if running else read_lock(),
@@ -173,19 +182,36 @@ def _finish() -> None:
 
 def list_plans() -> list[dict]:
     """The plans `run <name>` can start, each with the rScripts it loads, or why
-    it does not read."""
+    it does not read; then the blocks (kind "block"), which plans call, and the
+    orbit files (kind "orbit"), which the editor opens; neither is run itself."""
     out = []
     with _lock:
         for path in discover():
             try:
                 plan = load_plan(path)
             except PlanError as e:
-                out.append({"name": path.stem, "error": str(e), "editable": plans.is_editable(path)})
+                out.append({"name": path.stem, "kind": "plan", "error": str(e),
+                            "editable": plans.is_editable(path)})
                 continue
-            out.append({"name": path.stem, "rscripts": list(plan.rscripts),
+            out.append({"name": path.stem, "kind": "plan", "rscripts": list(plan.rscripts),
                         "steps": len(plan.sequence.segments), "editable": plans.is_editable(path),
+                        "warnings": [f"line {n}: {m}" for n, m in plan.warnings],
                         "open_ended": any(s.verb == "hold" and s.params["seconds"] is None
                                           for s in plan.sequence.segments)})
+        taken = {p["name"] for p in out}
+        for path in blockfile.discover():
+            if path.stem in taken:                      # a plan of the same name is found first
+                continue
+            errors, _ = blockfile.review(path.read_text(encoding="utf-8"))
+            out.append({"name": path.stem, "kind": "block", "editable": plans.is_editable(path),
+                        **({"error": f"line {errors[0][0]}: {errors[0][1]}"} if errors else {})})
+            taken.add(path.stem)
+        for path in orbitfile.discover():
+            if path.stem in taken:                      # a plan of the same name is found first
+                continue
+            errors, _ = orbitfile.review(path.read_text(encoding="utf-8"))
+            out.append({"name": path.stem, "kind": "orbit", "editable": plans.is_editable(path),
+                        **({"error": f"line {errors[0][0]}: {errors[0][1]}"} if errors else {})})
     return out
 
 
@@ -263,15 +289,16 @@ def complete(words: list[str]) -> list[dict]:
     with _lock:
         try:
             options = cast.complete(words)
+            parts = cast.option_parts(words, options)
         except Exception as e:                       # a broken rScript must not break the box
             raise ApiError(500, f"{type(e).__name__}: {e}")
-    return [{"kind": o.kind, "text": o.text, "help": o.help, "lo": o.lo, "hi": o.hi, "unit": o.unit}
-            for o in options]
+    return [{"kind": o.kind, "text": o.text, "help": o.help, "lo": o.lo, "hi": o.hi, "unit": o.unit,
+             "part": p} for o, p in zip(options, parts)]
 
 
 def send_command(line: str) -> dict:
     """Send `hvc platen 20`-style words to the rScript that owns the label,
-    exactly as the cast tab does, and wait briefly for it to be taken.
+    exactly as the cast tab does (cast.send), and say what became of it.
 
     Refused unless a run is going and the instrument's block is live: a command
     to a chamber that is not connected, or whose rScript is not loaded, would sit
@@ -283,6 +310,7 @@ def send_command(line: str) -> dict:
     with _lock:
         try:
             request = cast.request(label, words[1:])
+            wait = cast.reports_results(label)
         except GrammarError as e:
             raise ApiError(400, str(e))
     running = host()
@@ -292,14 +320,8 @@ def send_command(line: str) -> dict:
     fresh = freshness(label, blocks.get(label) or {}, running, time.time())
     if not fresh["live"]:
         raise ApiError(409, f"{label} is not live ({fresh['reason']}), so the command would not be taken")
-    with _lock:
-        castutils.WriteCommand(request, label)
-    deadline = time.monotonic() + CAST_TAKE_S
-    while castutils.CommandPending(label):
-        if time.monotonic() >= deadline:
-            return {"label": label, "request": request, "taken": False}
-        time.sleep(0.1)
-    return {"label": label, "request": request, "taken": True}
+    # Outside the lock: the wait (up to cast.REPLY_S) must not hold up the other pages.
+    return cast.send(label, request, host=running, wait_result=wait, take_s=CAST_TAKE_S)
 
 
 # --- the plan editor ---------------------------------------------------------------------
@@ -317,23 +339,77 @@ def plan_read(name: str) -> dict:
         return _plan_call(plans.read, name)
 
 
-def plan_save(name: str, text: str, base_hash: str | None, as_new: bool) -> dict:
+def plan_save(name: str, text: str, base_hash: str | None, as_new: bool, kind: str = "plan") -> dict:
     with _lock:
-        return _plan_call(plans.save, name, text, base_hash, as_new)
+        return _plan_call(plans.save, name, text, base_hash, as_new, kind)
 
 
-def plan_check(text: str) -> list[dict]:
-    """Every problem in the plan text, each with its line (0: the whole file)."""
+def plan_check(text: str, kind: str = "plan") -> dict:
+    """{errors, warnings} in the plan or orbit text, each [{line, message}] (0: the whole file)."""
     with _lock:
-        return [{"line": n, "message": m} for n, m in check_text(text)]
+        return plans.problems(text, kind)
 
 
-def plan_line(scripts: list[str], words: list[str]) -> dict:
-    """What can come at each position of a step line, for the editor's dropdowns."""
+def describe(words: list[str] | None = None, text: str | None = None, line: int | None = None,
+             kind: str = "plan") -> dict:
+    """The help card: for line `line` of plan or orbit `text` (the editor), or for
+    the command `words` (the command box, its prerequisites checked now)."""
     with _lock:
-        return line_options(scripts, words)
+        try:
+            if text is not None and kind == "orbit":
+                return orbitfile.describe(text, int(line or 0))
+            if text is not None and kind == "block":
+                return blockfile.describe(text, int(line or 0))
+            if text is not None:
+                return describe_step(text, int(line or 0))
+            return cast.describe(list(words or []))
+        except Exception as e:                       # a broken rScript must not break the page
+            raise ApiError(500, f"{type(e).__name__}: {e}")
+
+
+def plan_line(scripts: list[str], words: list[str], kind: str = "plan") -> dict:
+    """What can come at each position of a step or orbit line, for the editor's dropdowns."""
+    if kind == "orbit":
+        return orbitfile.line_options(words)
+    with _lock:
+        return (blockfile.line_options if kind == "block" else line_options)(scripts, words)
 
 
 def rscripts_available() -> list[str]:
     with _lock:
         return available_rscripts()
+
+
+def plan_delete(name: str, base_hash: str | None) -> dict:
+    """Move one of your plans to the trash; not while it is the plan running."""
+    running = host()
+    if running and running.get("plan") == name:
+        raise ApiError(409, f"{name!r} is running; end the run first")
+    with _lock:
+        return _plan_call(plans.delete, name, base_hash)
+
+
+def plan_tokens(text: str, kind: str = "plan") -> list[list[dict]]:
+    """Each line's words with their role in the grammar, for drawing it."""
+    if kind == "orbit":
+        return orbitfile.tokens(text)
+    with _lock:
+        return (blockfile.tokens if kind == "block" else tokens)(text)
+
+
+def plan_needs(text: str) -> list[str]:
+    """The rScripts a plan's steps use, for restoring its `load` line."""
+    with _lock:
+        return needed_rscripts(text)
+
+
+# --- orbit files ------------------------------------------------------------------------------
+
+def orbit_live(text: str) -> dict:
+    """The orbit in `text` propagated to now (kepler.live), or {error} naming its
+    first problem, so the panel can say why it shows nothing."""
+    try:
+        elements = orbitfile.parse(text)
+    except orbitfile.OrbitError as e:
+        return {"error": str(e)}
+    return live(elements, datetime.now(timezone.utc))
