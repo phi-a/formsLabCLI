@@ -25,6 +25,9 @@
 
   const { kindOf, withHeader, missingHeaders, missingElements } = window.PlanText;
   const isOrbit = () => S.kind === "orbit";
+  const isBlock = () => S.kind === "block";
+  const blockIcon = (title) => el("span", { class: "part-icon", "data-part": "block", "data-fam": "block",
+                                            title: title || "A block", role: "img", "aria-label": "Block:" });
   // The colour of a line: an orbit's is always the orbit's; a plan's, its first word's.
   const famFor = (word) => (isOrbit() ? "orbit" : famOf(word));
   const splitWords = (line) => line.trim().split(/\s+/).filter(Boolean);
@@ -46,6 +49,7 @@
   async function loadList() {
     const r = await api("/api/plans");
     S.plans = r.plans;
+    window.App.setBlocks(r.plans.filter((p) => p.kind === "block" && !p.error).map((p) => p.name));
     const box = $("#plan-list");
     box.replaceChildren();
     for (const p of r.plans) {
@@ -53,8 +57,9 @@
       const name = el("span", {}, p.name);
       if (p.kind === "orbit") name.prepend(el("span", { class: "part-icon", "data-part": "shape", "data-fam": "orbit",
                                                         title: "An orbit file", role: "img", "aria-label": "Orbit:" }));
-      b.append(name, el("small", {}, (p.editable ? "yours" : "shipped")
-        + (p.error ? (p.kind === "orbit" ? " - not whole" : " - cannot run") : "")));
+      if (p.kind === "block") name.prepend(blockIcon("A block: steps a plan calls by name"));
+      b.append(name, el("small", {}, (p.kind === "block" ? "block, " : "") + (p.editable ? "yours" : "shipped")
+        + (p.error ? (p.kind === "orbit" ? " - not whole" : p.kind === "block" ? " - cannot be used" : " - cannot run") : "")));
       if (p.error) b.title = p.error;
       b.addEventListener("click", () => openPlan(p.name));
       box.append(b);
@@ -170,7 +175,19 @@
     else if (kind === "comment") renderComment(i, body);
     else if (kind === "load") renderLoad(i, body);
     else if (kind === "record") renderRecord(i, body);
+    else if (kind === "block") renderBlockLine(i, body);
     else renderStep(i, body);
+  }
+
+  // A block's own line: its name, then the words a plan writes to call it, each input
+  // as <name:number lo..hi unit>. Plain text, checked as it is typed.
+  function renderBlockLine(i, body) {
+    const rest = S.lines[i].trim().replace(/^block\s*/i, "");
+    const input = el("input", { class: "tok text", value: rest, "aria-label": "The block's name and call",
+                                title: "The block's name, then the words a plan writes to call it, e.g. "
+                                       + "pumpdown to <pressure:number 0.01..760 Torr>" });
+    input.addEventListener("input", () => setLine(i, "block " + input.value.trim(), false));
+    body.append(h("div", { class: "chain" }, blockIcon(), el("span", { class: "tok verb", "data-fam": "block" }, "block"), input));
   }
 
   // A read-only plan is drawn with the same tokens, from the server's reading of it.
@@ -185,7 +202,7 @@
   function tokenLine(toks) {
     const line = el("div", { class: "tokline" });
     if (!toks.length) { line.append(el("span", { class: "note" }, " ")); return line; }
-    const fam = famFor(toks[0].text);
+    const fam = toks[0].text.toLowerCase() === "block" ? "block" : famFor(toks[0].text);
     let text = null;
     toks.forEach((t, idx) => {
       if (t.role === "text") {                         // a run of free text is one underlined phrase
@@ -202,6 +219,7 @@
           if (t.role === "verb") line.append(partIcon(t.part, fam)); else tok.prepend(partIcon(t.part, fam));
         }
       }
+      if (idx === 0 && fam === "block") line.append(blockIcon());
       line.append(tok);
     });
     return line;
@@ -328,8 +346,10 @@
           "data-fam": famFor(k === 0 ? current : words[0]) });
         if (part) { sel.dataset.part = part; sel.title = partName(part); }
         if (part && k === (isOrbit() ? 0 : 1)) chain.append(partIcon(part, famFor(words[0])));   // before the word naming it
+        if (k === 0 && current !== undefined && famOf(current) === "block") chain.append(blockIcon());
         if (current === undefined) sel.append(el("option", { value: "" }, k > 0 ? "..." : isOrbit() ? "add an element..." : "add a step..."));
-        const addable = k === 0 && current === undefined && !isOrbit() ? missingHeaders(S.lines) : [];   // load / record, if deleted
+        const addable = k === 0 && current === undefined && !isOrbit()
+          ? missingHeaders(S.lines).filter((h) => !(isBlock() && h === "record")) : [];   // load / record, if deleted
         for (const kind of addable) {
           const opt = el("option", { value: "@" + kind }, kind + (kind === "load" ? "  (always first)" : "  (after load)"));
           opt.title = kind === "load" ? "Which rScripts run. A plan starts with it; it goes to the top for you."
@@ -448,6 +468,8 @@
     $("#plan-save").disabled = !S.name || !S.editable || !dirty() || S.busy;
     $("#plan-revert").disabled = !S.name || !dirty();
     $("#plan-saveas").disabled = !S.name;
+    $("#plan-register").hidden = S.kind !== "plan";
+    $("#plan-register").disabled = !S.name || S.busy;
     $("#plan-raw").disabled = !S.name;
     $("#plan-delete").disabled = !S.name || !S.editable || S.busy;
     $("#plan-delete").hidden = !S.editable;
@@ -471,6 +493,8 @@
       if (S.lines[S.lines.length - 1] === "") S.lines.pop();
       S.original = text();
       say(isOrbit() ? (r.errors.length ? `Saved, but the orbit is not whole yet: ${r.errors.length} problem(s) below.` : "Saved.")
+        : isBlock() ? (r.errors.length ? `Saved, but plans cannot use it yet: ${r.errors.length} problem(s) below.`
+                                       : "Saved. Plans can call it by its name.")
         : r.errors.length ? `Saved, but it cannot run yet: ${r.errors.length} problem(s) below.`
         : S.warnings.length ? `Saved. It can run; ${S.warnings.length} step(s) depend on the chamber at the start (amber), checked when they run.`
         : "Saved. It can run.", r.errors.length > 0);
@@ -497,6 +521,34 @@
     const name = prompt("Name for your copy (letters, digits, - and _):", S.name ? S.name + "_copy" : "");
     if (name) save(true, name.trim());
   });
+  // A block's name is a lowercase word: a plan writes it to call the block.
+  const blockName = (asked) => {
+    const name = (asked || "").trim().toLowerCase();
+    if (/^[a-z][a-z0-9_]*$/.test(name)) return name;
+    say("A block's name is one lowercase word (letters, digits and _), starting with a letter.", true);
+    return null;
+  };
+
+  $("#block-new").addEventListener("click", () => {
+    const name = blockName(prompt("Name for the new block (one lowercase word):", ""));
+    if (!name) return;
+    if (dirty() && !confirm("Discard your unsaved changes?")) return;
+    const first = S.available.includes("rLACO") ? "rLACO" : (S.available[0] || "rSMTC08");
+    save(true, name, ["# Say in one line what the block does",
+                      "# Then say, in sentences, what it does and what to expect.",
+                      `block ${name}`, `load ${first}`, "", "log start", ""].join("\n"), "block");
+  });
+
+  // A plan as a block: its comments, its `load` and its steps; `record` is the calling plan's.
+  $("#plan-register").addEventListener("click", () => {
+    const name = blockName(prompt("Name for the block (one lowercase word). Plans will call it by this name:", ""));
+    if (!name) return;
+    const lines = S.lines.filter((l) => kindOf(l) !== "record");
+    const at = lines.findIndex((l) => kindOf(l) !== "comment" && kindOf(l) !== "blank");
+    lines.splice(at < 0 ? lines.length : at, 0, `block ${name}`);
+    save(true, name, lines.join("\n") + "\n", "block");
+  });
+
   $("#plan-new").addEventListener("click", () => {
     const name = prompt("Name for the new plan (letters, digits, - and _):", "");
     if (!name) return;

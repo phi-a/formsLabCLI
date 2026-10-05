@@ -215,8 +215,8 @@ class Handler(BaseHTTPRequestHandler):
         elif path in ("/api/pause", "/api/resume"):
             result = api.ctrl(path[len("/api/"):])
             audit(user, path[len("/api/"):])
-        elif (kind := body.get("kind", "plan")) not in ("plan", "orbit"):
-            return self._error(HTTPStatus.BAD_REQUEST, "kind is plan or orbit")
+        elif (kind := body.get("kind", "plan")) not in ("plan", "block", "orbit"):
+            return self._error(HTTPStatus.BAD_REQUEST, "kind is plan, block or orbit")
         elif path == "/api/plan/check":
             return self._json(200, api.plan_check(str(body.get("text", "")), kind))
         elif path == "/api/describe":

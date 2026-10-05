@@ -64,6 +64,10 @@
     if (c.details) for (const p of c.details.split("\n\n")) box.append(el("p", { class: "details" }, p));
     const named = c.inputs.filter((i) => i.name);         // an unnamed choice (on|off) is plain in the usage
     if (named.length) box.append(el("h4", {}, "Inputs"), h("ul", {}, ...named.map(input)));
+    if (c.steps && c.steps.length) {                       // a block: what the call does to the hardware
+      box.append(el("h4", {}, "Runs these steps"),
+                 h("ol", { class: "steps" }, ...c.steps.map((s) => h("li", {}, el("code", {}, s)))));
+    }
     const rules = (info && info.rules) || [];
     if (!rules.length) return;
     const says = SAYS[mode] || SAYS.plan;

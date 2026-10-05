@@ -114,3 +114,11 @@ def test_which_elements_an_orbit_still_lacks():
 def test_the_elements_are_the_orbit_files_own():
     from formslab.orbit.file import ORDER
     assert run_js([], "T.ELEMENTS") == list(ORDER)
+
+
+# --- block files ------------------------------------------------------------------------------
+
+def test_a_blocks_own_line_is_its_kind_and_load_goes_after_it():
+    assert run_js({"l": "block pumpdown to <pressure:number>"}, "T.kindOf(P.l)") == "block"
+    got = add(["# what it does", "block seal", "", "hvc gate close"], "load", ["rLACO"])
+    assert got["lines"] == ["# what it does", "block seal", "", "load rLACO", "hvc gate close"]

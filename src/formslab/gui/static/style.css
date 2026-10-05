@@ -135,6 +135,8 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 #cmd-info { margin: 8px 0; max-width: 760px; }
 .info .usage { gap: 4px; }
 .info .begun li { margin: 4px 0 8px; }
+.info ol.steps { margin: 0; padding-left: 20px; }
+.info ol.steps code { font-size: 12px; }
 .info .title { font-weight: 600; margin: 4px 0; }
 .info .details { color: var(--muted); margin: 4px 0; }
 .info h4 { margin: 10px 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
@@ -172,25 +174,26 @@ button:disabled { opacity: .5; cursor: not-allowed; }
    Colour comes from the step or instrument the phrase starts with (data-fam). */
 :root {
   --fam-flow: #57606a; --fam-hvc: #0969da; --fam-psu: #bc4c00; --fam-cryo: #1b7c83;
-  --fam-slta: #8250df; --fam-tc: #1a7f37; --fam-orbit: #1f2fa8; --fam-other: #6e7781;
+  --fam-slta: #8250df; --fam-tc: #1a7f37; --fam-orbit: #1f2fa8; --fam-block: #6b5b95; --fam-other: #6e7781;
   --value-bg: #fff8e1; --value-line: #d4a72c; --value-fg: #1f2328;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --fam-flow: #8b949e; --fam-hvc: #4493f8; --fam-psu: #f0883e; --fam-cryo: #39c5cf;
-    --fam-slta: #ab7df8; --fam-tc: #3fb950; --fam-orbit: #7d8cff; --fam-other: #8b949e;
+    --fam-slta: #ab7df8; --fam-tc: #3fb950; --fam-orbit: #7d8cff; --fam-block: #a99bd4; --fam-other: #8b949e;
     --value-bg: #2b2410; --value-line: #9e6a03; --value-fg: #e6edf3;
   }
 }
 :root[data-theme="dark"] {
   --fam-flow: #8b949e; --fam-hvc: #4493f8; --fam-psu: #f0883e; --fam-cryo: #39c5cf;
-  --fam-slta: #ab7df8; --fam-tc: #3fb950; --fam-orbit: #7d8cff; --fam-other: #8b949e;
+  --fam-slta: #ab7df8; --fam-tc: #3fb950; --fam-orbit: #7d8cff; --fam-block: #a99bd4; --fam-other: #8b949e;
   --value-bg: #2b2410; --value-line: #9e6a03; --value-fg: #e6edf3;
 }
 [data-fam="flow"] { --fam: var(--fam-flow); }   [data-fam="hvc"] { --fam: var(--fam-hvc); }
 [data-fam="psu"] { --fam: var(--fam-psu); }     [data-fam="cryo"] { --fam: var(--fam-cryo); }
 [data-fam="slta"] { --fam: var(--fam-slta); }   [data-fam="tc"] { --fam: var(--fam-tc); }
 [data-fam="orbit"] { --fam: var(--fam-orbit); }   [data-fam="other"] { --fam: var(--fam-other); }
+[data-fam="block"] { --fam: var(--fam-block); }
 
 .tok { --fam: var(--fam-other); display: inline-flex; align-items: center; gap: 4px; box-sizing: border-box;
        font: 13px/20px ui-monospace, Consolas, monospace; border-radius: 5px; padding: 2px 9px;
@@ -243,6 +246,10 @@ button.danger-outline:hover { background: color-mix(in srgb, var(--bad) 10%, tra
 .tok[data-fam="psu"] { --fam: var(--fam-psu); }    .tok[data-fam="cryo"] { --fam: var(--fam-cryo); }
 .tok[data-fam="slta"] { --fam: var(--fam-slta); }  .tok[data-fam="tc"] { --fam: var(--fam-tc); }
 .tok[data-fam="orbit"] { --fam: var(--fam-orbit); }
+.tok[data-fam="block"] { --fam: var(--fam-block); }
+/* a block: a call to a group of steps, drawn as stacked squares */
+.part-icon[data-part="block"] { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='1.5' y='5.5' width='9' height='9' rx='1.5' fill='none' stroke='%23000' stroke-width='1.7'/%3E%3Cpath d='M5.5 2.5h8v8' fill='none' stroke='%23000' stroke-width='1.7' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+#plan-new, #orbit-new, #block-new { width: 100%; margin-top: 6px; }
 
 /* ---- parts: what a command is about, as a small engineering symbol in the instrument's
    colour (docs/WRITING.md: never colour alone -- the part's name is in its title) ---- */

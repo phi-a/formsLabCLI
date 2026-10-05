@@ -13,6 +13,34 @@ from formslab.sequence.block import BlockError, parse_block
 from formslab.sequence.plan import ENV, describe_step, needed_rscripts, review
 
 
+# --- in the GUI: a third kind of file beside plans and orbits -------------------------------------
+
+def test_the_editor_lists_reads_and_saves_blocks_but_never_runs_them():
+    from formslab.gui import api, plans
+    listed = {p["name"]: p for p in api.list_plans()}
+    assert listed["pumpdown"]["kind"] == "block" and "error" not in listed["pumpdown"]
+    r = plans.read("pumpdown")
+    assert r["kind"] == "block" and r["errors"] == [] and r["warnings"][0]["line"] == 16
+    saved = plans.save("seal", "block seal\nload rLACO\nhvc gate close\n", None, True, "block")
+    assert saved["kind"] == "block" and saved["errors"] == []
+    assert plans.problems("block Seal\nload rLACO\nhvc stop\n", "block")["errors"][0]["line"] == 1
+    with pytest.raises(api.ApiError):
+        api.start_run("pumpdown")                                  # only plans run
+
+
+def test_a_block_file_draws_and_completes_with_its_inputs():
+    from formslab.gui import api
+    text = find_plan("pump_soak_vent").with_name("pumpdown.block").read_text(encoding="utf-8")
+    lines = api.plan_tokens(text, "block")
+    assert lines[7] == [{"text": "block", "role": "verb"}, {"text": "pumpdown", "role": "kw"},
+                        {"text": "to", "role": "kw"}, {"text": "pressure", "role": "value"}]
+    assert lines[16][3] == {"text": "{pressure}", "role": "value"}
+    r = api.plan_line(["rLACO"], ["until", "chamberP", "below", "{pressure}"], "block")
+    assert r["error"] is None and "timeout" in [o["text"] for o in r["positions"][4]]
+    card = api.describe(text=text, line=8, kind="block")["cards"][0]
+    assert card["help"] == "Rough the chamber down to a pressure, then seal it" and len(card["steps"]) == 8
+
+
 @pytest.fixture
 def blocks_dir(tmp_path, monkeypatch):
     """A folder searched first for plans and blocks; write blocks into it."""

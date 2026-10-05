@@ -167,6 +167,112 @@ def parse_block(text: str, path: Path | None = None) -> Block:
                  steps=tuple(steps), inputs=tuple(inputs), captures=tuple(captures), path=path)
 
 
+# --- a block file in the editor ------------------------------------------------------
+#
+# A block is read as the plan it would be, line for line: its `block` line a
+# comment, each {input} a value from its range. The plan's own checks, tokens,
+# dropdowns and help then apply to its steps, at the block's own line numbers.
+
+_SLOT = re.compile(r"<\s*(\w+)\s*:\s*(?:number|integer)(?:\s+([-+\d.eE]*)\.\.([-+\d.eE]*))?[^>]*>")
+
+
+def _samples(text: str) -> dict[str, float]:
+    """A value for each input the `block` line declares, read leniently (the file
+    may be half written)."""
+    header = next((ln for ln in text.splitlines() if ln.strip().lower().startswith("block")), "")
+    out = {}
+    for name, lo, hi in _SLOT.findall(header):
+        try:
+            out[name] = float(lo) if lo else float(hi) if hi else 1.0
+        except ValueError:
+            out[name] = 1.0
+    return out
+
+
+def as_plan(text: str) -> str:
+    """The block in `text` as a plan, line for line."""
+    samples = _samples(text)
+    out = []
+    for line in text.splitlines():
+        words = line.split()
+        if words and words[0].lower() == "block":
+            out.append("# " + line.strip())
+        else:
+            out.append(" ".join(f"{samples.get(m.group(1), 1):g}" if (m := _INPUT.match(w)) else w
+                                for w in words) if words else line)
+    return "\n".join(out) + "\n"
+
+
+def review(text: str) -> tuple[list, list]:
+    """(errors, warnings) in a block file, each (line, message), as plan.review."""
+    from formslab.rscripts import cast
+    from formslab.sequence.plan import review as review_plan
+
+    try:
+        b = parse_block(text)
+    except BlockError as e:
+        return [(e.line, str(e))], []
+    if b.name in cast.owners()[0]:
+        return [(0, f"{b.name} is an instrument's name; choose another name for the block")], []
+    return review_plan(as_plan(text))
+
+
+def tokens(text: str) -> list[list[dict]]:
+    """The block's lines as plan tokens (plan.tokens); the `block` line drawn as its
+    words and inputs, and each {input} as a value."""
+    from formslab.sequence.plan import tokens as plan_tokens
+
+    lines = text.splitlines()
+    out = plan_tokens(as_plan(text))
+    for i, line in enumerate(lines):
+        words = line.split()
+        if words and words[0].lower() == "block":
+            rest = line.strip()[len(words[0]):].strip()
+            toks = [{"text": words[0], "role": "verb"}]
+            for part in re.split(r"(<[^>]*>)", rest):
+                if part.startswith("<"):
+                    toks.append({"text": part.strip("<>").split(":")[0], "role": "value"})
+                else:
+                    toks += [{"text": w, "role": "kw"} for w in part.split()]
+            out[i] = toks
+        elif any(_INPUT.match(w) for w in words) and i < len(out):
+            out[i] = [{**t, "text": w, "role": "value"} if _INPUT.match(w) else t
+                      for t, w in zip(out[i], words)]
+    return out
+
+
+def line_options(scripts, words) -> dict:
+    """plan.line_options for a block's step: each {input} read as a value that fits
+    where it stands."""
+    from formslab.sequence.plan import _grammar, line_options as plan_line_options
+
+    grammar = _grammar(tuple(scripts))[0]
+    filled = []
+    for w in words:
+        if _INPUT.match(w):
+            slot = next((o for o in grammar.complete(filled) if o.kind in ("number", "integer")), None)
+            w = f"{slot.lo if slot and slot.lo is not None else slot.hi if slot and slot.hi is not None else 1:g}"
+        filled.append(w)
+    return plan_line_options(scripts, filled)
+
+
+def describe(text: str, line: int) -> dict:
+    """The help card for line `line` of a block file: its `block` line is the call."""
+    from formslab.rscripts.grammar import _card
+    from formslab.sequence.plan import describe_step
+
+    lines = text.splitlines()
+    words = lines[line - 1].split() if 0 < line <= len(lines) else []
+    if words and words[0].lower() == "block":
+        try:
+            b = parse_block(text)
+        except BlockError:
+            return {"cards": [], "rules": []}
+        card = _card(Grammar([(b.pattern, b.help, None)])._commands[0], True)
+        return {"cards": [{**card, "part": None, "steps": [" ".join(w) for _, w in b.steps]}], "rules": []}
+    return describe_step(as_plan(text), line)
+
+
 # --- finding blocks: the plans' own folders ------------------------------------------
 
 def discover() -> list[Path]:

@@ -16,10 +16,13 @@
   const FAMILY = { hvc: "hvc", psu1: "psu", psu2: "psu", cryo: "cryo", slta: "slta", tc: "tc",
                    epoch: "orbit", a: "orbit", e: "orbit", i: "orbit", raan: "orbit", argp: "orbit", nu: "orbit" };
   const STEP_WORDS = ["hold", "until", "log", "load", "record"];
+  // The names of the blocks the editor lists: a step that calls one has the block colour.
+  const BLOCKS = new Set();
   const famOf = (word) => {
     const w = (word || "").toLowerCase();
-    return FAMILY[w] || (STEP_WORDS.includes(w) ? "flow" : "other");
+    return FAMILY[w] || (STEP_WORDS.includes(w) ? "flow" : BLOCKS.has(w) ? "block" : "other");
   };
+  const setBlocks = (names) => { BLOCKS.clear(); for (const n of names) BLOCKS.add(n.toLowerCase()); };
   const unitText = (u) => (u || "").replace(/^C(?=\/|$)/, "\u00b0C");
 
   // The kind of part a command is about, drawn as a small symbol in the instrument's
@@ -31,7 +34,7 @@
   const partIcon = (part, fam) => el("span", { class: "part-icon", "data-part": part, "data-fam": fam || "other",
                                                title: partName(part), role: "img", "aria-label": partName(part) });
 
-  window.App = { api: (...a) => api(...a), el, $, famOf, unitText, PART_NAMES, ORBIT_PARTS, partName, partIcon };   // for editor.js, loaded next
+  window.App = { api: (...a) => api(...a), el, $, famOf, setBlocks, unitText, PART_NAMES, ORBIT_PARTS, partName, partIcon };   // for editor.js, loaded next
 
   const state = {
     view: "status", timer: null, runs: [], run: null, selected: new Set(), data: null,
@@ -216,7 +219,7 @@
       const r = await api("/api/plans");
       const sel = $("#plan"), keep = sel.value;
       sel.replaceChildren();
-      for (const p of r.plans.filter((p) => p.kind !== "orbit")) {         // an orbit is opened, never run
+      for (const p of r.plans.filter((p) => p.kind === "plan")) {          // a block or an orbit is opened, never run
         const o = el("option", { value: p.name },
           p.error ? `${p.name} (cannot run)`
             : `${p.name} - ${p.rscripts.join(", ")}${p.open_ended ? " - until you end it" : ""}${p.warnings?.length ? " - \u26a0 checks at the start" : ""}`);

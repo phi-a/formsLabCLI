@@ -22,6 +22,7 @@ from formslab.gui import plans, runs
 from formslab.host.sequence import is_host, read_lock
 from formslab.orbit import file as orbitfile
 from formslab.orbit.propagate.kepler import live
+from formslab.sequence import block as blockfile
 from formslab import rscripts
 from formslab.rscripts import cast
 from formslab.rscripts.grammar import GrammarError
@@ -181,8 +182,8 @@ def _finish() -> None:
 
 def list_plans() -> list[dict]:
     """The plans `run <name>` can start, each with the rScripts it loads, or why
-    it does not read; then the orbit files (kind "orbit"), which the editor opens
-    and nothing runs."""
+    it does not read; then the blocks (kind "block"), which plans call, and the
+    orbit files (kind "orbit"), which the editor opens; neither is run itself."""
     out = []
     with _lock:
         for path in discover():
@@ -198,6 +199,13 @@ def list_plans() -> list[dict]:
                         "open_ended": any(s.verb == "hold" and s.params["seconds"] is None
                                           for s in plan.sequence.segments)})
         taken = {p["name"] for p in out}
+        for path in blockfile.discover():
+            if path.stem in taken:                      # a plan of the same name is found first
+                continue
+            errors, _ = blockfile.review(path.read_text(encoding="utf-8"))
+            out.append({"name": path.stem, "kind": "block", "editable": plans.is_editable(path),
+                        **({"error": f"line {errors[0][0]}: {errors[0][1]}"} if errors else {})})
+            taken.add(path.stem)
         for path in orbitfile.discover():
             if path.stem in taken:                      # a plan of the same name is found first
                 continue
@@ -350,6 +358,8 @@ def describe(words: list[str] | None = None, text: str | None = None, line: int 
         try:
             if text is not None and kind == "orbit":
                 return orbitfile.describe(text, int(line or 0))
+            if text is not None and kind == "block":
+                return blockfile.describe(text, int(line or 0))
             if text is not None:
                 return describe_step(text, int(line or 0))
             return cast.describe(list(words or []))
@@ -362,7 +372,7 @@ def plan_line(scripts: list[str], words: list[str], kind: str = "plan") -> dict:
     if kind == "orbit":
         return orbitfile.line_options(words)
     with _lock:
-        return line_options(scripts, words)
+        return (blockfile.line_options if kind == "block" else line_options)(scripts, words)
 
 
 def rscripts_available() -> list[str]:
@@ -384,7 +394,7 @@ def plan_tokens(text: str, kind: str = "plan") -> list[list[dict]]:
     if kind == "orbit":
         return orbitfile.tokens(text)
     with _lock:
-        return tokens(text)
+        return (blockfile.tokens if kind == "block" else tokens)(text)
 
 
 def plan_needs(text: str) -> list[str]:

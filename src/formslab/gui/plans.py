@@ -1,8 +1,9 @@
-"""Plan and orbit files for the GUI's editor.
+"""Plan, block and orbit files for the GUI's editor.
 
-The editor opens two kinds of file: plans (`.plan`, sequence.plan) and orbits
-(`.orbit`, orbit.file). They share one list and one set of names, so a name
-says which file it is. A plan is named by a short name and found only through the server's own plan
+The editor opens three kinds of file: plans (`.plan`, sequence.plan), blocks
+(`.block`, sequence.block: steps a plan calls by name) and orbits (`.orbit`,
+orbit.file). They share one list and one set of names, so a name says which
+file it is. A plan is named by a short name and found only through the server's own plan
 list (`discover`), never through a path from a request. Plans that ship with the
 checkout, or sit in the folder `labcli` was started from, are read-only here;
 a copy saved from the editor goes in this machine's own plans folder
@@ -25,10 +26,12 @@ from pathlib import Path
 
 from formslab.console.safefile import atomic_write_text
 from formslab.orbit import file as orbitfile
+from formslab.sequence import block as blockfile
 from formslab.sequence.plan import ENV, SUFFIX, discover, review, user_plans_dir
 
 NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
-SUFFIXES = {"plan": SUFFIX, "orbit": orbitfile.SUFFIX}
+SUFFIXES = {"plan": SUFFIX, "block": blockfile.SUFFIX, "orbit": orbitfile.SUFFIX}
+KINDS = {suffix: kind for kind, suffix in SUFFIXES.items()}
 
 
 class PlanFileError(Exception):
@@ -58,13 +61,14 @@ def is_editable(path: Path) -> bool:
 
 
 def find(name: str) -> Path | None:
-    """The plan or orbit called `name`, as the host would find it (first match
-    wins; a plan before an orbit of the same name)."""
-    return next((p for p in [*discover(), *orbitfile.discover()] if p.stem == name), None)
+    """The plan, block or orbit called `name`, as the host would find it (first
+    match wins; a plan, then a block, then an orbit of the same name)."""
+    return next((p for p in [*discover(), *blockfile.discover(), *orbitfile.discover()]
+                 if p.stem == name), None)
 
 
 def kind_of(path: Path) -> str:
-    return "orbit" if path.suffix == orbitfile.SUFFIX else "plan"
+    return KINDS.get(path.suffix, "plan")
 
 
 def read(name: str) -> dict:
@@ -78,15 +82,15 @@ def read(name: str) -> dict:
 
 
 def problems(text: str, kind: str = "plan") -> dict:
-    """{errors, warnings}: [{line, message}] each (see sequence.plan.review and
-    orbit.file.review)."""
-    errors, warnings = (orbitfile.review if kind == "orbit" else review)(text)
+    """{errors, warnings}: [{line, message}] each (see sequence.plan.review,
+    sequence.block.review and orbit.file.review)."""
+    errors, warnings = {"orbit": orbitfile.review, "block": blockfile.review}.get(kind, review)(text)
     return {"errors": [{"line": n, "message": m} for n, m in errors],
             "warnings": [{"line": n, "message": m} for n, m in warnings]}
 
 
 def save(name: str, text: str, base_hash: str | None, as_new: bool, kind: str = "plan") -> dict:
-    """Write plan `text`. `as_new` makes a new file of this `kind` (plan or orbit)
+    """Write plan `text`. `as_new` makes a new file of this `kind` (plan, block or orbit)
     in this machine's folder; otherwise the named editable file is overwritten, if
     it is unchanged since `base_hash`, and keeps its kind. A draft with mistakes is
     saved too: the errors come back."""
@@ -98,9 +102,9 @@ def save(name: str, text: str, base_hash: str | None, as_new: bool, kind: str = 
     existing = find(name)
     if as_new:
         if existing is not None:
-            raise PlanFileError(409, f"a plan or orbit named {name!r} already exists; choose another name")
+            raise PlanFileError(409, f"a plan, block or orbit named {name!r} already exists; choose another name")
         if kind not in SUFFIXES:
-            raise PlanFileError(400, f"a file is a plan or an orbit, not {kind!r}")
+            raise PlanFileError(400, f"a file is a plan, a block or an orbit, not {kind!r}")
         target = user_plans_dir() / f"{name}{SUFFIXES[kind]}"
         target.parent.mkdir(parents=True, exist_ok=True)
     else:

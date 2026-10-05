@@ -12,7 +12,7 @@
     if (!t) return "blank";
     if (t.startsWith("#")) return "comment";
     const head = t.split(/\s+/)[0].toLowerCase();
-    return head === "load" ? "load" : head === "record" ? "record" : "step";
+    return head === "load" ? "load" : head === "record" ? "record" : head === "block" ? "block" : "step";
   }
 
   const indexOfKind = (lines, kind) => lines.findIndex((l) => kindOf(l) === kind);
