@@ -36,6 +36,12 @@ class Sequence:
     segments: tuple[Segment, ...] = ()
     rscripts: tuple[str, ...] = ()
 
+    @property
+    def open_ended(self) -> bool:
+        """It runs until the operator ends it: a `hold until end` or a `repeat until end`."""
+        return any((s.verb == "hold" and s.params.get("seconds") is None)
+                   or (s.verb == "repeat" and s.params.get("forever")) for s in self.segments)
+
     def to_manifest(self) -> dict[str, Any]:
         return {
             "name": self.name,

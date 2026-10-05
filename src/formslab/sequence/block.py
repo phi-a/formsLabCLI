@@ -34,7 +34,7 @@ from formslab.rscripts.grammar import Grammar, GrammarError, _Slot, _Word, _comp
 SUFFIX = ".block"
 MAX_DEPTH = 8
 # Words a block may not be named: the plan's own steps, and FORMS' verbs.
-RESERVED = ("hold", "until", "log", "load", "record", "block", "propagate", "call", "observe")
+RESERVED = ("hold", "until", "log", "load", "record", "block", "repeat", "end", "propagate", "call", "observe")
 _NAME = re.compile(r"^[a-z][a-z0-9_]*$")
 _INPUT = re.compile(r"^\{(\w+)\}$")
 
@@ -113,8 +113,9 @@ def parse_block(text: str, path: Path | None = None) -> Block:
         elif head == "record":
             raise BlockError("a block has no `record`: how often to record is the plan's", n)
         else:
-            if [w.lower() for w in words] == ["hold", "until", "end"]:
-                raise BlockError("a block cannot `hold until end`: the steps after its call would never run", n)
+            if [w.lower() for w in words] in (["hold", "until", "end"], ["repeat", "until", "end"]):
+                raise BlockError(f"a block cannot `{' '.join(words[:3]).lower()}`: the steps after its call "
+                                 "would never run", n)
             if head != "log" and "#" in t:
                 raise BlockError("comments go on their own line", n)
             steps.append((n, tuple(words)))

@@ -38,14 +38,17 @@ def main(argv=None) -> int:
         found = rscripts.find(name)
         missing += [] if found else [name]
         print(f"rScript   {name:<12} {found or 'NOT FOUND'}")
-    held = 0.0
+    held, depth = 0.0, 0
     print("sequence")
     for i, seg in enumerate(plan.sequence.segments, 1):
         held += seg.params.get("seconds") or 0.0
-        print(f"  {i:>2}. {seg.label}")
-    open_ended = any(s.verb == "hold" and s.params["seconds"] is None for s in plan.sequence.segments)
-    print(f"held      {held:g} s, plus command and until waits"
-          + ("; runs until ctrl `end`" if open_ended else ""))
+        depth -= seg.verb == "end"
+        print(f"  {i:>2}. {'  ' * depth}{seg.label}")
+        depth += seg.verb == "repeat"
+    loops = any(s.verb == "repeat" for s in plan.sequence.segments)
+    print(f"held      {held:g} s" + (" (a loop's holds counted once)" if loops else "")
+          + ", plus command and until waits"
+          + ("; runs until ctrl `end`" if plan.sequence.open_ended else ""))
     if missing:
         print(f"missing rScripts: {', '.join(missing)}", file=sys.stderr)
         return 1

@@ -196,8 +196,7 @@ def list_plans() -> list[dict]:
             out.append({"name": path.stem, "kind": "plan", "rscripts": list(plan.rscripts),
                         "steps": len(plan.sequence.segments), "editable": plans.is_editable(path),
                         "warnings": [f"line {n}: {m}" for n, m in plan.warnings],
-                        "open_ended": any(s.verb == "hold" and s.params["seconds"] is None
-                                          for s in plan.sequence.segments)})
+                        "open_ended": plan.sequence.open_ended})
         taken = {p["name"] for p in out}
         for path in blockfile.discover():
             if path.stem in taken:                      # a plan of the same name is found first

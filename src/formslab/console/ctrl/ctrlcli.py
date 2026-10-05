@@ -104,8 +104,7 @@ def plans_command() -> CLIResult:
             result.append(f"  ✗   {path.stem.ljust(22)}", ERROR)
             result.append(f"{e}\n", DIM)
             continue
-        open_ended = any(s.verb == "hold" and s.params["seconds"] is None
-                         for s in plan.sequence.segments)
+        open_ended = plan.sequence.open_ended
         result.append("  ●   " if open_ended else "  ▶   ", WARNING if open_ended else SUCCESS)
         result.append(path.stem.ljust(22), INFO)
         result.append(("until end  " if open_ended else "           "), WARNING)

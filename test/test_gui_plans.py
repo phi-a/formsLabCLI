@@ -73,7 +73,7 @@ def test_every_shipped_plan_checks_clean(name):
 def test_options_at_every_position_of_a_step():
     r = line_options(["rLACO"], ["hvc", "platen"])
     first, second, third = r["positions"]
-    assert [o["text"] for o in first] == ["hold", "log", "until", "hvc", "eclipse", "pumpdown", "sunrise", "vent"]   # blocks last
+    assert [o["text"] for o in first] == ["hold", "log", "repeat", "end", "until", "hvc", "eclipse", "pumpdown", "sunrise", "vent"]   # blocks last
     assert [o["text"] for o in second][:3] == ["platen", "shroud", "vacuum"]
     assert third[0] == {"kind": "number", "text": "temperature", "help": "Set the platen temperature",
                         "lo": -180.0, "hi": 200.0, "unit": "C", "part": "zone"}

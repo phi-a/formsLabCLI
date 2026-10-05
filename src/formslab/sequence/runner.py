@@ -72,6 +72,11 @@ class LabSequenceRunner:
         self.index = -1
         self.total_steps = 0
         self.elapsed = 0.0
+        # Each open loop, by its `repeat` index: passes begun, when it was entered
+        # (active seconds), and the loop count at the start of the current pass.
+        self._passes: dict[int, int] = {}
+        self._entered: dict[int, float] = {}
+        self._pass_began: dict[int, int] = {}
 
     def step(self, verb: str, segment_step: int, fraction: float | None = None) -> None:
         """One loop. Only the part after `poll` returns counts as active time."""
@@ -94,15 +99,26 @@ class LabSequenceRunner:
         result = RunResult(name=seq.name)
         error = ended = None
         try:
-            for i, segment in enumerate(seq.segments):
+            i, segments = 0, seq.segments
+            while i < len(segments):
+                segment = segments[i]
                 self.index = i
+                if segment.verb == "end":                 # back to its repeat, which decides
+                    if self.total_steps == self._pass_began.get(segment.params["start_at"]):
+                        self.step(segment.verb, 1)        # a pass that waited for nothing: still poll once
+                    i = segment.params["start_at"]
+                    continue
+                if segment.verb == "repeat":
+                    i = self._repeat(i, segment)
+                    continue
                 self.sink.emit(SegmentStarted(index=i, verb=segment.verb,
                                               label=segment.label or segment.verb))
-                self.run.log(f"[{i + 1}/{len(seq.segments)}] {segment.label or segment.verb}",
+                self.run.log(f"[{i + 1}/{len(segments)}] {segment.label or segment.verb}",
                                component=COMPONENT)
                 steps = _EXECUTORS[segment.verb](self, self.run, segment)
                 result.segment_steps.append(steps)
                 self.sink.emit(SegmentFinished(index=i, verb=segment.verb, steps=steps))
+                i += 1
         except SystemExit:
             ended = "operator"        # ctrl `end` or a signal: how an open-ended plan stops
             raise
@@ -114,6 +130,38 @@ class LabSequenceRunner:
             self.sink.emit(SequenceFinished(name=seq.name, steps=self.total_steps, error=error,
                                             ended=ended))
         return result
+
+    def _repeat(self, i: int, segment) -> int:
+        """At a `repeat`: the index to go to next, the first step of another pass or
+        the step after its `end`. Its condition is read before each pass."""
+        p = segment.params
+        if i not in self._passes:                        # entered from above: a fresh loop
+            self._passes[i], self._entered[i] = 0, self.elapsed
+        done = self._passes[i]
+        if p["times"] is not None:
+            finished = done >= p["times"]
+        elif p["until"] is not None:
+            met, value = _met(self.run, p["until"])
+            finished = met
+            if not met and self.elapsed - self._entered[i] >= p["until"]["timeout_s"]:
+                u = p["until"]
+                shown = f" {u['unit']}" if u["unit"] else ""
+                last = "it was never published" if value is None else f"last {value:.4g}{shown}"
+                raise SequenceError(f"{segment.label}: {u['variable']} not {u['side']} {u['value']:g}{shown} "
+                                    f"within {u['timeout_s']:g} s, after {done} pass(es) ({last})")
+        else:
+            finished = False                             # until the run is ended
+        if finished:
+            del self._passes[i], self._entered[i]
+            self.run.log(f"{segment.label}: done after {done} pass(es)", component=COMPONENT)
+            return p["end_at"] + 1
+        self._passes[i] = done + 1
+        self._pass_began[i] = self.total_steps
+        of = f" of {p['times']}" if p["times"] is not None else ""
+        self.sink.emit(SegmentStarted(index=i, verb=segment.verb, label=segment.label))
+        self.run.log(f"[{i + 1}/{len(self.sequence.segments)}] {segment.label}: pass {done + 1}{of}",
+                     component=COMPONENT)
+        return i + 1
 
 
 # --- executors: (runner, run, segment) -> loops taken ------------------------
@@ -180,21 +228,30 @@ def _convert(value: float, have: str | None, want: str | None) -> float:
     raise SequenceError(f"cannot compare a value in {have} with a limit in {want}")
 
 
+def _met(run, p) -> tuple[bool, float | None]:
+    """(the value is past the limit, the value in the limit's unit) for an `until`
+    condition `p`; (False, None) while nothing publishes it."""
+    var = run.variable(p["variable"])
+    if var is None:
+        return False, None
+    try:
+        value = _convert(float(var.value), getattr(var, "unit", None), p["unit"])
+    except (TypeError, ValueError):
+        value = math.nan
+    return (value > p["value"] if p["side"] == "above" else value < p["value"]), value
+
+
 def _until(runner, run, segment) -> int:
     p = segment.params
     name, side, limit, unit = p["variable"], p["side"], p["value"], p["unit"]
     shown = f" {unit}" if unit else ""
     start, n, value = runner.elapsed, 0, None
     while True:
-        var = run.variable(name)
-        if var is not None:
-            try:
-                value = _convert(float(var.value), getattr(var, "unit", None), unit)
-            except (TypeError, ValueError):
-                value = math.nan
-            if value > limit if side == "above" else value < limit:
-                run.log(f"{name} = {value:.4g}{shown}, {side} {limit:g}{shown}", component=COMPONENT)
-                return n
+        met, now = _met(run, p)
+        value = now if now is not None else value
+        if met:
+            run.log(f"{name} = {value:.4g}{shown}, {side} {limit:g}{shown}", component=COMPONENT)
+            return n
         if runner.elapsed - start >= p["timeout_s"]:
             last = "it was never published" if value is None else f"last {value:.4g}{shown}"
             raise SequenceError(f"{name} not {side} {limit:g}{shown} within "
