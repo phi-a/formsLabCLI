@@ -71,10 +71,6 @@ PSU1_POLL_INTERVAL      = 5.0    # seconds between PSU1 readbacks published as s
 
 
 class rGlobal:
-    disable = False
-    useInitialize = False
-    useHold = False
-    useTick = True
     TICK_INTERVAL = 1.0
 
     _vars_initialized = False
@@ -280,19 +276,12 @@ def _handle_psu_request(run, label, psu, request):
 def rScript(run):
     global rg
 
-    if rg.disable:
-        return
 
     rg = _init(run, rg)
 
     try:
         control = RScriptControl(run, name)
-        if rg.useInitialize:
-            control.initialize()
-        if rg.useHold:
-            control.hold(seconds=1.0)
-        if rg.useTick:
-            control.tick(seconds=rg.TICK_INTERVAL)
+        control.tick(seconds=rg.TICK_INTERVAL)
         if control:
             return
     except Exception as exc:

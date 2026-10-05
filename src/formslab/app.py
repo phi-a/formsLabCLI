@@ -10,8 +10,6 @@ console runs from any working directory.
 """
 import os
 import sys
-import io
-from contextlib import redirect_stdout
 
 try:
     if hasattr(sys.stdout, "reconfigure"):
@@ -336,12 +334,6 @@ def read_command(prompt):
             else:
                 continue
             _echo(prompt, buf)
-
-def capture_stdout(func, *args, **kwargs):
-    buffer = io.StringIO()
-    with redirect_stdout(buffer):
-        func(*args, **kwargs)
-    return Text(buffer.getvalue(), style=style.TEXT)
 
 def main():
     global current_tab

@@ -54,7 +54,6 @@ VARIABLES = []
 
 # --- Encapsulated State ---
 class rGlobal:
-    disable = False
     useInitialize = False
     useHold = True
     useTick = False
@@ -127,8 +126,7 @@ def _umbra(run):
 # --- rScript Entry Point ---
 def rScript(run):
     global rg
-    if rg.disable: return
-    else: _init(run, rg)
+    _init(run, rg)
     # === Refactored execution control ===
     try:
         r = RScriptControl(run, name)

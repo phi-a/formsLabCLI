@@ -3,8 +3,6 @@ import shutil
 import sys
 import threading
 from contextlib import contextmanager
-
-import psutil
 from typing import Dict, Iterable, Optional
 
 from formslab.console.safefile import atomic_write_text, file_lock, read_json
@@ -27,15 +25,6 @@ def _default_commands() -> Dict:
     return build_default_ctrl_commands()
 
 
-def _ensure_ctrlfile() -> Dict:
-    cmds = _default_commands()
-    ctrl_state_path().parent.mkdir(parents=True, exist_ok=True)
-    with _locked():
-        if not ctrl_state_path().exists():
-            _write_ctrljson(cmds)
-    return cmds
-
-
 def LoadCommands() -> Optional[Dict]:
     """The command table, or None when it cannot be read right now.
 
@@ -44,7 +33,7 @@ def LoadCommands() -> Optional[Dict]:
     try:
         return read_json(ctrl_state_path())
     except FileNotFoundError:
-        return _ensure_ctrlfile()
+        return _default_commands()                   # nothing written yet: nothing pending
     except (OSError, ValueError) as e:
         print(f"✗ Failed to load ctrl file: {e}", file=sys.stderr)
         return None
@@ -107,6 +96,22 @@ def ResetCtrlState():
         _write_ctrljson(cmds)
 
 
+def DropUnknownCommands() -> list:
+    """Remove entries the host does not read (an older version's `plans`,
+    `missions`, `exit`...) and their old `desc` text; returns the names removed."""
+    if not ctrl_state_path().exists():
+        return []
+    known = _default_commands()
+    with _locked():
+        cmds = _load_for_update()
+        stale = [k for k in cmds if k not in known]
+        described = any(isinstance(b, dict) and "desc" in b for b in cmds.values())
+        if stale or described or set(known) - set(cmds):
+            _write_ctrljson({k: {"key": (cmds.get(k) or {}).get("key"),
+                                 "processed": (cmds.get(k) or {}).get("processed", True)} for k in known})
+    return stale
+
+
 def _write_ctrljson(cmds: Dict):
     """The table in its hand-formatted layout (one block per line), replacing
     the file in one step. Callers hold the lock."""
@@ -114,27 +119,11 @@ def _write_ctrljson(cmds: Dict):
     keys = list(cmds.keys())
     for i, k in enumerate(keys):
         block = cmds[k]
-        desc = f', "desc": {json.dumps(block["desc"])}' if "desc" in block else ""
-        line = (
-            f'  "{k}": {{ "key": {json.dumps(block.get("key"))}, '
-            f'"processed": {json.dumps(block.get("processed", True))}{desc} }}'
-        )
+        line = (f'  "{k}": {{ "key": {json.dumps(block.get("key"))}, '
+                f'"processed": {json.dumps(block.get("processed", True))} }}')
         if i < len(keys) - 1:
             line += ","
         lines.append(line)
     lines.append("}")
     atomic_write_text(ctrl_state_path(), "\n".join(lines))
 
-
-def process_exists(pid: int) -> bool:
-    """Whether a pid is live, the same way on every platform.
-
-    Was a `tasklist` shell-out on Windows and `os.kill(pid, 0)` elsewhere: two
-    code paths, one of them spawning a shell per call. psutil is already a
-    dependency and covers both, including the "exists but not ours" case that
-    `os.kill` reported as PermissionError.
-    """
-    try:
-        return psutil.pid_exists(pid)
-    except Exception:
-        return False

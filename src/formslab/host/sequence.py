@@ -138,6 +138,7 @@ def check_ctrl_commands(run) -> None:
         elif label == "resume":
             paused = False
         elif label == "reset":
+            ensure_runtime_files()           # an older version's stale blocks and entries go
             ResetCtrlState()
             ResetJson()
 

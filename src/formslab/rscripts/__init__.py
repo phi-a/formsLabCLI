@@ -34,13 +34,9 @@ def C2K(celsius: float) -> float:
     return celsius + 273.15
 
 
-def K2C(kelvin: float) -> float:
-    return kelvin - 273.15
-
-
 __all__ = [
     "RScriptControl", "Run", "Scalar",
     "ENV", "disabled", "find", "load", "loaded", "search_dirs", "shutdown", "tick",
     "rTaskRegister", "rTaskRunning", "rTaskStart", "rTaskStop", "set_logger",
-    "C2K", "K2C",
+    "C2K",
 ]

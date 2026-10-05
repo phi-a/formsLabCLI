@@ -333,6 +333,23 @@ def ResetJson(path: Path = None):
                 block['request_ids'] = []
         AtomicJsonWrite(data, path)
 
+def DropUnknownBlocks(path: Path = None) -> list:
+    """Remove blocks for labels no rScript owns any more (an older version's
+    `tvac`); returns their names."""
+    if path is None:
+        path = cast_state_path()
+    if not path.exists():
+        return []
+    with _locked(path):
+        data = _safe_read_json(path)
+        stale = [k for k in data if not (isinstance(k, str) and k.lower() in _KNOWN_CAST_LABELS)]
+        if stale:
+            for k in stale:
+                data.pop(k)
+            AtomicJsonWrite(data, path)
+    return stale
+
+
 def GenerateCleanCast(path: Path = None):
     if path is None:
         path = cast_state_path()

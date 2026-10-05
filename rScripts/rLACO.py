@@ -177,7 +177,6 @@ def VARIABLES():
 # --- the routine -------------------------------------------------------------------
 
 class rGlobal:
-    disable = False
     POLL_INTERVAL = 5          # replaced by the profile's poll_interval_s
     LOG_INTERVAL = 30.0
 
@@ -286,8 +285,6 @@ def _quick(run, laco):
 
 
 def rScript(run):
-    if rg.disable:
-        return
     request, ids = TakeCommand(label=LABEL)
     due = time.monotonic() >= rg.next_full
     if not (request or due):

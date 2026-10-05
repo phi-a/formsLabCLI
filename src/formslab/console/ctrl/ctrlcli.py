@@ -252,7 +252,7 @@ def help_panel() -> CLIResult:
     result.append("PROCESS CONTROL\n", HEADER)
     for cmd, desc in (("status", "Is the sequence host running"),
                       ("ps", "List all sequence host processes"),
-                      ("pause", "Pause the running plan or mode"),
+                      ("pause", "Pause the running plan"),
                       ("resume", "Resume it"),
                       ("end", "Stop it; rShutdown leaves the hardware safe")):
         result.append(f"  {cmd:<16}", LABEL)
@@ -262,9 +262,6 @@ def help_panel() -> CLIResult:
 
 COMMANDS = {
     "plans": plans_command,
-    "missions": plans_command,   # the old name
-    "modes": plans_command,      # tvac is a plan now
-    "list": plans_command,
     "status": status_panel,
     "ps": list_sequence,
     "end": end_sequence,
@@ -281,9 +278,10 @@ def execute_command(args: list[str]) -> CLIResult:
     handler = COMMANDS.get(cmd)
     if handler:
         return handler()
-    # pause, resume, reset: straight to the host through ctrl
-    WriteCommand(cmd, args[1] if len(args) > 1 else None)
-    return CLIResult(f"✔ dispatched '{cmd}'", clear=False)
+    if cmd in ("pause", "resume", "reset"):           # straight to the host through ctrl
+        WriteCommand(cmd, args[1] if len(args) > 1 else None)
+        return CLIResult(f"✔ dispatched '{cmd}'", clear=False)
+    return CLIResult(Text(f"✗ unknown command {cmd!r}; `help` lists them", style=ERROR), ok=False)
 
 
 if __name__ == "__main__":

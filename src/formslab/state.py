@@ -32,43 +32,13 @@ def ctrl_state_path() -> Path:
     return config.state_path("ctrlfile.json")
 
 
+# The requests the host takes from the ctrl file (host/sequence.py). The console's
+# own verbs (plans, run, status...) never pass through it.
+CTRL_LABELS = ("end", "pause", "resume", "reset")
+
+
 def build_default_ctrl_commands() -> dict:
-    return {
-        "plans": {
-            "key": None,
-            "processed": True,
-            "desc": "List lab plans",
-        },
-        "run": {
-            "key": None,
-            "processed": True,
-            "desc": "Run a lab plan. Usage: run <plan>, e.g. run tvac",
-        },
-        "pause": {"key": None, "processed": True, "desc": "Pause the running sequence"},
-        "resume": {"key": None, "processed": True, "desc": "Resume a paused sequence"},
-        "reset": {"key": None, "processed": True, "desc": "Reset control state"},
-        "end": {"key": None, "processed": True, "desc": "Stop the running sequence"},
-        "status": {
-            "key": None,
-            "processed": True,
-            "desc": "Check if sequence.py is running",
-        },
-        "ps": {
-            "key": None,
-            "processed": True,
-            "desc": "List all sequence.py processes",
-        },
-        "help": {
-            "key": None,
-            "processed": True,
-            "desc": "Display help panel for available commands",
-        },
-        "exit": {
-            "key": None,
-            "processed": True,
-            "desc": "Exit the lab console",
-        },
-    }
+    return {label: {"key": None, "processed": True} for label in CTRL_LABELS}
 
 
 def build_default_cast_state(now: float | None = None) -> dict:
@@ -168,6 +138,16 @@ def ensure_json_file(path: Path, factory: Callable[[], dict]) -> Path:
 
 
 def ensure_runtime_files() -> None:
-    """Create any missing state file from its code default."""
+    """Create any missing state file from its code default, and drop what an
+    older version left in them (a CAST block nobody owns, a ctrl entry nobody
+    reads), so a stale `tvac` block does not show on every status page."""
+    from formslab.console.cast.castutils import DropUnknownBlocks
+    from formslab.console.ctrl.ctrlutils import DropUnknownCommands
+
     ensure_json_file(cast_state_path(), build_default_cast_state)
     ensure_json_file(ctrl_state_path(), build_default_ctrl_commands)
+    for tidy in (DropUnknownBlocks, DropUnknownCommands):
+        try:
+            tidy()
+        except OSError:                  # busy right now: the next start tidies it
+            pass

@@ -136,7 +136,7 @@ def test_read_commands_takes_every_pending_request_in_one_pass():
 
     assert set(taken) == {"end", "pause"}
     assert ctrlutils.ReadCommands(["end", "pause"]) == {}               # consumed
-    assert read_json(ctrl_state_path())["end"]["desc"]                   # layout and desc kept
+    assert read_json(ctrl_state_path())["end"] == {"key": None, "processed": True}
 
 
 def test_ctrl_writers_in_two_threads_lose_nothing():
