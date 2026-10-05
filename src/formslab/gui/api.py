@@ -24,7 +24,7 @@ from formslab import rscripts
 from formslab.rscripts import cast
 from formslab.rscripts.grammar import GrammarError
 from formslab.sequence import PlanError, discover, load_plan
-from formslab.sequence.plan import available_rscripts, line_options, needed_rscripts, tokens
+from formslab.sequence.plan import available_rscripts, describe_step, line_options, needed_rscripts, tokens
 from formslab.state import cast_state_path
 
 # How often each block is republished while its owner runs (seconds). A block
@@ -322,6 +322,18 @@ def plan_check(text: str) -> dict:
     """{errors, warnings} in the plan text, each [{line, message}] (0: the whole file)."""
     with _lock:
         return plans.problems(text)
+
+
+def describe(words: list[str] | None = None, text: str | None = None, line: int | None = None) -> dict:
+    """The help card: for line `line` of plan `text` (the editor), or for the
+    command `words` (the command box, its prerequisites checked now)."""
+    with _lock:
+        try:
+            if text is not None:
+                return describe_step(text, int(line or 0))
+            return cast.describe(list(words or []))
+        except Exception as e:                       # a broken rScript must not break the page
+            raise ApiError(500, f"{type(e).__name__}: {e}")
 
 
 def plan_line(scripts: list[str], words: list[str]) -> dict:

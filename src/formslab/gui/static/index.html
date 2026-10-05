@@ -55,6 +55,7 @@
           <button type="submit">Send</button>
         </form>
         <div id="cmd-hints" class="hints"></div>
+        <div id="cmd-info" class="info" hidden></div>
         <div id="cmd-result" class="note" role="status"></div>
         <div id="cards" class="cards"></div>
         <h2>Host log</h2>
@@ -95,8 +96,13 @@
             <div id="plan-msg" class="note" role="status"></div>
             <div id="plan-doc-errors" class="error"></div>
             <div id="plan-legend" class="legend"></div>
-            <div id="plan-rows"></div>
-            <textarea id="plan-text" spellcheck="false" hidden aria-label="Plan text"></textarea>
+            <div class="plan-body">
+              <div>
+                <div id="plan-rows"></div>
+                <textarea id="plan-text" spellcheck="false" hidden aria-label="Plan text"></textarea>
+              </div>
+              <aside id="plan-info" class="info" hidden aria-live="polite"></aside>
+            </div>
           </section>
         </div>
       </section>
@@ -130,6 +136,7 @@
   <script src="/static/chart.js"></script>
   <script src="/static/tvac.js"></script>
   <script src="/static/app.js"></script>
+  <script src="/static/info.js"></script>
   <script src="/static/plantext.js"></script>
   <script src="/static/editor.js"></script>
 </body>

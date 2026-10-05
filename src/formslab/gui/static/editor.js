@@ -15,12 +15,13 @@
     plans: [], name: null, editable: false, hash: null, original: "", lines: [], raw: false,
     errors: [], warnings: [], available: [], cache: new Map(), checkTimer: null, rows: [], busy: false, tokStamp: 0,
     fresh: -1,     // the line just inserted as a step: empty, so it shows the step chooser, not a blank
+    focus: -1, infoSeq: 0, infoTimer: null,   // the row the help card follows
   };
 
   const { kindOf, withHeader, missingHeaders } = window.PlanText;
   const splitWords = (line) => line.trim().split(/\s+/).filter(Boolean);
   const text = () => S.lines.join("\n") + "\n";
-  const dirty = () => text() !== S.original;
+  const dirty = () => S.name !== null && text() !== S.original;     // nothing open: nothing to lose
   const scriptsOf = () => {
     const load = S.lines.find((l) => kindOf(l) === "load");
     return load ? splitWords(load).slice(1) : [];
@@ -65,6 +66,7 @@
     S.original = text();
     S.errors = r.errors || [];
     S.warnings = r.warnings || [];
+    S.focus = -1;
     S.raw = false;
     S.fresh = -1;
     say("");
@@ -85,6 +87,29 @@
     renderRows();
     updateButtons();
     showErrors();
+    describeFocus();
+  }
+
+  // The help card follows the row you are on: what it does, its inputs, and
+  // its prerequisites as this plan leaves them at that line.
+  function describeFocus() {
+    clearTimeout(S.infoTimer);
+    S.infoTimer = setTimeout(async () => {
+      const box = $("#plan-info");
+      S.rows.forEach((r, idx) => r.row.classList.toggle("focus", idx === S.focus));
+      if (S.raw || !S.name || S.focus < 0 || S.focus >= S.lines.length) { box.hidden = true; return; }
+      const seq = ++S.infoSeq;
+      let r;
+      try { r = await api("/api/describe", { text: text(), line: S.focus + 1 }); } catch (e) { return; }
+      if (seq === S.infoSeq) window.InfoCard.render(box, r, "plan");
+    }, 150);
+  }
+
+  for (const kind of ["focusin", "click"]) {
+    $("#plan-rows").addEventListener(kind, (ev) => {
+      const idx = S.rows.findIndex((r) => r.row.contains(ev.target));
+      if (idx >= 0 && idx !== S.focus) { S.focus = idx; describeFocus(); }
+    });
   }
 
   function renderRows() {
@@ -359,7 +384,7 @@
     S.checkTimer = setTimeout(async () => {
       try {
         const r = await api("/api/plan/check", { text: text() });
-        S.errors = r.errors; S.warnings = r.warnings || []; showErrors();
+        S.errors = r.errors; S.warnings = r.warnings || []; showErrors(); describeFocus();
       } catch (e) { /* login screen */ }
     }, 400);
   }

@@ -17,16 +17,20 @@ from __future__ import annotations
 
 from formslab.rscripts import rules as R
 
+# A condition's status at a step: established by the plan, broken by it, not
+# known until the run, or checkable only live (no fault, a supply voltage).
+OK, BROKEN, UNKNOWN, LIVE = "ok", "broken", "unknown", "live"
 
-def check(steps, scripts, published: dict) -> tuple[list, list]:
-    """(errors, warnings) as (line, message) for `steps`, [(line, Segment)]."""
+
+def walk(steps, scripts, published: dict):
+    """For each command step in `steps` ([(line, Segment)]): (line, findings),
+    a finding {why, conditions: [{text, status}]} per rule the step meets."""
     from formslab.rscripts import cast
 
     labels, _ = cast.owners()
     units = {k.lower(): u for k, u in published.items()}
     devices: dict[str, tuple[bool, int]] = {}
     guards: list[tuple[str, str, float]] = []        # (variable, side, limit in its own unit)
-    errors, warnings = [], []
 
     for n, seg in steps:
         if seg.verb == "until":
@@ -44,38 +48,62 @@ def check(steps, scripts, published: dict) -> tuple[list, list]:
             continue
         label, request = seg.params["label"], seg.params["request"]
         module = labels.get(label)
+        findings = []
 
         for ch, info in R.owned_channels(label, request):
-            if info["owner"] in scripts:
-                errors.append((n, f"{label} ch{ch} feeds the {info.get('feeds') or 'bench'}; "
-                                  f"{info['owner']}, loaded here, drives it"))
+            loaded = info["owner"] in scripts
+            findings.append({"why": f"{label} ch{ch} feeds the {info.get('feeds') or 'bench'}; "
+                                    f"{info['owner']} drives it while it runs",
+                             "owner": info["owner"],
+                             "conditions": [{"text": f"{info['owner']} not loaded",
+                                             "status": BROKEN if loaded else OK}]})
 
         for rule in R.covering(module, label, request):
-            broken, unknown = [], []
+            conditions = []
             for c in rule.requires:
                 if c.live:
-                    continue
-                if c.kind == "device":
+                    status = LIVE
+                elif c.kind == "device":
                     known = devices.get(c.name)
-                    if known is None:
-                        unknown.append(c.text)
-                    elif known[0] != c.want:
-                        broken.append(f"{c.text} (line {known[1]} changed it)")
-                elif not _guarded(c, guards, units):
-                    unknown.append(c.text)
-            if broken:
-                errors.append((n, f"needs {', '.join(broken)}: {rule.why}"))
-            elif unknown:
-                warnings.append((n, f"needs {', '.join(unknown)}, which this plan does not "
-                                    f"establish; checked when the step runs. Why: {rule.why}"))
+                    status = UNKNOWN if known is None else OK if known[0] == c.want else BROKEN
+                    if status == BROKEN:
+                        conditions.append({"text": f"{c.text} (line {known[1]} changed it)", "status": status})
+                        continue
+                else:
+                    status = OK if _guarded(c, guards, units) else UNKNOWN
+                conditions.append({"text": c.text, "status": status})
+            findings.append({"why": rule.why, "conditions": conditions})
 
+        yield n, findings
         left = R.effects(module, request)
         if left is None:
             devices = {}
         else:
             devices.update({k: (v, n) for k, v in left.items()})
         guards = []
+
+
+def check(steps, scripts, published: dict) -> tuple[list, list]:
+    """(errors, warnings) as (line, message) for `steps`, [(line, Segment)]."""
+    errors, warnings = [], []
+    for n, findings in walk(steps, scripts, published):
+        for f in findings:
+            broken = [c["text"] for c in f["conditions"] if c["status"] == BROKEN]
+            unknown = [c["text"] for c in f["conditions"] if c["status"] == UNKNOWN]
+            if broken and "owner" in f:
+                errors.append((n, f["why"].replace(f"{f['owner']} drives it while it runs",
+                                                   f"{f['owner']}, loaded here, drives it")))
+            elif broken:
+                errors.append((n, f"needs {', '.join(broken)}: {f['why']}"))
+            elif unknown:
+                warnings.append((n, f"needs {', '.join(unknown)}, which this plan does not "
+                                    f"establish; checked when the step runs. Why: {f['why']}"))
     return errors, warnings
+
+
+def at_line(steps, scripts, published: dict, line: int) -> list[dict]:
+    """The findings for the command step on `line` ([] for any other line)."""
+    return next((findings for n, findings in walk(steps, scripts, published) if n == line), [])
 
 
 def _guarded(c, guards, units) -> bool:

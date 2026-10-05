@@ -52,7 +52,7 @@ says which (`RULES`, rScripts/README.md). The chamber's, with limits from
 
 | command | needs first |
 |---|---|
-| `hvc vent open`, `hvc fill open` | rough and gate closed; every zone inside the vent window (10..60 C); no fault |
+| `hvc vent open`, `hvc fill open` | rough and gate closed; every zone inside the vent window (10..60 C) |
 | `hvc rough open` | vent, fill, foreline and gate closed |
 | `hvc pump off` | rough and foreline closed, turbo off (`hvc stop` does it in order) |
 | `hvc foreline open` | rough closed |

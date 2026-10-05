@@ -270,6 +270,11 @@
       }
     }
     if (!options.length && done.length) box.append(el("span", { class: "note" }, "Nothing more to add: press Send."));
+    // The help card for what is typed, its prerequisites checked against the chamber now.
+    const typed = $("#cmd").value.trim().split(/\s+/).filter(Boolean);
+    let info = { cards: [] };
+    if (typed.length) { try { info = await api("/api/describe", { words: typed }); } catch (e) { /* keep the hints */ } }
+    if (mine === hintSeq && window.InfoCard) window.InfoCard.render($("#cmd-info"), info, "live");
   }
 
   $("#cmd").addEventListener("input", () => { clearTimeout(hintTimer); hintTimer = setTimeout(updateHints, 150); });

@@ -177,9 +177,46 @@ def live_state(module, block: dict, now: float) -> tuple[dict, str | None]:
     if not _fresh(block, now):
         ts = block.get("timestamp")
         label = labels_of(module)[0] if labels_of(module) else "the instrument"
-        return {}, (f"{label} has not reported for {now - ts:.0f} s" if isinstance(ts, (int, float))
+        return {}, (f"{label} has not reported for {_age(now - ts)}" if isinstance(ts, (int, float))
                     else f"{label} has not reported yet")
     return fn(block.get("status") or {}) or {}, None
+
+
+def _age(s: float) -> str:
+    return f"{s:.0f} s" if s < 120 else f"{s / 60:.0f} min" if s < 7200 else f"{s / 3600:.0f} h"
+
+
+def explain(label: str, request: dict, *, blocks: dict | None = None,
+            now: float | None = None) -> list[dict]:
+    """For the help card: each rule `request` to `label` meets, {why,
+    conditions: [{text, status}]}, status ok, broken or unknown right now."""
+    from formslab.rscripts import cast
+
+    label = label.lower()
+    now = time.time() if now is None else now
+    labels, _ = cast.owners()
+    module = labels.get(label)
+    blocks = _blocks() if blocks is None else blocks
+    out = []
+    for ch, info in owned_channels(label, request):
+        owner = next((m for m in labels.values() if cast.script_name(m) == info["owner"]), None)
+        running = owner is not None and any(_fresh(blocks.get(lb) or {}, now) for lb in cast.labels_of(owner))
+        out.append({"why": f"{label} ch{ch} feeds the {info.get('feeds') or 'bench'}; "
+                           f"{info['owner']} drives it while it runs",
+                    "conditions": [{"text": f"{info['owner']} not running",
+                                    "status": "broken" if running else "ok"}]})
+    rules = covering(module, label, request)
+    if rules:
+        state, stale = live_state(module, blocks.get(label) or {}, now)
+        units = dict(cast.variables(module))
+        for rule in rules:
+            conditions = []
+            for c in rule.requires:
+                ok = holds(c, state, units)
+                conditions.append({"text": c.text,
+                                   "status": "ok" if ok else "broken" if ok is False else "unknown"})
+            out.append({"why": rule.why + (f" ({stale})" if stale else ""), "conditions": conditions})
+    return out
 
 
 def refusal(label: str, request: dict, *, blocks: dict | None = None, now: float | None = None) -> str | None:

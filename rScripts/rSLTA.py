@@ -28,8 +28,12 @@ name = os.path.splitext(os.path.basename(__file__))[0]
 
 CAST_LABELS = ("slta",)
 COMMANDS = [
-    ("image", "Capture one image now", {"image": True}),
-    ("run on|off", "Umbra-triggered captures (SLTARUN)", lambda s: {"SLTARUN": s == "on"}),
+    ("image", """Capture one image now
+     One exposure at the current settings, whatever the umbra state.""", {"image": True}),
+    ("run on|off", """Umbra-triggered captures (SLTARUN)
+     on: capture whenever the run says the spacecraft is in umbra (InUmbra, from a
+     FORMS eclipse profile). Until something publishes InUmbra, nothing is captured.""",
+     lambda s: {"SLTARUN": s == "on"}),
     ("exposure <s:integer 1..3600 s>", "Exposure time", lambda t: {"exposure": t}),
     ("exposure auto", "Exposure from the umbra duration", {"exposureAuto": True}),
     ("idle <s:integer 1..600 s>", "Idle polling interval", lambda t: {"idle": t}),

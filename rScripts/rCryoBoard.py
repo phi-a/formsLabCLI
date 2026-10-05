@@ -18,11 +18,21 @@ name = os.path.splitext(os.path.basename(__file__))[0]
 
 CAST_LABELS = ("cryo",)
 COMMANDS = [
-    ("ccv <V:number 12..20 V>", "Cryocooler output voltage", lambda v: {"voltage": v}),
-    ("on|off", "Cryocooler output", lambda s: {"enabled": s == "on"}),
-    ("ccvres <ohm:number 62..1120>", "Variable resistor (nearest 6-bit code)", lambda r: {"resistance": r}),
-    ("code <n:integer 0..63>", "Variable resistor by code", lambda n: {"code": n}),
-    ("startup|shutdown|update", "Bring the board up / down, or read it now", lambda w: {w: True}),
+    ("ccv <V:number 12..20 V>", """Cryocooler output voltage
+     The board's converter output to the cooler, 12 to 20 V (the band formsLabCLI
+     drives it in). Applied while the output is on.""", lambda v: {"voltage": v}),
+    ("on|off", """Cryocooler output
+     on needs the board's supply at 20 V or more: below that the converter cannot
+     produce an output (checked before it is sent).""", lambda s: {"enabled": s == "on"}),
+    ("ccvres <ohm:number 62..1120>", """Variable resistor (nearest 6-bit code)
+     The board's variable resistor in ohms, set to the nearest of its 64 steps
+     (`cryo code` sets the step itself).""", lambda r: {"resistance": r}),
+    ("code <n:integer 0..63>", """Variable resistor by code
+     The resistor's step, 0 to 63.""", lambda n: {"code": n}),
+    ("startup|shutdown|update", """Bring the board up / down, or read it now
+     startup: its supply channel on, the board initialized with the output off.
+     shutdown: output off, then the supply channel off. update: read the board now.""",
+     lambda w: {w: True}),
 ]
 VARIABLES = []
 

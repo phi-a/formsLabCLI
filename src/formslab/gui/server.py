@@ -217,6 +217,13 @@ class Handler(BaseHTTPRequestHandler):
             audit(user, path[len("/api/"):])
         elif path == "/api/plan/check":
             return self._json(200, api.plan_check(str(body.get("text", ""))))
+        elif path == "/api/describe":
+            words, text, line = body.get("words", []), body.get("text"), body.get("line")
+            if not (isinstance(words, list) and all(isinstance(w, str) for w in words)) \
+                    or (text is not None and not isinstance(text, str)) \
+                    or (line is not None and not isinstance(line, int)):
+                return self._error(HTTPStatus.BAD_REQUEST, "words is a list of strings, text a string, line a number")
+            return self._json(200, api.describe(words, text, line))
         elif path == "/api/plan/line":
             scripts, words = body.get("scripts", []), body.get("words", [])
             if not all(isinstance(w, str) for w in [*scripts, *words]):

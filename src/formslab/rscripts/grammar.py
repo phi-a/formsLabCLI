@@ -16,14 +16,18 @@ side (``0..``, ``..32``) or left out, and so may the unit:
     ("set <V:number 0..32 V> <A:number 0..3.2 A>",  "Voltage and current limit", ...)
     ("closeall", "Close every valve", {"close_all": True})
 
+The help may run to several lines: the first is the one-line summary (a
+tooltip, the help table), the rest is the detail a help card shows -- what the
+command does, what its inputs mean, what to expect.
+
 The builder gets the captures in order (choices and slots, not keywords) and
 returns what the command means; a dict builder is returned as a copy. Anything
 that depends on the bench (zone names, their limits) is filled into the pattern
 by the code that builds the list, so a grammar is plain data with no I/O.
 
-One `Grammar` answers three questions: `parse` (what does this line mean),
-`complete` (what can come next -- a console hint, a GUI dropdown) and `rows`
-(the help table). Errors come from the farthest point any command matched, so
+One `Grammar` answers four questions: `parse` (what does this line mean),
+`complete` (what can come next -- a console hint, a GUI dropdown), `rows` (the
+help table) and `describe` (the help card for a line, whole or begun). Errors come from the farthest point any command matched, so
 the message and the dropdown always agree.
 """
 from __future__ import annotations
@@ -32,6 +36,7 @@ import copy
 import difflib
 import math
 import re
+import textwrap
 from dataclasses import dataclass, replace
 from typing import Callable, Iterable, Sequence
 
@@ -182,8 +187,9 @@ def _compile(pattern: str) -> tuple:
 @dataclass(frozen=True)
 class _Command:
     elements: tuple
-    help: str
+    help: str                   # the first line
     builder: object
+    details: str = ""           # the rest
 
     def build(self, captures: list):
         if callable(self.builder):
@@ -198,7 +204,10 @@ Command = tuple  # (pattern, help, builder)
 
 class Grammar:
     def __init__(self, commands: Iterable[Command]) -> None:
-        self._commands = [_Command(_compile(p), h, b) for p, h, b in commands]
+        self._commands = []
+        for p, h, b in commands:
+            first, _, rest = (h or "").partition("\n")
+            self._commands.append(_Command(_compile(p), first.strip(), b, _paragraphs(rest)))
 
     def __len__(self) -> int:
         return len(self._commands)
@@ -281,6 +290,42 @@ class Grammar:
     def rows(self) -> list[tuple[str, str]]:
         """(usage, help) for each command, in declaration order."""
         return [(" ".join(e.usage() for e in c.elements), c.help) for c in self._commands]
+
+    def describe(self, words: Sequence[str], limit: int = 6) -> list[dict]:
+        """Help cards for `words`: the command they are, when they are a whole
+        one; else every command they begin (a value out of range still counts,
+        so a mistyped line keeps its card). Each card is {usage, help, details,
+        inputs, complete}; an input is a slot {name, kind, lo, hi, unit} or a
+        choice {name, kind: "choice", choices}."""
+        words = list(words)
+        if not words:
+            return []
+        full, begun = [], []
+        for cmd in self._commands:
+            kind, i, _ = self._walk(cmd, words)
+            if kind == "full":
+                full.append(cmd)
+            elif (kind == "short" and i == len(words)) or kind == "bad":
+                begun.append(cmd)
+        return [_card(c, bool(full)) for c in (full or begun)[:limit]]
+
+
+def _paragraphs(text: str) -> str:
+    """Help details as written in source, hard-wrapped and indented, as
+    paragraphs: lines joined, a blank line between paragraphs kept."""
+    paras = re.split(r"\n\s*\n", textwrap.dedent(text).strip())
+    return "\n\n".join(" ".join(p.split()) for p in paras if p.strip())
+
+
+def _card(cmd: _Command, complete: bool) -> dict:
+    inputs = []
+    for e in cmd.elements:
+        if isinstance(e, _Slot):
+            inputs.append({"name": e.name, "kind": e.kind, "lo": e.lo, "hi": e.hi, "unit": e.unit})
+        elif isinstance(e, _Choice):
+            inputs.append({"name": e.name, "kind": "choice", "choices": list(e.members)})
+    return {"usage": " ".join(e.usage() for e in cmd.elements), "help": cmd.help,
+            "details": cmd.details, "inputs": inputs, "complete": complete}
 
 
 def _listing(options: Sequence[Option]) -> str:

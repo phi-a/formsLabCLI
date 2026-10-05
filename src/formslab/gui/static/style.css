@@ -113,6 +113,29 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .prow .rowwarn { grid-column: 2 / 4; color: var(--warn); font-size: 12px; }
 .prow .rowwarn:empty, .prow .rowerr:empty { display: none; }
 .prow.blank .body { color: var(--muted); font-size: 12px; padding-top: 6px; }
+.prow.focus { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+
+/* the help card: beside the plan rows, under the command box */
+.plan-body { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 12px; align-items: start; }
+@media (max-width: 1100px) { .plan-body { grid-template-columns: 1fr; } }
+.info { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 10px 12px;
+        font-size: 13px; line-height: 1.45; }
+#plan-info { position: sticky; top: 8px; }
+#cmd-info { margin: 8px 0; max-width: 760px; }
+.info .usage { font: 600 13px ui-monospace, Consolas, monospace; }
+.info .title { font-weight: 600; margin: 4px 0; }
+.info .details { color: var(--muted); margin: 4px 0; }
+.info h4 { margin: 10px 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.info ul { margin: 0; padding: 0; list-style: none; }
+.info li { margin: 2px 0; }
+.info .muted, .info .why { color: var(--muted); }
+.info .why { margin: 2px 0 8px; font-size: 12px; }
+.info .cond::before { display: inline-block; width: 1.3em; font-weight: 700; }
+.info .cond.ok::before { content: "\2713"; color: var(--ok); }
+.info .cond.broken { color: var(--bad); }
+.info .cond.broken::before { content: "\2717"; color: var(--bad); }
+.info .cond.unknown::before { content: "?"; color: var(--warn); }
+.info .cond.live::before { content: "\2022"; color: var(--muted); }
 .chain { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .chain select, .chain input { width: auto; min-width: 70px; font-family: ui-monospace, Consolas, monospace; font-size: 13px; padding: 3px 6px; }
 .chain input.slot { width: 150px; }

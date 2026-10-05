@@ -36,7 +36,7 @@ def laco_rules(profile: BenchProfile) -> list[Rule]:
     lo, hi = float(lim.get("min_vent_temp_c", 10.0)), float(lim.get("max_vent_temp_c", 60.0))
     window = tuple(c for z in profile.zones
                    for c in (value(f"{z}T", "above", lo, "C"), value(f"{z}T", "below", hi, "C")))
-    sealed = (closed("rough"), closed("gate"), *window, NO_FAULT)
+    sealed = (closed("rough"), closed("gate"), *window)     # (a fault is the last rule's, for every command)
     venting = (f"air may only come in with the chamber sealed from the pumps and every zone "
                f"inside the vent window ({lo:g}..{hi:g} C)")
     gate = (on("turbo"), opened("foreline"))
@@ -59,8 +59,8 @@ def laco_rules(profile: BenchProfile) -> list[Rule]:
              "the gate joins the chamber to the turbo, which must be running, backed, and "
              "only take over below the crossover pressure"),
         Rule("hvc", None, (NO_FAULT,),
-             "the controller reports a fault (severity F): only closing valves, `stop`, "
-             "zones off, `closeall`, `reset` and `abort` are allowed until it is cleared",
+             "during a fault (severity F) only closing valves, `stop`, zones off, `closeall`, "
+             "`reset` and `abort` are allowed, until it is cleared",
              unless=_safe),
     ]
 

@@ -52,8 +52,12 @@ goes), one card per instrument, and the end of the host log. From here:
   The buttons under it are what the instruments' own grammar allows next, with
   limits and units; click one or type. A bad command is refused with what would
   fit and a "did you mean". A command is refused too when no run is going or the
-  instrument is not live, since nothing would take it, and it reports whether the
-  rScript has taken it.
+  instrument is not live, since nothing would take it, or when its prerequisites
+  are not met now (the rough valve open for a vent; docs/SEQUENCE.md). It reports
+  what became of it: taken, done, or refused with the chamber's reason.
+- Under the box, a help card for what you are typing: what the command does, what
+  each input means, and what it needs first, each marked from the chamber's last
+  report (✓ true now, ✗ not, ? not known).
 
 Every action is noted with the user name in `~/.formslab/.run/gui.log`.
 
@@ -92,7 +96,14 @@ Pick a plan on the left; a plan you open is shown line by line:
   the row with what would. The choices come from the same declarations the cast
   tab and `labcli check` use, so they cannot disagree;
 - comments and blank lines are kept, and rows can be moved, inserted and deleted.
-  *Edit as text* shows the plain file for pasting or fine changes.
+  *Edit as text* shows the plain file for pasting or fine changes;
+- beside the rows, a help card follows the row you are on: what the step does,
+  its inputs, and what it needs first, as the plan leaves things at that line
+  (✓ the plan establishes it, ✗ the plan breaks it, ? it depends on the chamber at
+  the start and is checked when the step runs, • checked only then);
+- a step that breaks a prerequisite is red and the plan cannot start; one that
+  depends on the chamber at the start is amber, and the plan can run (the Start
+  list marks it "checks at the start").
 
 Every step is drawn in the same four shapes, in the editor, in a read-only
 plan and in the command box's suggestions, so the grammar can be seen:

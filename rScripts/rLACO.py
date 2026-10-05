@@ -39,7 +39,8 @@ RESULT_LABELS = (LABEL,)   # each request is answered: done, ok or refused with 
 
 def COMMANDS():
     """Every hvc command. Zone names and setpoint limits come from this bench's
-    tvac_bench.json, so the list is built on use, not at import."""
+    tvac_bench.json, so the list is built on use, not at import. The first line
+    of each help is its summary; the rest is the detail the help card shows."""
     from formslab.devices.hvc3500 import load_profile
 
     profile = load_profile()
@@ -47,33 +48,77 @@ def COMMANDS():
     for z in profile.zones:
         lo, hi = profile.setpoint_bounds(z)
         cmds += [
-            (f"{z} <C:number {lo:g}..{hi:g} C>", f"{z} setpoint (refused outside the profile limits)",
+            (f"{z} <C:number {lo:g}..{hi:g} C>", f"""{z} setpoint (refused outside the profile limits)
+             The temperature the {z} zone controls to, {lo:g} to {hi:g} C (this bench's
+             tvac_bench.json; outside that it is refused before it is sent). It acts while
+             the zone's thermal control is on (`hvc {z} on`), moving at the zone's rate
+             (`hvc {z} rate`). The controller reads it back to confirm (!Z).""",
              lambda c, z=z: {z: c}),
-            (f"{z} on|off", f"{z} thermal control (!ZS/!ZO)", lambda s, z=z: {f"{z}_control": s == "on"}),
-            (f"{z} rate <rate:number 0.. C/min>", f"{z} rate setpoint", lambda r, z=z: {f"{z}_rate": r}),
-            (f"{z} range <range:number 0.. C>", f"{z} control range", lambda r, z=z: {f"{z}_range": r}),
+            (f"{z} on|off", f"""{z} thermal control (!ZS/!ZO)
+             on: the controller heats or cools the {z} toward its setpoint.
+             off: no control; the zone's effective setpoint then follows its own temperature.""",
+             lambda s, z=z: {f"{z}_control": s == "on"}),
+            (f"{z} rate <rate:number 0.. C/min>", f"""{z} rate setpoint
+             How fast the {z} setpoint ramps, in C per minute (!ZR).""",
+             lambda r, z=z: {f"{z}_rate": r}),
+            (f"{z} range <range:number 0.. C>", f"""{z} control range
+             The {z} zone's temperature control range, in C (!RT; see the HVC-3500 manual).""",
+             lambda r, z=z: {f"{z}_range": r}),
         ]
     unit = profile.pressure_unit
     ops = "|".join(op for op in OPERATIONS if op != "close_all")
     return cmds + [
-        (f"vacuum <P:number 0.. {unit}>", "Vacuum setpoint", lambda p: {"vacuum": p}),
-        (f"vacuum range <P:number 0.. {unit}>", "Vacuum control range", lambda p: {"vacuum_range": p}),
-        ("vacuum rate <rate:number 0..>", "Vacuum rate control", lambda r: {"vacuum_rate": r}),
-        ("hold <s:number 0.. s>", "Hold time", lambda t: {"hold_s": t}),
-        ("recipe <n:integer 1..20>", "Select recipe n", lambda n: {"recipe": n}),
-        ("recipe start|stop", "Run / stop the selected recipe (!RS/!RO)",
+        (f"vacuum <P:number 0.. {unit}>", f"""Vacuum setpoint
+         The pressure the controller's vacuum process aims for, in {unit} (!VS). The
+         direct valve and pump commands do not use it.""", lambda p: {"vacuum": p}),
+        (f"vacuum range <P:number 0.. {unit}>", f"""Vacuum control range
+         In {unit} (!VR; see the HVC-3500 manual).""", lambda p: {"vacuum_range": p}),
+        ("vacuum rate <rate:number 0..>", """Vacuum rate control
+         (!VD; see the HVC-3500 manual).""", lambda r: {"vacuum_rate": r}),
+        ("hold <s:number 0.. s>", """Hold time
+         The vacuum process's hold time, in seconds (!VH). Not the plan step `hold`,
+         which waits in the plan.""", lambda t: {"hold_s": t}),
+        ("recipe <n:integer 1..20>", """Select recipe n
+         Which of the controller's stored recipes `hvc recipe start` runs (!TR).""",
+         lambda n: {"recipe": n}),
+        ("recipe start|stop", """Run / stop the selected recipe (!RS/!RO)
+         A recipe drives the chamber by itself: its valves, pumps and zones are the
+         controller's until it ends, so a plan's checks treat them as unknown after it.""",
          lambda w: {"recipe_run": w == "start"}),
-        ("start", "Start the cycle, or continue a held step (!CS)", {"start": True}),
-        ("abort", "Abort the running cycle (!CA)", {"abort": True}),
-        ("reset", "Reset the controller; starts its recovery (!CR)", {"reset": True}),
-        (f"<operation:{ops}>", "Cycle vacuum operation (!VA/!FA/!PS); acts only inside a running cycle",
+        ("start", """Start the cycle, or continue a held step (!CS)
+         What it does depends on the controller: it starts a cycle, or continues a
+         recipe held at a step. It is never repeated automatically.""", {"start": True}),
+        ("abort", """Abort the running cycle (!CA)
+         Ends the cycle and sends the controller through its recovery sequence.
+         Allowed during a fault.""", {"abort": True}),
+        ("reset", """Reset the controller; starts its recovery (!CR)
+         The controller homes and recovers: how a fault is cleared once its cause is
+         fixed. A hard over-temperature also needs a physical reset at the Watlow
+         controller. Allowed during a fault.""", {"reset": True}),
+        (f"<operation:{ops}>", """Cycle vacuum operation (!VA/!FA/!PS); acts only inside a running cycle
+         vent2atm: vent to atmosphere (!VA). fill2atm: fill to atmosphere with the fill
+         gas (!FA). purge: purge the system (!PS). The controller runs its own valve
+         sequence, so a plan's checks treat every valve and pump as unknown after it.""",
          lambda op: {op: True}),
-        ("closeall", "Close all valves in a running cycle (!NA)", {"close_all": True}),
-        (f"<valve:{'|'.join(VALVES)}> open|close", "A valve: read first, verified; PLC interlocks apply",
+        ("closeall", """Close all valves in a running cycle (!NA)
+         Allowed during a fault.""", {"close_all": True}),
+        (f"<valve:{'|'.join(VALVES)}> open|close", """A valve: read first, verified; PLC interlocks apply
+         rough: the chamber to the roughing pump. vent: the chamber to air. fill: the
+         chamber to the fill gas. foreline: the turbo's exhaust to the roughing pump.
+         gate: the chamber to the turbo (high vacuum). The valve is read first and
+         switched only if it must change, then read again about a second later to
+         verify. Closing a valve is always allowed, even during a fault.""",
          lambda v, a: {v: a}),
-        (f"<pump:{'|'.join(PUMPS)}> on|off", "A pump: read first, verified; PLC interlocks apply",
+        (f"<pump:{'|'.join(PUMPS)}> on|off", """A pump: read first, verified; PLC interlocks apply
+         pump: the roughing (vacuum) pump. The PLC wants it running 10 s before the
+         rough or foreline valve opens. turbo: the turbomolecular pump; it needs the
+         foreline open and the foreline pressure at or below 0.2 Torr. To stop the
+         roughing pump, `hvc stop` closes the rough valve first.""",
          lambda p, s: {p: s}),
-        ("stop", "End pumping: rough valve closed, then pump off", {"stop_pumping": True}),
+        ("stop", """End pumping: rough valve closed, then pump off
+         The safe way to stop roughing: closes the rough valve, then stops the pump,
+         verifying each. A run that started pumping does this itself when it ends.""",
+         {"stop_pumping": True}),
     ]
 
 

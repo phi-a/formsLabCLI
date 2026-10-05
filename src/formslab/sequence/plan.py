@@ -143,9 +143,10 @@ def load_plan(path) -> Plan:
     return parse_plan(path.read_text(encoding="utf-8"), path=path)
 
 
-def parse_plan(source: str, *, path: Path | None = None) -> Plan:
+def parse_plan(source: str, *, path: Path | None = None, steps_out: list | None = None) -> Plan:
     """The plan in `source`. Every problem found is in `PlanError.errors` (the
-    editor shows them all); the message is the first."""
+    editor shows them all); the message is the first. `steps_out`, when given,
+    receives the steps that did read, as (line, Segment), even if others did not."""
     where = path.name if path else "<plan>"
     name = path.stem if path else "plan"
     errors: list[tuple[int, str]] = []
@@ -243,6 +244,8 @@ def parse_plan(source: str, *, path: Path | None = None) -> Plan:
         return replace(_parse(fail, n, grammar, words), label=" ".join(words))
 
     numbered = [(n, seg) for n, words in steps if (seg := attempt(check_step, n, words)) is not None]
+    if steps_out is not None:
+        steps_out.extend(numbered)
     from formslab.sequence.rules import check as check_rules
 
     broken, warnings[:] = check_rules(numbered, scripts, published)
@@ -279,6 +282,38 @@ def review(text: str) -> tuple[list[tuple[int, str]], list[tuple[int, str]]]:
 def check_text(text: str) -> list[tuple[int, str]]:
     """Every error in plan `text` (see `review`); [] for a plan that can run."""
     return review(text)[0]
+
+
+def describe_step(text: str, line: int) -> dict:
+    """For the editor's help panel: {cards, rules} for line `line` of plan `text`.
+    `cards` are the commands the line is or begins (Grammar.describe); `rules`
+    are the prerequisites of the command it is, each {why, conditions: [{text,
+    status}]}, status as this plan leaves it there: ok, broken, unknown (checked
+    when the step runs) or live (checkable only then)."""
+    from formslab.sequence import rules as plan_rules
+
+    lines = text.splitlines()
+    words = lines[line - 1].split() if 0 < line <= len(lines) else []
+    if not words or words[0].startswith("#"):
+        return {"cards": [], "rules": []}
+    head = words[0].lower()
+    if head == "load":
+        return {"cards": [_LOAD_CARD], "rules": []}
+    if head == "record":
+        return {"cards": _RECORD.describe(words) or _RECORD.describe(["record"]), "rules": []}
+    load = next((ln.split() for ln in lines if ln.split()[:1] and ln.split()[0].lower() == "load"), [])
+    scripts = tuple(load[1:])
+    grammar, _, published = _grammar(scripts)
+    cards = grammar.describe(words)
+    rules = []
+    if cards and cards[0]["complete"]:
+        steps: list = []
+        try:
+            parse_plan(text, steps_out=steps)
+        except PlanError:
+            pass
+        rules = plan_rules.at_line(steps, scripts, published, line)
+    return {"cards": cards, "rules": rules}
 
 
 def needed_rscripts(text: str) -> list[str]:
@@ -446,8 +481,17 @@ def _command(label, request):
     return Segment("command", {"label": label, "request": request, "timeout_s": COMMAND_TIMEOUT_S})
 
 
-_RECORD = Grammar([("record every <n:number 0..> s|min|h", "CSV cadence",
+_RECORD = Grammar([("record every <n:number 0..> s|min|h", """CSV cadence
+                     How often every published value is written to the run's CSV
+                     (outputs/<plan>_<UTC>.csv). The line after `load`.""",
                     lambda n, u: (_positive("record", n), _RECORD_UNIT[u]))])
+
+_LOAD_CARD = {"usage": "load <rScript> ...", "help": "The rScripts this plan runs", "complete": True,
+              "inputs": [], "details": (
+                  "Each rScript owns instruments: rLACO the chamber (hvc), rPSU the supplies (psu1, "
+                  "psu2), rSMTC08 the thermocouples (tc), rCryoBoard the cryocooler board (cryo), "
+                  "rSLTA the camera (slta). A step can only command, or wait on a value of, a loaded "
+                  "rScript. Always the first line.")}
 
 
 def _grammar(scripts):
@@ -461,18 +505,29 @@ def _grammar(scripts):
         if cast.script_name(module) in scripts:
             published.update(cast.variables(module))
     steps = [
-        ("hold <n:number 0..> s|min|h", "Run the loaded rScripts for a while", _hold),
-        ("hold until end", "Until ctrl `end` (manual operation)",
+        ("hold <n:number 0..> s|min|h", """Run the loaded rScripts for a while
+         Nothing is sent; the instruments keep being read and recorded. Time paused
+         from the console or the GUI does not count.""", _hold),
+        ("hold until end", """Until ctrl `end` (manual operation)
+         The plan stays here, recording, until the run is ended (End run in the GUI,
+         `labcli end`). For operating by hand from the command box.""",
          lambda: Segment("hold", {"seconds": None})),
-        ("log <message:rest>", "One line in the run log", lambda m: Segment("log", {"message": m})),
+        ("log <message:rest>", """One line in the run log
+         The text goes to the host log with the time: a mark for where a phase begins.""",
+         lambda m: Segment("log", {"message": m})),
     ]
     if published:
         var = f"<variable:{'|'.join(published)}>"
         until = f"until {var} above|below <value:number>"
+        why = """
+         Runs until the value is past the limit, then goes on. If it is not within the
+         timeout, the plan stops here and each rScript's shutdown runs. A wait on
+         hardware always has a timeout. Just before a command, it also proves that
+         command's prerequisite (`until platenT below 60 C` before `hvc vent open`)."""
         steps += [
-            (f"{until} timeout <t:number 0..> s|min|h", "Wait for a value, with a limit",
+            (f"{until} timeout <t:number 0..> s|min|h", "Wait for a value, with a limit" + why,
              _until(published)),
-            (f"{until} C|K timeout <t:number 0..> s|min|h", "The same, the value in C or K",
+            (f"{until} C|K timeout <t:number 0..> s|min|h", "The same, the value in C or K" + why,
              _until(published)),
         ]
     return Grammar(steps + cast.label_commands(scripts, build=_command)), labels, published

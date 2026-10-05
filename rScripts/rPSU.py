@@ -26,14 +26,23 @@ from formslab.rscripts import RScriptControl
 CAST_LABELS = ("psu1", "psu2")
 _CH = "<ch:ch1|ch2|ch3>"
 COMMANDS = [
-    (f"{_CH} set <V:number 0..32 V> <A:number 0..3.2 A>", "Channel setpoints: volts and current limit",
+    (f"{_CH} set <V:number 0..32 V> <A:number 0..3.2 A>", """Channel setpoints: volts and current limit
+     The channel's output voltage and the most current it may supply; the output
+     itself is switched with `on` / `off`. A channel the hardware map gives to an
+     rScript (usbmap.json "channels"; psu1 ch1 feeds the cryocooler board) is
+     refused while that rScript runs.""",
      lambda ch, v, a: {ch[2:]: {"voltage": v, "current": a}}),
-    (f"{_CH} on|off", "Channel output", lambda ch, s: {ch[2:]: {"on": s == "on"}}),
+    (f"{_CH} on|off", """Channel output
+     Switches the channel's output, at its setpoints.""", lambda ch, s: {ch[2:]: {"on": s == "on"}}),
     (f"{_CH} protect <OVP:number 0.01..33 V> <OCP:number 0.001..3.3 A>",
-     "Over-voltage / over-current protection on",
+     """Over-voltage / over-current protection on
+     The supply cuts the channel off above OVP volts or OCP amps. Set them a little
+     above the setpoints.""",
      lambda ch, v, a: {ch[2:]: {"ovp": v, "ocp": a, "protect": True}}),
-    (f"{_CH} protect off", "Protection off", lambda ch: {ch[2:]: {"protect": False}}),
-    ("update", "Read the supply now", {"update": True}),
+    (f"{_CH} protect off", """Protection off
+     No over-voltage or over-current cut-off on the channel.""", lambda ch: {ch[2:]: {"protect": False}}),
+    ("update", """Read the supply now
+     Refreshes its readings without waiting for the next poll.""", {"update": True}),
 ]
 VARIABLES = [(f"PSU{n}_CH{c}_{q}", unit) for n in (1, 2) for c in (1, 2, 3)
              for q, unit in (("V", "V"), ("I", "A"), ("ON", None))]

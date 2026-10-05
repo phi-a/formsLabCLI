@@ -195,6 +195,22 @@ def send(label: str, request: dict, *, host: dict | None, wait_result: bool | No
     return {**out, "state": state, "ok": ok, "messages": messages, "text": text}
 
 
+def describe(words: list[str]) -> dict:
+    """For the command box's help card: {cards, rules}. `rules` are the
+    prerequisites of the command `words` are, with their status now."""
+    from formslab.rscripts.rules import explain
+
+    g = grammar()
+    cards = g.describe(words)
+    rules = []
+    if cards and cards[0]["complete"]:
+        try:
+            rules = explain(words[0], g.parse(words))
+        except GrammarError:
+            pass
+    return {"cards": cards, "rules": rules}
+
+
 def complete(words: list[str]) -> list[Option]:
     """What can come after `words` in a cast command."""
     return grammar().complete(words)
