@@ -57,6 +57,9 @@ A command's help is a summary line, then details (`rscripts/grammar.py`).
 - **Unknowns stay unknown.** Where a setting's effect is not confirmed, the details
   say what is known and say that the rest is not documented here. They do not guess.
 
+A block's leading comments are its help, and follow the same rules: the first
+line is the summary, the rest the details.
+
 ### Input names
 
 An input is named by a word, never a symbol: `temperature`, `volts`, `amps`,

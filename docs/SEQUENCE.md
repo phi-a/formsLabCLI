@@ -88,10 +88,48 @@ checked again, live, when the step runs, against what the chamber last reported:
 a step it fails stops the plan, before anything is sent. The command box, the
 cast tab and `labcli cast` check the same rules and refuse with the reason.
 
+### Blocks
+
+A block is a named group of steps a plan calls by name, kept in its own
+`.block` file beside the plans (the same folders):
+
+```
+# Rough the chamber down to a pressure, then seal it
+# Closes the vent, fill and gate valves, starts the vacuum pump ...
+block pumpdown to <pressure:number 0.01..760 Torr>
+load rLACO
+
+hvc vent close
+...
+until chamberP below {pressure} timeout 20 min
+hvc stop
+```
+
+- The leading comments are its help: the first line the summary, the rest the
+  details (docs/WRITING.md).
+- The `block` line is its name and the words a plan writes to call it. Each input
+  is a number, declared as the grammar declares one, and written `{name}` where a
+  step uses it.
+- `load` names the rScripts it needs; a plan that calls it must load them too. A
+  block has no `record` (the plan's) and no `hold until end`.
+
+A plan calls it like any step (`pumpdown to 5`). Reading the plan puts the
+block's steps in place of the call, with the inputs filled in, and checks each
+as a step of the plan; the log shows `pumpdown > hvc rough open`. So the rules
+see inside: what a block sets holds after it, and a finding from inside names
+where (`In pumpdown line 16: ...`). Blocks may call blocks, eight deep; a block
+that calls itself is an error. A block's steps tolerate many starting states,
+since every valve and pump command reads first and an `until` already met ends at
+once, but not every one: where its steps do not establish a prerequisite, the
+live check refuses and the run stops there.
+
+Shipped blocks: `pumpdown to <pressure>` and `vent within <minutes>`; the plan
+`pump_soak_vent` is built from them. `labcli plans` lists the blocks too.
+
 Shipped plans: `tvac` (manual operation from the cast tab, until `end`),
 `psu1_smtc08_first` (PSU1 + thermocouples), `laco_pumpdown`
-(pump on, rough open, until below 5 Torr, stop) and `laco_vent` (temperature
-guards, vent valve open, until atmosphere).
+(pump on, rough open, until below 5 Torr, stop), `laco_vent` (temperature
+guards, vent valve open, until atmosphere) and `pump_soak_vent` (the blocks).
 
 Orbit content (`orbit.*`, `propagate`, `@procedure`) is refused: that is FORMS'
 part, done offline (see ARCHITECTURE.md). An orbit is described in its own file,

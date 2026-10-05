@@ -110,6 +110,22 @@ def plans_command() -> CLIResult:
         result.append(path.stem.ljust(22), INFO)
         result.append(("until end  " if open_ended else "           "), WARNING)
         result.append(", ".join(plan.rscripts) + "\n", DIM)
+    from formslab.rscripts import cast
+    from formslab.sequence import block as blocks_
+
+    usable, broken = blocks_.available(cast.owners()[0])
+    if usable or broken:
+        result.append("\nBLOCKS (a plan calls them by name)\n", HEADER)
+        from formslab.rscripts.grammar import Grammar
+
+        for b in usable.values():
+            usage = Grammar([(b.pattern, "", None)]).rows()[0][0]
+            result.append("  ■   ", INFO)
+            result.append(usage.ljust(30), INFO)
+            result.append(b.summary + "\n", DIM)
+        for name, why in broken.items():
+            result.append(f"  ✗   {name.ljust(22)}", ERROR)
+            result.append(f"{why}\n", DIM)
     result.append("\nUsage: ", DIM)
     result.append("run <plan>   (run tvac: manual operation until `end`)\n", INFO)
     return CLIResult(result, clear=True)

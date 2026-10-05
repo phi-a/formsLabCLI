@@ -151,6 +151,14 @@ a second: sunlit or in umbra and when that changes, beta angle, altitude, speed,
 and the coming orbit as a strip. *New orbit* starts one. An orbit is never in the
 Start list: nothing runs it.
 
+A **block** (docs/SEQUENCE.md, Blocks) is listed with stacked squares and opens in
+the same editor: its `block` line is the call, each `{input}` an amber value box.
+*New block* starts one; *Register as block* makes one from the open plan (its
+comments, `load` and steps; `record` is the calling plan's). In a plan, a call is
+drawn in the block colour, slate-violet, with the same symbol, and its help card
+lists the steps it runs and every prerequisite inside it. A block is never in the
+Start list: a plan runs it.
+
 **Plots.** Pick a recorded run and any of its variables; each unit gets its own
 chart. Wheel zooms, drag pans, double-click resets, hovering reads values.
 Kelvin variables can be shown in Celsius. *Follow the run live* refreshes every
