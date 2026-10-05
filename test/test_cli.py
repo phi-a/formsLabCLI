@@ -6,6 +6,7 @@ import time
 import pytest
 
 from formslab import app, cli
+from formslab.console.cast import castutils
 from formslab.console.cast.castutils import ReadCommand
 from formslab.console.ctrl import ctrlcli
 
@@ -24,14 +25,19 @@ def no_host(monkeypatch):
 
 @pytest.fixture
 def host(monkeypatch):
-    """A run is going, and its rScripts take hvc requests as they arrive."""
+    """A run is going, and its rScripts take hvc requests as they arrive and
+    answer as rLACO does: the gate valve is refused, the rest done."""
     monkeypatch.setattr(ctrlcli, "running", lambda: HOST)
     taken, stop = [], threading.Event()
 
     def owner():
         while not stop.is_set():
-            if req := ReadCommand("hvc"):
+            req, ids = castutils.TakeCommand("hvc")
+            if req:
                 taken.append(req)
+                refused = "gate" in req
+                castutils.ReportResult("hvc", ids, not refused,
+                                       ["gate: interlock, turbo off"] if refused else ["verified"])
             time.sleep(0.02)
 
     t = threading.Thread(target=owner, daemon=True)
@@ -88,13 +94,18 @@ def test_cast_reports_a_bad_command(capsys, no_host):
 
 def test_cast_waits_until_the_rscript_takes_it(capsys, host):
     code, out = run(capsys, "cast", "hvc", "shroud", "-20")       # a negative number, not a flag
-    assert code == 0 and "taken by plan tvac" in out
+    assert code == 0 and "done: verified" in out
     assert host == [{"shroud": -20.0}]
+
+
+def test_cast_a_refused_command_fails_with_the_reason(capsys, host):
+    code, out = run(capsys, "cast", "hvc", "gate", "open")
+    assert code == 1 and "✗ hvc" in out and "refused: gate: interlock, turbo off" in out
 
 
 def test_cast_nobody_takes_fails(capsys, monkeypatch):
     monkeypatch.setattr(ctrlcli, "running", lambda: HOST)
-    monkeypatch.setattr(cli, "CAST_TAKE_S", 0.3)
+    monkeypatch.setattr(castutils, "TAKE_S", 0.3)
     code, out = run(capsys, "cast", "hvc", "stop")
     assert code == 1 and "not taken within 0.3 s" in out
 

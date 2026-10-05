@@ -280,9 +280,8 @@
     if (!line) return;
     try {
       const r = await api("/api/cast", { line });
-      say(out, `${r.label} <- ${JSON.stringify(r.request)}  ${r.taken ? "(taken)" : "(sent; not taken yet)"}`, false);
-      $("#cmd").value = "";
-      updateHints();
+      say(out, `${r.label} <- ${JSON.stringify(r.request)}  ${r.text}`, !r.ok);
+      if (r.ok) { $("#cmd").value = ""; updateHints(); }
     } catch (e) {
       say(out, e.message, true);
     }

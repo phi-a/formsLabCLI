@@ -205,10 +205,45 @@ def test_every_label_has_an_owner_and_a_cast_block():
     assert set(labels) <= set(build_default_cast_state())
 
 
-def test_the_tab_writes_the_request_and_says_so():
+@pytest.fixture
+def run_going(monkeypatch):
+    from formslab.console.cast import castutils
+    from formslab.console.ctrl import ctrlcli
+    monkeypatch.setattr(ctrlcli, "running", lambda: {"pid": 1, "plan": "tvac"})
+    monkeypatch.setattr(castutils, "TAKE_S", 0.3)
+
+
+def test_the_tab_writes_the_request_and_says_what_became_of_it(run_going):
     result = castcli.execute_command(["hvc", "vent", "open"])
-    assert "hvc ←" in result.content.plain
+    assert "hvc ←" in result.content.plain and "not taken within 0.3 s" in result.content.plain
+    assert not result.ok
     assert ReadCommand("hvc") == {"vent": "open"}
+
+
+def test_the_tab_refuses_when_no_run_is_going(monkeypatch):
+    from formslab.console.ctrl import ctrlcli
+    monkeypatch.setattr(ctrlcli, "running", lambda: None)
+    result = castcli.execute_command(["hvc", "vent", "open"])
+    assert "refused: no run is going" in result.content.plain and not result.ok
+    assert ReadCommand("hvc") == {}
+
+
+def test_the_tab_shows_the_owners_refusal(run_going):
+    import threading
+    from formslab.console.cast.castutils import ReportResult, TakeCommand
+
+    def owner():
+        for _ in range(300):
+            req, ids = TakeCommand("hvc")
+            if req:
+                ReportResult("hvc", ids, False, ["rough: refused by the PLC"])
+                return
+            threading.Event().wait(0.01)
+
+    threading.Thread(target=owner, daemon=True).start()
+    result = castcli.execute_command(["hvc", "rough", "open"])
+    assert "✗ hvc ←" in result.content.plain
+    assert "refused: rough: refused by the PLC" in result.content.plain
 
 
 def test_the_tab_lists_what_can_come_next():

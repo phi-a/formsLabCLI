@@ -11,7 +11,8 @@
 The commands are not defined here. Each rScript declares its own (CAST_LABELS,
 COMMANDS -- see formslab.rscripts.cast); this tab turns the words into that
 script's request and writes it to CAST, where the script, running in the host,
-applies it. With no host running a request waits, shown as pending.
+applies it, and says what became of it: taken, done, or refused and why. With
+no run going a command is refused, since nothing would apply it.
 """
 import json
 import time
@@ -20,7 +21,7 @@ from rich.console import Group
 from rich.table import Table
 from rich.text import Text
 
-from formslab.console.cast.castutils import GenerateCleanCast, WriteCommand
+from formslab.console.cast.castutils import GenerateCleanCast
 from formslab.console.sessions.base import CLIResult
 from formslab.console.style import (
     DIM, ERROR, HEADER, INFO, LABEL, NUMBER, STATE_ERR, STATE_OFF, STATE_ON, SUCCESS, TEXT,
@@ -211,9 +212,12 @@ def execute_command(args: list[str]) -> CLIResult:
         return CLIResult(Text(f"✗ {e}", style=ERROR), ok=False)
     except Exception as e:                      # a broken rScript must not crash the tab
         return CLIResult(Text(f"✗ {cmd}: {type(e).__name__}: {e}", style=ERROR), ok=False)
-    WriteCommand(request, cmd)
+    from formslab.console.ctrl.ctrlcli import running
+
+    sent = cast.send(cmd, request, host=running())
     r = Text()
-    r.append("✔ ", SUCCESS)
+    r.append("✔ " if sent["ok"] else "✗ ", SUCCESS if sent["ok"] else ERROR)
     r.append(f"{cmd} ← ", TEXT)
     r.append(json.dumps(request), INFO)
-    return CLIResult(r)
+    r.append(f"  {sent['text']}", TEXT if sent["ok"] else ERROR)
+    return CLIResult(r, ok=sent["ok"])

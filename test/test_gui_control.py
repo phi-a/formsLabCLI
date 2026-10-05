@@ -201,19 +201,27 @@ def test_pause_with_no_run_is_refused(client, monkeypatch):
 
 # --- commands -------------------------------------------------------------------------------------------------
 
-@pytest.fixture
-def owner():
-    """The rScript that owns `hvc`: takes each command as it arrives."""
+def _owner(answer):
+    """The rScript that owns `hvc`: takes each command as it arrives and answers
+    as rLACO does, with answer(request) -> (ok, messages)."""
     taken, stop = [], threading.Event()
 
     def run():
         while not stop.is_set():
-            if req := castutils.ReadCommand("hvc"):
+            req, ids = castutils.TakeCommand("hvc")
+            if req:
                 taken.append(req)
+                castutils.ReportResult("hvc", ids, *answer(req))
             time.sleep(0.02)
 
     thread = threading.Thread(target=run, daemon=True)
     thread.start()
+    return taken, stop, thread
+
+
+@pytest.fixture
+def owner():
+    taken, stop, thread = _owner(lambda req: (True, ["verified"]))
     yield taken
     stop.set()
     thread.join(2)
@@ -227,7 +235,8 @@ def live_hvc():
 def test_a_command_is_sent_and_taken(client, host_up, owner):
     live_hvc()
     code, body = client.json("POST", "/api/cast", {"line": "hvc platen 35"})
-    assert code == 200 and body == {"label": "hvc", "request": {"platen": 35.0}, "taken": True}
+    assert code == 200 and body == {"label": "hvc", "request": {"platen": 35.0}, "state": "done",
+                                    "ok": True, "messages": ["verified"], "text": "done: verified"}
     assert owner == [{"platen": 35.0}]
     assert "tester cast hvc platen 35" in (config.run_dir() / "gui.log").read_text(encoding="utf-8")
 
@@ -241,8 +250,21 @@ def test_a_command_nobody_takes_is_reported_as_not_taken(client, host_up, monkey
     live_hvc()
     monkeypatch.setattr(api, "CAST_TAKE_S", 0.3)
     code, body = client.json("POST", "/api/cast", {"line": "hvc stop"})
-    assert code == 200 and body["taken"] is False
+    assert code == 200 and body["state"] == "not_taken" and body["ok"] is False
     assert castutils.CommandPending("hvc")
+
+
+def test_a_command_the_chamber_refuses_says_why(client, host_up):
+    live_hvc()
+    taken, stop, thread = _owner(lambda req: (False, ["gate: still closed (interlock: turbo off)"]))
+    try:
+        code, body = client.json("POST", "/api/cast", {"line": "hvc gate open"})
+    finally:
+        stop.set()
+        thread.join(2)
+    assert code == 200 and body["ok"] is False
+    assert body["text"] == "refused: gate: still closed (interlock: turbo off)"
+    assert "cast hvc gate open (refused: gate" in (config.run_dir() / "gui.log").read_text(encoding="utf-8")
 
 
 def test_a_bad_command_says_what_would_fit_and_sends_nothing(client, host_up):
@@ -322,7 +344,7 @@ def test_the_actions_work_with_every_instrument_door_shut(client, monkeypatch, o
             m.setattr(serial.Serial, "__init__", shut)
         except ImportError:
             pass
-        assert client.json("POST", "/api/cast", {"line": "hvc stop"})[1]["taken"] is True
+        assert client.json("POST", "/api/cast", {"line": "hvc stop"})[1]["ok"] is True
         assert client.json("POST", "/api/pause", {})[0] == 200
         assert client.json("POST", "/api/resume", {})[0] == 200
         assert client.json("GET", "/api/complete?words=psu1%20ch1")[0] == 200

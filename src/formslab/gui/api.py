@@ -33,7 +33,7 @@ CADENCE_S = {"tc": 2.0, "hvc": 6.0, "psu1": 1.0, "psu2": 1.0, "cryo": 1.0, "slta
 DEFAULT_CADENCE_S = 5.0
 SLACK_S = 2.0
 LOG_TAIL_BYTES = 64 * 1024
-CAST_TAKE_S = 3.0          # how long a command waits to be taken before the page is told "queued"
+CAST_TAKE_S = castutils.TAKE_S     # how long a command may wait to be taken
 END_WAIT_S = 120.0         # how long an `end` is kept being sent to a host that is still up
 END_RESEND_S = 3.0
 
@@ -271,7 +271,7 @@ def complete(words: list[str]) -> list[dict]:
 
 def send_command(line: str) -> dict:
     """Send `hvc platen 20`-style words to the rScript that owns the label,
-    exactly as the cast tab does, and wait briefly for it to be taken.
+    exactly as the cast tab does (cast.send), and say what became of it.
 
     Refused unless a run is going and the instrument's block is live: a command
     to a chamber that is not connected, or whose rScript is not loaded, would sit
@@ -283,6 +283,7 @@ def send_command(line: str) -> dict:
     with _lock:
         try:
             request = cast.request(label, words[1:])
+            wait = cast.reports_results(label)
         except GrammarError as e:
             raise ApiError(400, str(e))
     running = host()
@@ -292,14 +293,8 @@ def send_command(line: str) -> dict:
     fresh = freshness(label, blocks.get(label) or {}, running, time.time())
     if not fresh["live"]:
         raise ApiError(409, f"{label} is not live ({fresh['reason']}), so the command would not be taken")
-    with _lock:
-        castutils.WriteCommand(request, label)
-    deadline = time.monotonic() + CAST_TAKE_S
-    while castutils.CommandPending(label):
-        if time.monotonic() >= deadline:
-            return {"label": label, "request": request, "taken": False}
-        time.sleep(0.1)
-    return {"label": label, "request": request, "taken": True}
+    # Outside the lock: the wait (up to cast.REPLY_S) must not hold up the other pages.
+    return cast.send(label, request, host=running, wait_result=wait, take_s=CAST_TAKE_S)
 
 
 # --- the plan editor ---------------------------------------------------------------------

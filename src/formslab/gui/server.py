@@ -238,7 +238,7 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/cast":
             line = str(body.get("line", ""))
             result = api.send_command(line)
-            audit(user, f"cast {line.strip()}" + ("" if result["taken"] else " (not taken yet)"))
+            audit(user, f"cast {line.strip()}" + ("" if result["ok"] else f" ({result['text']})"))
         else:
             return self._error(HTTPStatus.NOT_FOUND, "not found")
         self._json(200, result)
