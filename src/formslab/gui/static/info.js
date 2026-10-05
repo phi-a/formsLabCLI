@@ -36,7 +36,7 @@
     const fam = famOf(words.length ? words[0].text : "");
     const line = el("div", { class: "tokline usage" });
     words.forEach((w, i) => {
-      if (i === 1 && c.part) line.append(partIcon(c.part, fam));
+      if (c.part && i === (fam === "orbit" ? 0 : 1)) line.append(partIcon(c.part, fam));   // before what names the part
       if (i === 0) line.append(el("span", { class: "tok verb", "data-fam": fam }, w.text));
       else if (w.role === "slot") {
         line.append(el("span", { class: "tok value" }, w.text.replace(/_/g, " ") + (w.unit ? " " + unitText(w.unit) : "")));

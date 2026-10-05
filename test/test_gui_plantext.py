@@ -101,3 +101,16 @@ def test_deleting_both_and_adding_them_back_restores_the_plan(name):
 def test_one_blank_line_above_the_steps_stays_above_the_header():
     assert add(["# c", "", "hold 1 s"], "load", ["rPSU"])["lines"] == ["# c", "", "load rPSU", "hold 1 s"]
     assert add(["# c", "", "", "", "hold 1 s"], "load", ["rPSU"])["lines"] == ["# c", "", "load rPSU", "", "", "hold 1 s"]
+
+
+# --- orbit files ------------------------------------------------------------------------------
+
+def test_which_elements_an_orbit_still_lacks():
+    assert run_js([], "T.missingElements(P)") == ["epoch", "a", "e", "i", "raan", "argp", "nu"]
+    lines = ["# an orbit", "", "A 6928 km", "nu 0 deg", "epoch 2026-10-05T12:00:00Z", "# e 0.1"]
+    assert run_js(lines, "T.missingElements(P)") == ["e", "i", "raan", "argp"]     # case-insensitive; a comment names nothing
+
+
+def test_the_elements_are_the_orbit_files_own():
+    from formslab.kepler.file import ORDER
+    assert run_js([], "T.ELEMENTS") == list(ORDER)

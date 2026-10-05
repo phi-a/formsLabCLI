@@ -416,36 +416,8 @@ def tokens(text: str) -> list[list[dict]]:
             g = _RECORD if words[0].lower() == "record" else grammar
             part = cast.part_of(words[0], words)
             out.append([{"text": w, "role": r, **({"part": part} if part and r == "kw" else {})}
-                        for w, r in zip(words, _roles(g, words))])
+                        for w, r in zip(words, g.roles(words))])
     return out
-
-
-def _roles(grammar, words) -> list[str]:
-    roles: list[str] = []
-    for k, word in enumerate(words):
-        options = grammar.complete(words[:k])
-        if any(o.kind == "rest" for o in options):
-            return roles + ["text"] * (len(words) - k)
-        if any(o.kind == "word" and o.text.lower() == word.lower() for o in options):
-            roles.append("verb" if k == 0 else "kw")
-        elif any(o.kind in ("number", "integer") for o in options) and _is_number(word):
-            v = float(word)
-            fits = any(o.kind in ("number", "integer") and (o.lo is None or v >= o.lo)
-                       and (o.hi is None or v <= o.hi) for o in options)
-            roles.append("value" if fits else "bad")             # out of range: flagged, the rest still read
-        elif any(o.kind == "text" for o in options):
-            roles.append("value")
-        else:
-            return roles + ["bad"] * (len(words) - k)
-    return roles
-
-
-def _is_number(word: str) -> bool:
-    try:
-        float(word)
-    except ValueError:
-        return False
-    return True
 
 
 def _option(o, part=None) -> dict:

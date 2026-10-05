@@ -142,6 +142,15 @@ until they are fixed. A saved plan appears in the Start list on the Status tab. 
 the plan that is running) moves the file to `~/.formslab/plans/.trash`, where it
 is kept with the time it was deleted; move it back to restore it.
 
+Orbit files (`.orbit`, docs/ORBIT.md) are in the same list, with an ellipse before
+the name, and open in the same editor: one Keplerian element per line, drawn in
+the orbit's colour (deep blue), each with a symbol for what it describes (size and
+shape, the plane, the place on the orbit, time). The step chooser offers only the
+elements still missing. Beside them, a panel shows the orbit now, propagated once
+a second: sunlit or in umbra and when that changes, beta angle, altitude, speed,
+and the coming orbit as a strip. *New orbit* starts one. An orbit is never in the
+Start list: nothing runs it.
+
 **Plots.** Pick a recorded run and any of its variables; each unit gets its own
 chart. Wheel zooms, drag pans, double-click resets, hovering reads values.
 Kelvin variables can be shown in Celsius. *Follow the run live* refreshes every
@@ -154,9 +163,9 @@ Older files in the output folder with other layouts are not listed.
 
 ## What is not here yet
 
-The space-environment view (orbit, eclipse, view factors and environment
-temperature) is planned (`Notebook/gui.md`); it needs the `orbit` extra and
-its own plan.
+The rest of the space-environment tool (view factors, environment temperature,
+a 3D view, the satellite in the chamber) is planned (`Notebook/gui.md`); the
+orbit files above are its first part.
 
 ## Safeguards
 

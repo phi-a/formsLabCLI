@@ -83,6 +83,13 @@ rules. The chamber's parts use the names on its own screen (the HMI):
 Because "vacuum" names a valve and a pump, the `hvc vacuum <pressure>` setting is
 called the pressure setpoint. Units are written `°C`, `K`, `V`, `A`, `Torr`, `s`.
 
+### Orbit elements
+
+An orbit file's keywords are the classical element symbols (`a`, `e`, `i`, `raan`,
+`argp`, `nu`), because they are the names the field uses and the ones a reader
+will meet everywhere else. Their inputs are still named by words (`semimajor`,
+`inclination`), and each element's help says what the symbol stands for.
+
 ### Rules and their reasons
 
 A rule's reason is one sentence, sentence case, ending with a period. A condition

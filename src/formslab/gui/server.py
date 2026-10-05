@@ -215,24 +215,28 @@ class Handler(BaseHTTPRequestHandler):
         elif path in ("/api/pause", "/api/resume"):
             result = api.ctrl(path[len("/api/"):])
             audit(user, path[len("/api/"):])
+        elif (kind := body.get("kind", "plan")) not in ("plan", "orbit"):
+            return self._error(HTTPStatus.BAD_REQUEST, "kind is plan or orbit")
         elif path == "/api/plan/check":
-            return self._json(200, api.plan_check(str(body.get("text", ""))))
+            return self._json(200, api.plan_check(str(body.get("text", "")), kind))
         elif path == "/api/describe":
             words, text, line = body.get("words", []), body.get("text"), body.get("line")
             if not (isinstance(words, list) and all(isinstance(w, str) for w in words)) \
                     or (text is not None and not isinstance(text, str)) \
                     or (line is not None and not isinstance(line, int)):
                 return self._error(HTTPStatus.BAD_REQUEST, "words is a list of strings, text a string, line a number")
-            return self._json(200, api.describe(words, text, line))
+            return self._json(200, api.describe(words, text, line, kind))
         elif path == "/api/plan/line":
             scripts, words = body.get("scripts", []), body.get("words", [])
             if not all(isinstance(w, str) for w in [*scripts, *words]):
                 return self._error(HTTPStatus.BAD_REQUEST, "scripts and words are lists of strings")
-            return self._json(200, api.plan_line(scripts, words))
+            return self._json(200, api.plan_line(scripts, words, kind))
         elif path == "/api/plan/needs":
             return self._json(200, {"rscripts": api.plan_needs(str(body.get("text", "")))})
         elif path == "/api/plan/tokens":
-            return self._json(200, {"lines": api.plan_tokens(str(body.get("text", "")))})
+            return self._json(200, {"lines": api.plan_tokens(str(body.get("text", "")), kind)})
+        elif path == "/api/orbit/live":
+            return self._json(200, api.orbit_live(str(body.get("text", ""))))
         elif path == "/api/plan/delete":
             name = str(body.get("name", ""))
             result = api.plan_delete(name, body.get("base_hash"))
@@ -240,8 +244,8 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/plan/save":
             name = str(body.get("name", ""))
             result = api.plan_save(name, str(body.get("text", "")), body.get("base_hash"),
-                                   bool(body.get("as_new")))
-            audit(user, f"save plan {name}" + (" (new)" if body.get("as_new") else ""))
+                                   bool(body.get("as_new")), kind)
+            audit(user, f"save {result['kind']} {name}" + (" (new)" if body.get("as_new") else ""))
         elif path == "/api/cast":
             line = str(body.get("line", ""))
             result = api.send_command(line)

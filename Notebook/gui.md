@@ -152,6 +152,26 @@ Other needs:
   carries its age.
 
 ### 4. Space environment and orbit viewer
+
+Stage 1, built 2026-10-05: orbit files (`.orbit`, docs/ORBIT.md) in the Plans tab,
+classical elements with their own grammar, colour and symbols, and a live panel
+propagating them by two-body motion. The goal is simulating the satellite's
+background temperatures; the stages after it, each to get its own plan:
+
+1. **Environment profile.** Orbit file + spacecraft model -> `orbit.thermal.pipeline`
+   (orbit extra) -> per-face environment temperature over one orbit, written as a
+   recorder-format CSV so the Plots tab shows it with no new code. Open: the
+   pipeline's `Orbit` is circular (a, i, raan), so generalise it or require e near 0;
+   how the spacecraft is described (a file with its own grammar?).
+2. **3D view.** Orbit, Earth, Sun direction, the spacecraft's attitude. Open: plotly
+   (`scene3d`) is multi-MB; a small vendored WebGL library or hand-drawn canvas,
+   given no internet and no build step.
+3. **The satellite in the chamber.** A Chamber-view-style drawing with per-face
+   thermal overlays, from the profile, live or replayed.
+4. **Replay.** A plan step that follows a profile against the chamber (shroud
+   targets, `InUmbra` for rSLTA).
+
+Notes from the first draft:
 - Orbit geometry, beta angle and eclipse timeline, view factors over the orbit, and
   environment temperature versus time, from `formslab.orbit`.
 - **Constraint:** `formslab.orbit` needs numpy, scipy and matplotlib (the `orbit`

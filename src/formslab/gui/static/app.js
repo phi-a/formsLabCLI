@@ -11,8 +11,10 @@
     return e;
   };
 
-  // The colour family of a phrase is the step or instrument it starts with.
-  const FAMILY = { hvc: "hvc", psu1: "psu", psu2: "psu", cryo: "cryo", slta: "slta", tc: "tc" };
+  // The colour family of a phrase is the step or instrument it starts with; an
+  // orbit file's lines all start with an element, and are all the orbit's colour.
+  const FAMILY = { hvc: "hvc", psu1: "psu", psu2: "psu", cryo: "cryo", slta: "slta", tc: "tc",
+                   epoch: "orbit", a: "orbit", e: "orbit", i: "orbit", raan: "orbit", argp: "orbit", nu: "orbit" };
   const STEP_WORDS = ["hold", "until", "log", "load", "record"];
   const famOf = (word) => {
     const w = (word || "").toLowerCase();
@@ -22,12 +24,14 @@
 
   // The kind of part a command is about, drawn as a small symbol in the instrument's
   // colour. Its name is in the title, so it never rests on colour alone.
+  // An orbit element is drawn with what it describes, the same way.
   const PART_NAMES = { valve: "Valve", pump: "Pump", zone: "Zone", setting: "Setting" };
+  const ORBIT_PARTS = { shape: "Size and shape", plane: "The orbit's plane", place: "Place on the orbit", time: "Time" };
+  const partName = (part) => PART_NAMES[part] || ORBIT_PARTS[part] || part;
   const partIcon = (part, fam) => el("span", { class: "part-icon", "data-part": part, "data-fam": fam || "other",
-                                               title: PART_NAMES[part] || part, role: "img",
-                                               "aria-label": PART_NAMES[part] || part });
+                                               title: partName(part), role: "img", "aria-label": partName(part) });
 
-  window.App = { api: (...a) => api(...a), el, $, famOf, unitText, PART_NAMES, partIcon };   // for editor.js, loaded next
+  window.App = { api: (...a) => api(...a), el, $, famOf, unitText, PART_NAMES, ORBIT_PARTS, partName, partIcon };   // for editor.js, loaded next
 
   const state = {
     view: "status", timer: null, runs: [], run: null, selected: new Set(), data: null,
@@ -212,7 +216,7 @@
       const r = await api("/api/plans");
       const sel = $("#plan"), keep = sel.value;
       sel.replaceChildren();
-      for (const p of r.plans) {
+      for (const p of r.plans.filter((p) => p.kind !== "orbit")) {         // an orbit is opened, never run
         const o = el("option", { value: p.name },
           p.error ? `${p.name} (cannot run)`
             : `${p.name} - ${p.rscripts.join(", ")}${p.open_ended ? " - until you end it" : ""}${p.warnings?.length ? " - \u26a0 checks at the start" : ""}`);

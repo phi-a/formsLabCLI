@@ -1,0 +1,17 @@
+# ============================================================
+# orbit: leo_dawn_dusk -- sun-synchronous, 550 km, along the terminator
+# ============================================================
+# The plane faces the Sun (beta near 90 degrees), so the satellite is in
+# sunlight the whole orbit: the hot case. Open it in the GUI's Plans tab to see
+# it propagated on the wall clock (docs/ORBIT.md).
+#
+# Two-body motion: the plane does not turn with the Sun, so over weeks it
+# drifts away from dawn-dusk. Move the epoch forward to start it again.
+
+epoch 2026-10-05T12:00:00Z
+a 6928 km
+e 0.001
+i 97.6 deg
+raan 281.3 deg
+argp 0 deg
+nu 0 deg

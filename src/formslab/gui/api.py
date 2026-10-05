@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from formslab import config
@@ -20,6 +20,8 @@ from formslab.console.log.logcli import log_path
 from formslab.console.safefile import read_json
 from formslab.gui import plans, runs
 from formslab.host.sequence import is_host, read_lock
+from formslab.kepler import file as orbitfile
+from formslab.kepler.kepler import live
 from formslab import rscripts
 from formslab.rscripts import cast
 from formslab.rscripts.grammar import GrammarError
@@ -179,20 +181,29 @@ def _finish() -> None:
 
 def list_plans() -> list[dict]:
     """The plans `run <name>` can start, each with the rScripts it loads, or why
-    it does not read."""
+    it does not read; then the orbit files (kind "orbit"), which the editor opens
+    and nothing runs."""
     out = []
     with _lock:
         for path in discover():
             try:
                 plan = load_plan(path)
             except PlanError as e:
-                out.append({"name": path.stem, "error": str(e), "editable": plans.is_editable(path)})
+                out.append({"name": path.stem, "kind": "plan", "error": str(e),
+                            "editable": plans.is_editable(path)})
                 continue
-            out.append({"name": path.stem, "rscripts": list(plan.rscripts),
+            out.append({"name": path.stem, "kind": "plan", "rscripts": list(plan.rscripts),
                         "steps": len(plan.sequence.segments), "editable": plans.is_editable(path),
                         "warnings": [f"line {n}: {m}" for n, m in plan.warnings],
                         "open_ended": any(s.verb == "hold" and s.params["seconds"] is None
                                           for s in plan.sequence.segments)})
+        taken = {p["name"] for p in out}
+        for path in orbitfile.discover():
+            if path.stem in taken:                      # a plan of the same name is found first
+                continue
+            errors, _ = orbitfile.review(path.read_text(encoding="utf-8"))
+            out.append({"name": path.stem, "kind": "orbit", "editable": plans.is_editable(path),
+                        **({"error": f"line {errors[0][0]}: {errors[0][1]}"} if errors else {})})
     return out
 
 
@@ -320,22 +331,25 @@ def plan_read(name: str) -> dict:
         return _plan_call(plans.read, name)
 
 
-def plan_save(name: str, text: str, base_hash: str | None, as_new: bool) -> dict:
+def plan_save(name: str, text: str, base_hash: str | None, as_new: bool, kind: str = "plan") -> dict:
     with _lock:
-        return _plan_call(plans.save, name, text, base_hash, as_new)
+        return _plan_call(plans.save, name, text, base_hash, as_new, kind)
 
 
-def plan_check(text: str) -> dict:
-    """{errors, warnings} in the plan text, each [{line, message}] (0: the whole file)."""
+def plan_check(text: str, kind: str = "plan") -> dict:
+    """{errors, warnings} in the plan or orbit text, each [{line, message}] (0: the whole file)."""
     with _lock:
-        return plans.problems(text)
+        return plans.problems(text, kind)
 
 
-def describe(words: list[str] | None = None, text: str | None = None, line: int | None = None) -> dict:
-    """The help card: for line `line` of plan `text` (the editor), or for the
-    command `words` (the command box, its prerequisites checked now)."""
+def describe(words: list[str] | None = None, text: str | None = None, line: int | None = None,
+             kind: str = "plan") -> dict:
+    """The help card: for line `line` of plan or orbit `text` (the editor), or for
+    the command `words` (the command box, its prerequisites checked now)."""
     with _lock:
         try:
+            if text is not None and kind == "orbit":
+                return orbitfile.describe(text, int(line or 0))
             if text is not None:
                 return describe_step(text, int(line or 0))
             return cast.describe(list(words or []))
@@ -343,8 +357,10 @@ def describe(words: list[str] | None = None, text: str | None = None, line: int 
             raise ApiError(500, f"{type(e).__name__}: {e}")
 
 
-def plan_line(scripts: list[str], words: list[str]) -> dict:
-    """What can come at each position of a step line, for the editor's dropdowns."""
+def plan_line(scripts: list[str], words: list[str], kind: str = "plan") -> dict:
+    """What can come at each position of a step or orbit line, for the editor's dropdowns."""
+    if kind == "orbit":
+        return orbitfile.line_options(words)
     with _lock:
         return line_options(scripts, words)
 
@@ -363,8 +379,10 @@ def plan_delete(name: str, base_hash: str | None) -> dict:
         return _plan_call(plans.delete, name, base_hash)
 
 
-def plan_tokens(text: str) -> list[list[dict]]:
+def plan_tokens(text: str, kind: str = "plan") -> list[list[dict]]:
     """Each line's words with their role in the grammar, for drawing it."""
+    if kind == "orbit":
+        return orbitfile.tokens(text)
     with _lock:
         return tokens(text)
 
@@ -373,3 +391,15 @@ def plan_needs(text: str) -> list[str]:
     """The rScripts a plan's steps use, for restoring its `load` line."""
     with _lock:
         return needed_rscripts(text)
+
+
+# --- orbit files ------------------------------------------------------------------------------
+
+def orbit_live(text: str) -> dict:
+    """The orbit in `text` propagated to now (kepler.live), or {error} naming its
+    first problem, so the panel can say why it shows nothing."""
+    try:
+        elements = orbitfile.parse(text)
+    except orbitfile.OrbitError as e:
+        return {"error": str(e)}
+    return live(elements, datetime.now(timezone.utc))

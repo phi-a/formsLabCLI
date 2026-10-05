@@ -81,6 +81,7 @@
           <aside>
             <div id="plan-list"></div>
             <button id="plan-new">New plan</button>
+            <button id="orbit-new">New orbit</button>
           </aside>
           <section>
             <div class="plan-head">
@@ -101,7 +102,10 @@
                 <div id="plan-rows"></div>
                 <textarea id="plan-text" spellcheck="false" hidden aria-label="Plan text"></textarea>
               </div>
-              <aside id="plan-info" class="info" hidden aria-live="polite"></aside>
+              <div class="plan-side">
+                <aside id="plan-info" class="info" hidden aria-live="polite"></aside>
+                <aside id="orbit-live" class="info" hidden aria-label="The orbit now"></aside>
+              </div>
             </div>
           </section>
         </div>

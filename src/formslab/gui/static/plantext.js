@@ -1,4 +1,5 @@
-// Plan text as a list of lines: what a line is, and where the two header lines go.
+// Plan text as a list of lines: what a line is, where the two header lines go, and
+// which elements an orbit file still lacks.
 // A plan starts with `load`, then (optionally) `record`; everything else is a
 // step. Those two are not the user's to place: asking for one puts it where it
 // belongs, wherever the user happened to be, so deleting one is never a dead end.
@@ -51,7 +52,14 @@
   // Which header lines a plan lacks.
   const missingHeaders = (lines) => ["load", "record"].filter((k) => indexOfKind(lines, k) < 0);
 
-  const api = { kindOf, headerIndex, withHeader, missingHeaders };
+  // An orbit file names each of its seven elements once, in any order: which it lacks.
+  const ELEMENTS = ["epoch", "a", "e", "i", "raan", "argp", "nu"];
+  const missingElements = (lines) => {
+    const named = new Set(lines.map((l) => kindOf(l) === "step" ? l.trim().split(/\s+/)[0].toLowerCase() : ""));
+    return ELEMENTS.filter((k) => !named.has(k));
+  };
+
+  const api = { kindOf, headerIndex, withHeader, missingHeaders, ELEMENTS, missingElements };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.PlanText = api;
 })(typeof window !== "undefined" ? window : globalThis);

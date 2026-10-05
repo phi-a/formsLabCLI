@@ -27,6 +27,7 @@ hardware test sequences against them. Running those sequences is its central job
 | Grammar | `formslab.rscripts.grammar`, `cast` | The commands each routine declares, as data: parses a cast-tab line or a plan step, lists what can come next (completion, the GUI's dropdowns), and builds the help cards. |
 | Sequences | `formslab.sequence` | Lab plans, one step per line: which routines run, and the ordered steps of a test. Steps talk to routines through CAST, never to a driver. |
 | Host | `formslab.host` | One run of one plan. Lock, ctrl, pacing, recording, shutdown. |
+| Orbit files | `formslab.kepler` | `.orbit` files: Keplerian elements, their grammar (the same `Grammar`), two-body propagation, umbra and beta. Standard library only; the GUI opens them, nothing runs them (docs/ORBIT.md). |
 | Console | `formslab.console`, `formslab.app` | The operator: start and stop runs, watch and command instruments. |
 
 CAST (`castfile.json`) is the bus between them: a request block per instrument
@@ -71,6 +72,12 @@ and formsLabCLI replays them on the wall clock. Orbit-driven inputs reach
 routines as ordinary variables (rSLTA reads `InUmbra`, `UmbraDuration`,
 `UmbraTimeRemaining`). The replay step itself (a plan step that follows a
 profile file) is not built yet.
+
+An orbit file (`formslab.kepler`) is lab-side configuration, not FORMS: one orbit
+by two-body motion, for the GUI to show and, later, for the environment models in
+`formslab.orbit` to start from. Its constants and Sun ephemeris are copies of
+`formslab.orbit.propagate`'s, because that package imports nothing outside itself
+and this one must not need numpy; a test holds the copies identical.
 
 ## Known conflicts
 

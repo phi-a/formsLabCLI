@@ -311,6 +311,37 @@ class Grammar:
         chosen = full or begun
         return [] if len(chosen) > limit else [_card(c, bool(full)) for c in chosen]
 
+    def roles(self, words: Sequence[str]) -> list[str]:
+        """What each word is, so a GUI can draw the grammar: `verb` (the first
+        word), `kw` (a fixed word after it), `value` (a number or word typed into a
+        slot), `text` (free text) or `bad` (out of range; or fits nothing, and then
+        neither does any word after it)."""
+        roles: list[str] = []
+        for k, word in enumerate(words):
+            options = self.complete(words[:k])
+            if any(o.kind == "rest" for o in options):
+                return roles + ["text"] * (len(words) - k)
+            if any(o.kind == "word" and o.text.lower() == word.lower() for o in options):
+                roles.append("verb" if k == 0 else "kw")
+            elif any(o.kind in ("number", "integer") for o in options) and _is_number(word):
+                v = float(word)
+                fits = any(o.kind in ("number", "integer") and (o.lo is None or v >= o.lo)
+                           and (o.hi is None or v <= o.hi) for o in options)
+                roles.append("value" if fits else "bad")         # out of range: flagged, the rest still read
+            elif any(o.kind == "text" for o in options):
+                roles.append("value")
+            else:
+                return roles + ["bad"] * (len(words) - k)
+        return roles
+
+
+def _is_number(word: str) -> bool:
+    try:
+        float(word)
+    except ValueError:
+        return False
+    return True
+
 
 def _paragraphs(text: str) -> str:
     """Help details as written in source, hard-wrapped and indented, as

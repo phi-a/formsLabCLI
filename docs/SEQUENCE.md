@@ -94,7 +94,8 @@ Shipped plans: `tvac` (manual operation from the cast tab, until `end`),
 guards, vent valve open, until atmosphere).
 
 Orbit content (`orbit.*`, `propagate`, `@procedure`) is refused: that is FORMS'
-part, done offline (see ARCHITECTURE.md). A file in the old format
+part, done offline (see ARCHITECTURE.md). An orbit is described in its own file,
+beside the plans, and never run (docs/ORBIT.md). A file in the old format
 (`sequence.operations = [...]`) is refused with a pointer here.
 
 ## Running
