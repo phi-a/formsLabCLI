@@ -326,7 +326,10 @@
     $("#tvac-fault").textContent = vm.faults ? `Fault${vm.severity && vm.severity !== "N" ? " (severity " + vm.severity + ")" : ""}: ${vm.faults}` : "";
     $("#tvac-info").textContent = (vm.recipe !== null ? `Recipe ${vm.recipe}${vm.recipeStep ? ", step " + vm.recipeStep : ""}. ` : "")
       + "Heater output, turbo speed, foreline pressure and each zone's own on/off are not reported by the controller.";
-    T.render($("#tvac-svg"), vm, b.live);
+    // the parts' names, from the server (the hvc card's readings): one table for every view
+    const names = {};
+    for (const grp of b.groups || []) for (const r of grp.rows) names[r.key] = r.name;
+    T.render($("#tvac-svg"), vm, b.live, names);
     const box = $("#tvac-sensors");
     box.className = "sensors" + (b.live ? "" : " stale");
     box.replaceChildren(...vm.sensors.map((x) => {

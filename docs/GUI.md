@@ -74,8 +74,9 @@ are the last ones seen, not current readings.
 **Chamber.** The HVC-3500's own Manual screen, redrawn live: the chamber with
 its pressure and the three zone blocks (platen, shroud, t2) with temperature
 and setpoint, the vent, fill, gate, vacuum (rough) and foreline valves, the
-vacuum and turbo pumps (a green check is open or on, a red cross closed or
-off), the fault banner, and every other thermocouple below. Temperatures can
+vacuum and turbo pumps, in the symbols used across the GUI (a valve is a
+bowtie, a pump a circle with a triangle), green when open or on, red when closed
+or off, with the state written beside it, the fault banner, and every other thermocouple below. Temperatures can
 be shown in Celsius or Kelvin. It follows the same rule as the Status cards:
 when no run is going, or the chamber is not connected, the drawing is greyed
 and says why, because those are the last values seen, not current readings.
