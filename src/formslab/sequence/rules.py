@@ -16,6 +16,7 @@ to a supply channel whose owner the plan loads is an error.
 from __future__ import annotations
 
 from formslab.rscripts import rules as R
+from formslab.sequence.spec import origin_text
 
 # A condition's status at a step: established by the plan, broken by it, not
 # known until the run, or checkable only live (no fault, a supply voltage).
@@ -29,7 +30,7 @@ def walk(steps, scripts, published: dict):
 
     labels, _ = cast.owners()
     units = {k.lower(): u for k, u in published.items()}
-    devices: dict[str, tuple[bool, int]] = {}
+    devices: dict[str, tuple[bool, str]] = {}           # name -> (state, where it was set)
     guards: list[tuple[str, str, float]] = []        # (variable, side, limit in its own unit)
 
     for n, seg in steps:
@@ -67,19 +68,23 @@ def walk(steps, scripts, published: dict):
                     known = devices.get(c.name)
                     status = UNKNOWN if known is None else OK if known[0] == c.want else BROKEN
                     if status == BROKEN:
-                        conditions.append({"text": f"{c.text} (line {known[1]} changed it)", "status": status})
+                        conditions.append({"text": f"{c.text} ({known[1]} changed it)", "status": status})
                         continue
                 else:
                     status = OK if _guarded(c, guards, units) else UNKNOWN
                 conditions.append({"text": c.text, "status": status, **({"proof": c.proof} if c.proof else {})})
             findings.append({"why": rule.why, "conditions": conditions})
 
+        if seg.origin:                                   # a step from a block
+            for f in findings:
+                f["origin"] = origin_text(seg.origin)
         yield n, findings
         left = R.effects(module, request)
+        where = f"{origin_text(seg.origin)} at line {n}" if seg.origin else f"line {n}"
         if left is None:
             devices = {}
         else:
-            devices.update({k: (v, n) for k, v in left.items()})
+            devices.update({k: (v, where) for k, v in left.items()})
         guards = []
 
 
@@ -90,22 +95,24 @@ def check(steps, scripts, published: dict) -> tuple[list, list]:
         for f in findings:
             broken = [c["text"] for c in f["conditions"] if c["status"] == BROKEN]
             unknown = [c for c in f["conditions"] if c["status"] == UNKNOWN]
+            within = f"In {f['origin']}: " if f.get("origin") else ""
             if broken and "owner" in f:
-                errors.append((n, f["why"].replace(f"{f['owner']} drives it while it runs",
-                                                   f"{f['owner']}, loaded here, drives it")))
+                errors.append((n, within + f["why"].replace(f"{f['owner']} drives it while it runs",
+                                                            f"{f['owner']}, loaded here, drives it")))
             elif broken:
-                errors.append((n, f"Needs {R.listed(broken)}. {f['why']}"))
+                errors.append((n, f"{within}Needs {R.listed(broken)}. {f['why']}"))
             elif unknown:
                 proofs = [c["proof"] for c in unknown if c.get("proof")]
-                warnings.append((n, f"Checked when the step runs: {R.listed([c['text'] for c in unknown])}."
+                warnings.append((n, f"{within}Checked when the step runs: {R.listed([c['text'] for c in unknown])}."
                                     + (f" To settle it here, add {R.listed(proofs)} before this step."
                                        if proofs else "")))
     return errors, warnings
 
 
 def at_line(steps, scripts, published: dict, line: int) -> list[dict]:
-    """The findings for the command step on `line` ([] for any other line)."""
-    return next((findings for n, findings in walk(steps, scripts, published) if n == line), [])
+    """The findings for the command step on `line`, or for every command of the
+    block called there ([] for any other line)."""
+    return [f for n, findings in walk(steps, scripts, published) if n == line for f in findings]
 
 
 def _guarded(c, guards, units) -> bool:

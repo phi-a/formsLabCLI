@@ -223,11 +223,15 @@ def parse_plan(source: str, *, path: Path | None = None, steps_out: list | None 
         errors.append((0, "the plan has no steps"))
 
     from formslab.rscripts import cast
+    from formslab.sequence import block as blocks_
 
     grammar, owner, published = _grammar(scripts)
+    blocks, broken = blocks_.available(owner)
 
     def check_step(n, words):
         head = words[0].lower()
+        if head in broken and head not in owner:              # (an instrument's name stays the instrument's)
+            fail(n, broken[head])
         if module := owner.get(head):
             if cast.script_name(module) not in scripts:
                 fail(n, f"{head} is declared by {cast.script_name(module)}; add it to `load`")
@@ -243,7 +247,33 @@ def parse_plan(source: str, *, path: Path | None = None, steps_out: list | None 
                 fail(n, "until needs `timeout <time> s|min|h`: a wait on hardware always has a limit")
         return replace(_parse(fail, n, grammar, words), label=" ".join(words))
 
-    numbered = [(n, seg) for n, words in steps if (seg := attempt(check_step, n, words)) is not None]
+    def expand(n, seg, stack):
+        """A block call's steps, inputs replaced, each checked as a step of this plan
+        and labelled with the block (`pumpdown > hvc rough open`)."""
+        b = blocks[seg.params["name"]]
+        chain = " > ".join((*stack, b.name))
+        if b.name in stack:
+            fail(n, f"block {b.name} calls itself: {chain}")
+        if len(stack) >= blocks_.MAX_DEPTH:
+            fail(n, f"blocks nest more than {blocks_.MAX_DEPTH} deep: {chain}")
+        if missing := [s for s in b.scripts if s not in scripts]:
+            fail(n, f"{b.name} needs {', '.join(missing)}; add {'it' if len(missing) == 1 else 'them'} to `load`")
+        out = []
+        for ln, words in b.body(seg.params["values"]):
+            try:
+                inner = check_step(n, words)
+                parts = expand(n, inner, (*stack, b.name)) if inner.verb == "block" else [inner]
+            except _LineError as e:
+                fail(n, f"In {b.name} (line {ln}): {e.message}")
+            out += [replace(p, label=f"{b.name} > {p.label}", origin=((b.name, ln), *p.origin))
+                    for p in parts]
+        return out
+
+    def check_line(n, words):
+        seg = check_step(n, words)
+        return expand(n, seg, ()) if seg.verb == "block" else [seg]
+
+    numbered = [(n, seg) for n, words in steps for seg in (attempt(check_line, n, words) or [])]
     if steps_out is not None:
         steps_out.extend(numbered)
     from formslab.sequence.rules import check as check_rules
@@ -306,6 +336,12 @@ def describe_step(text: str, line: int) -> dict:
     scripts = tuple(load[1:])
     grammar, _, published = _grammar(scripts)
     cards = [{**c, "part": cast.card_part(c)} for c in grammar.describe(words)]
+    from formslab.sequence import block as blocks_
+
+    blocks, _ = blocks_.available(cast.owners()[0])
+    for c in cards:
+        if (b := blocks.get(c["words"][0]["text"].lower()) if c.get("words") else None):
+            c["steps"] = [" ".join(w) for _, w in b.steps]
     rules = []
     if cards and cards[0]["complete"]:
         steps: list = []
@@ -328,16 +364,25 @@ def needed_rscripts(text: str) -> list[str]:
     for module in {id(m): m for m in labels.values()}.values():
         for name, _unit in cast.variables(module):
             value_owner.setdefault(name.lower(), cast.script_name(module))
+    from formslab.sequence import block as blocks_
+
+    blocks, _ = blocks_.available(labels)
     need: set[str] = set()
-    for line in text.splitlines():
-        words = line.split()
-        if not words or words[0].startswith("#") or words[0].lower() in ("load", "record"):
-            continue
-        head = words[0].lower()
-        if head in labels:
-            need.add(cast.script_name(labels[head]))
-        elif head == "until" and len(words) > 1 and words[1].lower() in value_owner:
-            need.add(value_owner[words[1].lower()])
+
+    def visit(lines, seen):
+        for words in lines:
+            if not words or words[0].startswith("#") or words[0].lower() in ("load", "record", "block"):
+                continue
+            head = words[0].lower()
+            if head in labels:
+                need.add(cast.script_name(labels[head]))
+            elif head == "until" and len(words) > 1 and words[1].lower() in value_owner:
+                need.add(value_owner[words[1].lower()])
+            elif head in blocks and head not in seen:             # a block: what its steps use
+                need.update(blocks[head].scripts)
+                visit([list(w) for _, w in blocks[head].steps], seen | {head})
+
+    visit([line.split() for line in text.splitlines()], set())
     return [n for n in available_rscripts() if n in need]
 
 
@@ -512,7 +557,13 @@ def _grammar(scripts):
             (f"{until} C|K timeout <time:number 0..> s|min|h",
              "Wait for a temperature in °C or K to pass a limit" + why, _until(published)),
         ]
-    return Grammar(steps + cast.label_commands(scripts, build=_command)), labels, published
+    from formslab.sequence import block as blocks_
+
+    blocks, _ = blocks_.available(labels)
+    calls = [(b.pattern, b.help, lambda *captured, b=b: Segment("block", {"name": b.name,
+                                                                            "values": b.values(captured)}))
+             for b in blocks.values()]
+    return Grammar(steps + cast.label_commands(scripts, build=_command) + calls), labels, published
 
 
 def _publisher(variable, scripts):

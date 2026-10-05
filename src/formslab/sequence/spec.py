@@ -15,9 +15,19 @@ class Segment:
     verb: str
     params: dict[str, Any] = field(default_factory=dict)
     label: str = ""
+    # Where a step from a block came from: ((block, line in its file), ...), outermost first.
+    origin: tuple = ()
 
     def to_manifest(self) -> dict[str, Any]:
-        return {"verb": self.verb, "label": self.label or self.verb, "params": dict(self.params)}
+        out = {"verb": self.verb, "label": self.label or self.verb, "params": dict(self.params)}
+        if self.origin:
+            out["origin"] = origin_text(self.origin)
+        return out
+
+
+def origin_text(origin) -> str:
+    """`pumpdown line 9`, or `vent line 3 > safe line 2` for a nested block."""
+    return " > ".join(f"{name} line {line}" for name, line in origin)
 
 
 @dataclass(frozen=True)
