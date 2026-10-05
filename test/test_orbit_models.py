@@ -7,17 +7,21 @@ import warnings
 from datetime import datetime
 from pathlib import Path
 
-import pytest
+import importlib.util
 
-# formslab.orbit needs the `orbit` extra (numpy, scipy, matplotlib); a base
-# install skips these tests.
-for _dist in ("numpy", "scipy", "matplotlib"):
-    pytest.importorskip(_dist)
-
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
 import numpy as np
+
+# The transient solver needs scipy and the plots matplotlib (the `orbit` extra);
+# a base install skips just those tests.
+SCIPY = importlib.util.find_spec("scipy") is not None
+MATPLOTLIB = importlib.util.find_spec("matplotlib") is not None
+needs_scipy = unittest.skipUnless(SCIPY, "the transient solver needs scipy (the orbit extra)")
+needs_matplotlib = unittest.skipUnless(MATPLOTLIB, "plots need matplotlib (the orbit extra)")
+if MATPLOTLIB:
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    from formslab.orbit.thermal.plots import plot_temperature_heatmap, plot_temperature_trace
 
 from formslab.orbit.geometry import (LVLHFixed, SlewModeSwitch, SO3,
                              SunTracking, TargetTracking, build_6u_double_deployable,
@@ -33,8 +37,7 @@ from formslab.orbit.viewfactor import (EarthDiskQuadrature, RectangularPanel, pa
                                facet_loading_propagate)
 import formslab.orbit.viewfactor.occlusion as occlusion_impl
 from formslab.orbit.thermal import (SIGMA_SB, Background, Thermal,
-                            environment, plot_temperature_heatmap,
-                            plot_temperature_trace, background,
+                            environment, background,
                             steady,
                             steady_two_sided,
                             transient)
@@ -226,7 +229,7 @@ def _scalar_surface_loading_reference(realized, name, orbit, law, *,
                                       hemi_elevation_max_deg=85.0):
     surface = realized.by_name(name)
     u_arr = propagation_grid(orbit, law, n)
-    quad = EarthDiskQuadrature.build(orbit.rho, n_mu=n_mu, n_az=n_az)
+    quad = EarthDiskQuadrature.build(orbit.rho(0.0), n_mu=n_mu, n_az=n_az)   # circular: one size
     sun_eci = orbit.sun_eci()
     static_views = _scalar_hemisphere_group_view(
         realized,
@@ -249,7 +252,7 @@ def _scalar_surface_loading_reference(realized, name, orbit, law, *,
     for k, uk in enumerate(u_arr):
         rotation = law(uk, orbit)
         eclipse[k] = orbit.in_eclipse(uk)
-        samples = quad.sample(orbit.nadir_eci(uk), orbit.a)
+        samples = quad.sample(orbit.nadir_eci(uk), orbit.radius(uk))
         dirs_body = samples.dirs_eci @ rotation.m
 
         earth[k] = _scalar_integrate_surface_response(
@@ -1123,6 +1126,7 @@ class GeometryPackageTests(unittest.TestCase):
                 epsilon_back=0.9,
             )
 
+    @needs_scipy
     def test_transient_matches_constant_steady_state(self):
         front = _sample_background_profile(solar=np.ones((3, 2, 3)) * 100.0)
         back = _sample_background_profile(solar=np.ones((3, 2, 3)) * 50.0)
@@ -1154,6 +1158,7 @@ class GeometryPackageTests(unittest.TestCase):
         self.assertFalse(caught)
         self.assertTrue(np.allclose(transient_result.temperature, steady.temperature, atol=1e-6))
 
+    @needs_scipy
     def test_transient_warns_when_convergence_limit_is_hit(self):
         front = _sample_background_profile(
             solar=np.array([
@@ -1188,6 +1193,7 @@ class GeometryPackageTests(unittest.TestCase):
         self.assertEqual(profile.temperature.shape, front.total.shape)
         self.assertTrue(any(issubclass(item.category, RuntimeWarning) for item in caught))
 
+    @needs_matplotlib
     def test_plot_temperature_trace_accepts_single_profile(self):
         profile = _sample_thermal_profile()
         fig, ax = plt.subplots()
@@ -1199,6 +1205,7 @@ class GeometryPackageTests(unittest.TestCase):
         finally:
             plt.close(fig)
 
+    @needs_matplotlib
     def test_plot_temperature_trace_accepts_multiple_profiles(self):
         hot = _sample_thermal_profile(name='hot')
         cold = _sample_thermal_profile(
@@ -1216,6 +1223,7 @@ class GeometryPackageTests(unittest.TestCase):
         finally:
             plt.close(fig)
 
+    @needs_matplotlib
     def test_plot_temperature_trace_rejects_mismatched_u(self):
         first = _sample_thermal_profile()
         second = _sample_thermal_profile(u=np.array([0.0, 1.0, 2.1]))
@@ -1226,6 +1234,7 @@ class GeometryPackageTests(unittest.TestCase):
         finally:
             plt.close(fig)
 
+    @needs_matplotlib
     def test_plot_temperature_trace_rejects_mismatched_eclipse(self):
         first = _sample_thermal_profile()
         second = _sample_thermal_profile(eclipse=np.array([False, False, False]))
@@ -1236,6 +1245,7 @@ class GeometryPackageTests(unittest.TestCase):
         finally:
             plt.close(fig)
 
+    @needs_matplotlib
     def test_plot_temperature_heatmap_honors_explicit_k(self):
         profile = _sample_thermal_profile()
         fig, ax = plt.subplots()
@@ -1246,6 +1256,7 @@ class GeometryPackageTests(unittest.TestCase):
         finally:
             plt.close(fig)
 
+    @needs_matplotlib
     def test_plot_temperature_heatmap_selectors_choose_expected_timestep(self):
         profile = _sample_thermal_profile(
             temperature=np.array([
@@ -1265,6 +1276,7 @@ class GeometryPackageTests(unittest.TestCase):
         finally:
             plt.close(fig)
 
+    @needs_matplotlib
     def test_plot_temperature_heatmap_requires_surface_extents(self):
         profile = _sample_thermal_profile(width=None)
         fig, ax = plt.subplots()

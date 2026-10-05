@@ -13,6 +13,7 @@ Each of the seven appears once, in any order. ``#`` starts a comment on its own
 line. The grammar is data (`rscripts.grammar`), so the editor's dropdowns, its
 token drawing and the errors here come from one place, as they do for plans.
 Orbit files sit beside plans (`sequence.plan.search_dirs`) but are never run.
+`load` gives the `Orbit` the view-factor and thermal models sweep.
 """
 from __future__ import annotations
 
@@ -23,8 +24,9 @@ from pathlib import Path
 
 from formslab.rscripts.grammar import Grammar, GrammarError
 
-from .constants import R_E
-from .kepler import Elements
+from .propagate.constants import R_E
+from .propagate.kepler import Elements
+from .propagate.orbit import Orbit
 
 SUFFIX = ".orbit"
 ORDER = ("epoch", "a", "e", "i", "raan", "argp", "nu")
@@ -149,6 +151,12 @@ def parse(text: str) -> Elements:
         n, message = errors[0]
         raise OrbitError(f"{n}: {message}" if n else message, errors)
     return Elements(**values)
+
+
+def load(path) -> Orbit:
+    """The orbit in the `.orbit` file at `path`, for the models (`OrbitError` if
+    it does not read)."""
+    return Orbit(parse(Path(path).read_text(encoding="utf-8")))
 
 
 def review(text: str) -> tuple[list[tuple[int, str]], list[tuple[int, str]]]:

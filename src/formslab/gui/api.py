@@ -20,8 +20,8 @@ from formslab.console.log.logcli import log_path
 from formslab.console.safefile import read_json
 from formslab.gui import plans, runs
 from formslab.host.sequence import is_host, read_lock
-from formslab.kepler import file as orbitfile
-from formslab.kepler.kepler import live
+from formslab.orbit import file as orbitfile
+from formslab.orbit.propagate.kepler import live
 from formslab import rscripts
 from formslab.rscripts import cast
 from formslab.rscripts.grammar import GrammarError

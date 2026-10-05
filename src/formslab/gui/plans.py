@@ -1,7 +1,7 @@
 """Plan and orbit files for the GUI's editor.
 
 The editor opens two kinds of file: plans (`.plan`, sequence.plan) and orbits
-(`.orbit`, kepler.file). They share one list and one set of names, so a name
+(`.orbit`, orbit.file). They share one list and one set of names, so a name
 says which file it is. A plan is named by a short name and found only through the server's own plan
 list (`discover`), never through a path from a request. Plans that ship with the
 checkout, or sit in the folder `labcli` was started from, are read-only here;
@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from formslab.console.safefile import atomic_write_text
-from formslab.kepler import file as orbitfile
+from formslab.orbit import file as orbitfile
 from formslab.sequence.plan import ENV, SUFFIX, discover, review, user_plans_dir
 
 NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
@@ -79,7 +79,7 @@ def read(name: str) -> dict:
 
 def problems(text: str, kind: str = "plan") -> dict:
     """{errors, warnings}: [{line, message}] each (see sequence.plan.review and
-    kepler.file.review)."""
+    orbit.file.review)."""
     errors, warnings = (orbitfile.review if kind == "orbit" else review)(text)
     return {"errors": [{"line": n, "message": m} for n, m in errors],
             "warnings": [{"line": n, "message": m} for n, m in warnings]}

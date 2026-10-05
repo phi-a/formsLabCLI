@@ -1,20 +1,18 @@
-"""Two-body Kepler motion (formslab.kepler.kepler): the orbit closes, energy and
-angular momentum hold, the anomalies convert both ways, and the umbra and beta
-agree with the orbit models' own formulas."""
+"""Two-body Kepler motion (formslab.orbit.propagate.kepler): the orbit closes,
+energy and angular momentum hold, the anomalies convert both ways, and the umbra
+and beta agree with the circular-orbit formulas beside it."""
 import math
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
-
 import pytest
 
-import formslab
-from formslab.kepler.constants import MU, R_E
-from formslab.kepler.kepler import (
+from formslab.orbit.propagate.constants import MU, R_E
+from formslab.orbit.propagate.kepler import (
     Elements, beta, live, mean_from_true, state, true_from_mean, umbra_spans,
 )
+from formslab.orbit.propagate.orbit import beta_uc, eclipse_half_angle
+from formslab.orbit.propagate.sun import sun_dist, sun_ra_dec
 
 EPOCH = datetime(2026, 10, 5, 12, tzinfo=timezone.utc)
-PACKAGE = Path(formslab.__file__).parent
 
 
 def circular(raan_deg, a=6928e3, i_deg=97.6):
@@ -27,13 +25,6 @@ def norm(v):
 
 def cross(u, v):
     return (u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0])
-
-
-@pytest.mark.parametrize("name", ["constants.py", "sun.py"])
-def test_the_copies_of_the_orbit_models_constants_and_sun_are_identical(name):
-    """formslab.orbit imports nothing outside itself and kepler must not need
-    numpy, so each has a copy; they must not drift apart."""
-    assert (PACKAGE / "kepler" / name).read_bytes() == (PACKAGE / "orbit" / "propagate" / name).read_bytes()
 
 
 def test_the_period_is_kepler_s_third_law():
@@ -83,19 +74,8 @@ def test_the_orbit_plane_is_where_inclination_and_node_put_it():
     assert math.degrees(math.acos(h[2] / norm(h))) == pytest.approx(30)
 
 
-# The conical-umbra formulas of formslab.orbit.propagate.orbit, which needs numpy
-# to import; copied here so the comparison runs on a base install.
-def eclipse_half_angle(a, b, d):
-    from formslab.kepler.constants import R_SUN
-    k, eps = R_E / a, (R_SUN - R_E) / d
-    arg = (k * eps + math.sqrt((1 - k ** 2) * (1 - eps ** 2))) / abs(math.cos(b))
-    return 0.0 if arg >= 1.0 else math.acos(arg)
-
-
 @pytest.mark.parametrize("raan", [0, 60, 191.3, 200])
-def test_umbra_lasts_as_long_as_the_orbit_models_say(raan):
-    from formslab.kepler.sun import sun_dist
-
+def test_umbra_lasts_as_long_as_the_circular_formula_says(raan):
     el = circular(raan)
     spans = umbra_spans(el, EPOCH, EPOCH + timedelta(seconds=el.period * 2))
     whole = [(b - a).total_seconds() for a, b in spans if a > EPOCH and b < EPOCH + timedelta(seconds=el.period * 2)]
@@ -109,13 +89,9 @@ def test_with_the_sun_near_the_orbit_normal_there_is_no_umbra():
     assert umbra_spans(el, EPOCH, EPOCH + timedelta(seconds=el.period * 2)) == []
 
 
-def test_beta_matches_the_orbit_models_formula():
-    from formslab.kepler.sun import sun_ra_dec
-
+def test_beta_matches_the_circular_formula():
     el = circular(120)
-    ra, dec = sun_ra_dec(EPOCH)
-    sin_beta = math.sin(el.i) * math.cos(dec) * math.sin(el.raan - ra) + math.cos(el.i) * math.sin(dec)
-    assert beta(el, EPOCH) == pytest.approx(math.asin(sin_beta))
+    assert beta(el, EPOCH) == pytest.approx(beta_uc(el.i, el.raan, *sun_ra_dec(EPOCH))[0])
 
 
 def test_live_says_where_the_satellite_is_and_when_the_umbra_comes():
@@ -132,3 +108,57 @@ def test_live_says_where_the_satellite_is_and_when_the_umbra_comes():
         assert r["next_umbra_s"] == pytest.approx(r["spans"][0][0])
     total = sum(b - a for a, b in r["spans"])
     assert 30 * 60 < total < 40 * 60
+
+
+# --- the Orbit the models sweep, built from elements ------------------------------------------
+
+from formslab.orbit.propagate.orbit import Orbit  # noqa: E402
+
+ECCENTRIC = Elements(8000e3, 0.1, math.radians(40), math.radians(70), math.radians(30), math.radians(50), EPOCH)
+
+
+def test_a_circular_orbit_sweeps_from_the_node_at_the_epoch():
+    orbit = Orbit.from_epoch(6771e3, math.radians(51.6), math.radians(30), EPOCH)
+    assert orbit.u0 == 0 and orbit.true_latitude(1.234) == 1.234
+    assert orbit.radius(2.0) == 6771e3 and orbit.utc_at(0.0) == EPOCH
+
+
+def test_the_sweep_runs_from_perigee_to_apogee():
+    orbit = Orbit(ECCENTRIC)
+    assert orbit.radius(ECCENTRIC.argp) == pytest.approx(8000e3 * 0.9)
+    assert orbit.radius(ECCENTRIC.argp + math.pi) == pytest.approx(8000e3 * 1.1)
+    assert orbit.rho(ECCENTRIC.argp) > orbit.rho(ECCENTRIC.argp + math.pi)
+
+
+def test_the_sweep_is_where_kepler_puts_the_satellite_at_that_time():
+    orbit = Orbit(ECCENTRIC)
+    assert orbit.utc_at(orbit.u0) == EPOCH
+    for u in (0.0, 1.0, 2.5, 4.0, 6.0):
+        r, _ = state(ECCENTRIC, orbit.utc_at(u))
+        # metres; a datetime holds microseconds, 7 mm of flight
+        assert max(abs(a - b) for a, b in zip(orbit.position_eci(u), r)) < 0.01
+
+
+def test_lvlh_stays_a_right_handed_frame_on_an_ellipse():
+    import numpy as np
+    orbit = Orbit(ECCENTRIC)
+    for u in (0.3, 2.0, 5.1):
+        m = orbit.eci_from_lvlh(u)
+        assert np.allclose(m.T @ m, np.eye(3)) and np.linalg.det(m) == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize("elements", [ECCENTRIC, Elements(6928e3, 0.0, math.radians(97.6), math.radians(191.3), 0, 0, EPOCH)])
+def test_the_sweeps_umbra_is_where_the_live_propagation_finds_it(elements):
+    """The sweep freezes the Sun at the epoch; over one orbit it moves about 0.07
+    degrees, so the two agree to a few seconds."""
+    orbit = Orbit(elements)
+    arcs = orbit.eclipse_arcs
+    t0 = orbit.utc_at(0.0)
+    spans = umbra_spans(elements, t0, t0 + timedelta(seconds=orbit.period))
+    assert len(arcs) == 1
+    entry, exit_ = arcs[0]
+    starts = [(a - t0).total_seconds() for a, _ in spans if a > t0]
+    ends = [(b - t0).total_seconds() for _, b in spans if b < t0 + timedelta(seconds=orbit.period)]
+    assert min(abs(entry / orbit.n - s) for s in starts) < 5
+    assert min(abs((exit_ % (2 * math.pi)) / orbit.n - e) for e in ends) < 5
+    assert orbit.in_eclipse((entry + exit_) / 2) and not orbit.in_eclipse(exit_ + 0.1)

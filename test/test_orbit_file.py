@@ -1,4 +1,4 @@
-"""Orbit files (formslab.kepler.file): seven elements, each once; every problem
+"""Orbit files (formslab.orbit.file): seven elements, each once; every problem
 reported with its line; the editor's options and tokens; and the GUI routes that
 open, save and propagate them."""
 import math
@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from formslab.gui import api, plans
-from formslab.kepler.file import (
+from formslab.orbit.file import (
     GROUPS, ORDER, OrbitError, describe, discover, line_options, parse, review, tokens,
 )
 from formslab.sequence import discover as discover_plans
@@ -204,3 +204,34 @@ def test_the_live_panel_is_the_orbit_now_or_why_not(server, client):
     code, body = client.json("POST", "/api/orbit/live", {"text": "a 6928 km\n"})
     assert code == 200 and body["error"].startswith("the orbit has no")
     assert Client(server).json("POST", "/api/orbit/live", {"text": GOOD})[0] == 401
+
+
+# --- an orbit file drives the environment models ------------------------------------------------
+
+def test_an_orbit_file_runs_through_view_flux_and_environment():
+    from formslab.orbit.file import load
+    from formslab.orbit.geometry import LVLHFixed
+    from formslab.orbit.thermal.pipeline import CubeSat, catalog, env, flux, view
+
+    orbit = load(shipped("leo_noon"))
+    sat = CubeSat(catalog("6u_double_deployable"))
+    vl = view(sat.geometry, orbit, LVLHFixed(), facets=["bus_-Z"], n=24, n_mu=6, n_az=12, hemi_n_az=7, hemi_n_el=5)
+    tenv = env(flux(vl, ["bus_-Z"], solar_panel_temperature_K=300.0, body_temperature=290.0)).data["bus_-Z"]
+    assert tenv.shape[0] == 24 and (tenv > 0).all()
+    assert 0.3 < vl.eclipse.mean() < 0.45                       # about 35 minutes of 96
+
+
+def test_an_eccentric_orbit_sees_more_earth_at_perigee():
+    import numpy as np
+    from formslab.orbit.geometry import LVLHFixed
+    from formslab.orbit.propagate.orbit import Orbit
+    from formslab.orbit.thermal.pipeline import CubeSat, catalog, view
+
+    text = GOOD.replace("a 6928 km", "a 8000 km").replace("e 0.001", "e 0.1")
+    orbit = Orbit(parse(text))
+    vl = view(CubeSat(catalog("6u_double_deployable")).geometry, orbit, LVLHFixed(), facets=["bus_-Z"],
+              n=24, n_mu=6, n_az=12, hemi_n_az=7, hemi_n_el=5)
+    earth = vl.earth["bus_-Z"].mean(axis=(1, 2))
+    perigee = int(np.argmin([orbit.radius(u) for u in vl.u]))
+    apogee = int(np.argmax([orbit.radius(u) for u in vl.u]))
+    assert earth[perigee] > earth[apogee] * 1.2

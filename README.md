@@ -98,15 +98,15 @@ a new tab has to declare its banner free before the frame will poll it.
 
 ## Install
 
-The base install is the console and the transports its drivers open — nothing
-else. No numpy, no matplotlib, no astrodynamics library; driving a PSU needs
-none of them.
+The base install is the console, the transports its drivers open, and numpy for
+the orbit files and environment models (`formslab.orbit`). No matplotlib, no
+scipy, no astrodynamics library; driving a PSU needs none of them.
 
 ```
 pip install -e .              # console + transports
 pip install -e ".[pico]"      # + mpremote, to talk to the cryo board's Pico bridge
 pip install -e ".[images]"    # + astropy, for scripts/fz2fits.py (sLTA frames)
-pip install -e ".[orbit]"     # + numpy/scipy/matplotlib, for formslab.orbit (orbit and environment models)
+pip install -e ".[orbit]"     # + scipy/matplotlib, for formslab.orbit's transient solver and plots
 pip install -e ".[dev]"       # + pytest
 ```
 
@@ -124,7 +124,7 @@ src/formslab/
 ├── sequence/    lab plans: test sequences, read and run
 ├── host/        the process that runs a plan
 ├── gui/         the web GUI (`labcli gui`; docs/GUI.md)
-└── orbit/       orbit, view-factor and environment models ([orbit] extra; nothing above imports it)
+└── orbit/       orbit files and the orbit, view-factor and environment models (docs/ORBIT.md)
 rScripts/        the routines that own the instruments during a run
 plans/           lab plans, e.g. psu1_smtc08_first.plan
 scripts/         launchers and standalone analysis tools

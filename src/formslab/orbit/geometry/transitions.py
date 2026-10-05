@@ -91,22 +91,22 @@ class SlewModeSwitch:
         cached = self._transition_cache.get(orbit)
         if cached is not None:
             return cached
-        if orbit.nu <= 0.0:
+        if not orbit.eclipse_arcs:
             cached = ()
         else:
-            entry_span_cap = 0.95 * (2.0 * orbit.nu)
-            exit_span_cap = 0.95 * (2.0 * math.pi - 2.0 * orbit.nu)
+            entry, exit_ = orbit.eclipse_arcs[0]
+            entry_span_cap = 0.95 * (exit_ - entry)
+            exit_span_cap = 0.95 * (2.0 * math.pi - (exit_ - entry))
             if min(entry_span_cap, exit_span_cap) <= 0.0:
                 cached = ()
             else:
-                boundary = orbit.uc_sun + math.pi
                 cached = (
                     self._solve_transition(
-                        float(_wrap_2pi(boundary - orbit.nu)),
+                        float(_wrap_2pi(entry)),
                         self.sunlit_law, self.eclipse_law, orbit, entry_span_cap,
                     ),
                     self._solve_transition(
-                        float(_wrap_2pi(boundary + orbit.nu)),
+                        float(_wrap_2pi(exit_)),
                         self.eclipse_law, self.sunlit_law, orbit, exit_span_cap,
                     ),
                 )

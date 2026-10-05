@@ -1,15 +1,14 @@
-"""formslab.orbit stays a self-contained layer stack.
+"""formslab.orbit is a layer stack.
 
-The package is a plain copy of the orbit-tools model package and is meant to
-be lifted out again (a FORMS plug-in later), so it imports nothing outside
-itself, by relative imports only, and each layer imports only lower layers.
-These checks parse the source, so they run on a base install too.
+Each layer imports only the layers below it, by relative imports. The models
+(every layer) depend on no other part of formsLabCLI, so they can be read and
+tested on their own; only the orbit file (`file.py`, on top) reaches into the
+rest, for the grammar its lines are read with. These checks parse the source.
 """
 
 from __future__ import annotations
 
 import ast
-import importlib.util
 import unittest
 from pathlib import Path
 
@@ -28,8 +27,10 @@ ALLOWED = {
     "imaging": {"propagate", "visibility"},
 }
 
-# Third-party imports the `orbit` extra provides; anything else must be stdlib.
+# Third-party imports: numpy (base) and the `orbit` extra; anything else must be stdlib.
 EXTRA = {"numpy", "scipy", "matplotlib", "mpl_toolkits"}
+# The orbit file may import these: its grammar, and where plans (and orbits) are found.
+FILE_USES = {"formslab.rscripts.grammar", "formslab.sequence.plan"}
 # Optional, outside the extra: only these modules may import them, and no
 # package __init__ may import these modules.
 OPTIONAL = {"plotly": "geometry/cubesat/scene3d.py"}
@@ -47,14 +48,17 @@ def _imports(path: Path) -> list[str]:
 
 
 class OrbitLayoutTests(unittest.TestCase):
-    def test_package_imports_nothing_outside_itself(self) -> None:
-        """No formslab, no FORMS: only itself (relatively), stdlib, and the extra."""
+    def test_the_models_import_no_other_part_of_formslab(self) -> None:
+        """The layers: only themselves (relatively), stdlib, numpy and the extra.
+        The orbit file: those, and the grammar."""
         import sys
 
         offenders = []
         for path in PACKAGE.rglob("*.py"):
             for mod in _imports(path):
                 if mod.startswith("."):
+                    continue
+                if path == PACKAGE / "file.py" and mod in FILE_USES:
                     continue
                 top = mod.split(".")[0]
                 if top in EXTRA or top in sys.stdlib_module_names or top == "__future__":
@@ -93,7 +97,6 @@ class OrbitLayoutTests(unittest.TestCase):
         import formslab.orbit  # noqa: F401
 
 
-@unittest.skipUnless(importlib.util.find_spec("numpy"), "needs the orbit extra")
 class OrbitEntryPointTests(unittest.TestCase):
     def test_public_entry_points(self) -> None:
         from formslab.orbit.imaging import Instrument, build_pass_case, schedule_date

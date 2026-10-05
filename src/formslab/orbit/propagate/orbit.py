@@ -1,24 +1,26 @@
-"""Orbit geometry configuration.
+"""Orbit geometry: the `Orbit` the attitude, view-factor and thermal models
+sweep, and the circular-orbit formulas (beta, eclipse arc, J2 RAAN drift, LTAN)
+that visibility and imaging use.
 
-Single source of truth: orbital elements + epoch -> all derived geometry
-(beta angles, eclipse model, LVLH/ECI frames). Sun ephemeris and constants
-come from ``sun`` and ``constants``.
+`Orbit` is built from Keplerian elements (``kepler.Elements``); the Sun ephemeris
+and constants come from ``sun`` and ``constants``.
 """
 
 import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from functools import cached_property
 
 import numpy as np
 
 from .constants import AU, J2, MU, R_E, R_SUN  # noqa: F401  (re-exported)
-from .sun import sun_ra_dec
+from .kepler import Elements, in_shadow_cone, mean_from_true, true_from_mean
+from .sun import sun_dist, sun_ra_dec
 
 # -- LVLH convention -----------------------------------------------------
-#   index 0 = along-track  (T, velocity)
+#   index 0 = along-track  (T, in the plane, perpendicular to the radius)
 #   index 1 = cross-track  (W, orbit normal)
 #   index 2 = radial       (R, zenith)
-NADIR = np.array([0.0, 0.0, -1.0])
 
 
 def beta_uc(i, omega, ra, dec):
@@ -106,109 +108,99 @@ def sun_beta_uc(i: float, omega: float, dt: datetime) -> tuple[float, float]:
     return beta_uc(i, omega, ra_sun, dec_sun)
 
 
-# -- Direction in LVLH ---------------------------------------------------
-
-def direction(beta, uc, u):
-    """Unit vector in LVLH (T, W, R) at argument of latitude *u*.
-
-    Parameters
-    ----------
-    beta : float  beta angle of the direction [rad]
-    uc   : float  argument of latitude of culmination [rad]
-    u    : float  spacecraft argument of latitude [rad]
-    """
-    cb = math.cos(beta)
-    du = u - uc
-    return np.array([-cb * math.sin(du), math.sin(beta), cb * math.cos(du)])
-
-
-# -- Orbit dataclass ------------------------------------------------------
+# -- Orbit ---------------------------------------------------------------
 
 @dataclass(frozen=True)
 class Orbit:
-    """Immutable orbit geometry.  Single configuration point.
+    """One orbit, swept once, for the attitude, view-factor and thermal models.
 
-    Construct via ``Orbit.from_epoch(...)`` for automatic Sun/target
-    geometry, or directly for precomputed values.
+    It is built from Keplerian elements (``propagate.kepler.Elements``, as an
+    orbit file gives them) and is swept by one parameter, ``u``: the *mean*
+    argument of latitude, ``argp + M``. It advances uniformly in time, so a grid
+    in u is a grid in time, ``t = epoch + (u - u0) / n``. For a circular orbit it
+    is the argument of latitude itself. Position, radius, the Earth's size and the
+    umbra at each u come from Kepler's equation.
+
+    The Sun is frozen at the epoch for the whole sweep (it moves about 1 degree a
+    day); eclipse is the umbra cone at that Sun distance. Hashable, so laws can
+    cache per orbit.
     """
-    a:        float          # semi-major axis [m]
-    i:        float          # inclination [rad]
-    omega:    float          # RAAN [rad]
-    H:        float          # normalised altitude  a / R_E
-    rho:      float          # Earth angular radius from S/C [rad]
-    n:        float          # mean motion [rad/s]
-    beta_sun: float          # Sun beta angle [rad]
-    uc_sun:   float          # Sun culmination arg-of-lat [rad]
-    nu:       float          # eclipse half-angle [rad]
-    beta_tgt: float = None   # target beta angle [rad]
-    uc_tgt:   float = None   # target culmination [rad]
-    epoch:    object = None  # reference epoch (informational)
+    elements: Elements
 
-    # -- factory -----------------------------------------------------------
+    # -- construction -------------------------------------------------------
 
     @staticmethod
-    def from_epoch(a, i, omega, epoch, target_radec=None):
-        """Construct from orbital elements and UTC epoch.
+    def from_epoch(a, i, omega, epoch):
+        """A circular orbit at the ascending node at `epoch` (u = 0 there).
 
-        Parameters
-        ----------
-        a     : float     semi-major axis [m]
-        i     : float     inclination [rad]
-        omega : float     RAAN [rad]
-        epoch : datetime  UTC epoch for Sun ephemeris
-        target_radec : tuple (ra_rad, dec_rad), optional
+        a [m], i and omega (RAAN) [rad], epoch a UTC datetime.
         """
-        ra_s, dec_s = sun_ra_dec(epoch)
-        bs, us = beta_uc(i, omega, ra_s, dec_s)
-        nu = eclipse_half_angle(a, bs)
+        return Orbit(Elements(a=a, e=0.0, i=i, raan=omega, argp=0.0, nu=0.0, epoch=epoch))
 
-        bt, ut = None, None
-        if target_radec is not None:
-            bt, ut = beta_uc(i, omega, *target_radec)
+    # -- the elements -------------------------------------------------------
 
-        return Orbit(
-            a=a, i=i, omega=omega,
-            H=a / R_E,
-            rho=math.asin(R_E / a),
-            n=math.sqrt(MU / a**3),
-            beta_sun=bs, uc_sun=us, nu=nu,
-            beta_tgt=bt, uc_tgt=ut,
-            epoch=epoch,
-        )
+    @property
+    def a(self):
+        return self.elements.a
 
-    # -- direction queries -------------------------------------------------
+    @property
+    def e(self):
+        return self.elements.e
 
-    def sun_dir(self, u):
-        """Sun direction in LVLH at argument of latitude *u*."""
-        return direction(self.beta_sun, self.uc_sun, u)
+    @property
+    def i(self):
+        return self.elements.i
 
-    def target_dir(self, u):
-        """Target direction in LVLH at argument of latitude *u*."""
-        return direction(self.beta_tgt, self.uc_tgt, u)
+    @property
+    def raan(self):
+        return self.elements.raan
 
-    def in_eclipse(self, u):
-        """True if *u* falls within the eclipse (umbra) arc."""
-        if self.nu <= 0:
-            return False
-        return abs(math.remainder(u - self.uc_sun - math.pi, 2 * math.pi)) < self.nu
+    @property
+    def epoch(self):
+        return self.elements.epoch
+
+    @property
+    def n(self):
+        """Mean motion [rad/s]."""
+        return self.elements.n
 
     @property
     def period(self):
         """Orbital period [s]."""
-        return 2 * math.pi / self.n
+        return self.elements.period
+
+    @cached_property
+    def u0(self):
+        """The mean argument of latitude at the epoch [rad]."""
+        return self.elements.argp + mean_from_true(self.elements.nu, self.e)
+
+    # -- along the sweep ----------------------------------------------------
+
+    def true_latitude(self, u):
+        """Argument of latitude (argp + true anomaly) [rad] at sweep parameter `u`."""
+        if self.e == 0.0:
+            return u
+        return self.elements.argp + true_from_mean(u - self.elements.argp, self.e)
+
+    def radius(self, u):
+        """Distance from the Earth's centre [m] at `u`."""
+        if self.e == 0.0:
+            return self.a
+        nu = self.true_latitude(u) - self.elements.argp
+        return self.a * (1 - self.e ** 2) / (1 + self.e * math.cos(nu))
+
+    def rho(self, u):
+        """The Earth's angular radius seen from the spacecraft [rad] at `u`."""
+        return math.asin(R_E / self.radius(u))
 
     def utc_at(self, u):
-        """UTC datetime(s) at argument of latitude u [rad].
-
-        Convention: u = 0 at ``self.epoch``. The orbit propagates uniformly
-        at mean motion ``self.n`` (rad/s), so ``t = epoch + u / n``.
+        """UTC datetime(s) at `u`: ``epoch + (u - u0) / n``.
 
         Parameters
         ----------
         u : float or array-like
-            Argument of latitude [rad]. Need not be wrapped to [0, 2π);
-            negative values map to times before the epoch and values
-            beyond 2π map to subsequent orbits.
+            Need not be wrapped to [0, 2π); values before u0 map to times before
+            the epoch and values beyond 2π to later orbits.
 
         Returns
         -------
@@ -219,15 +211,73 @@ class Orbit:
             raise ValueError("Orbit has no epoch — cannot compute utc_at()")
         is_scalar = np.ndim(u) == 0
         arr = np.atleast_1d(np.asarray(u, dtype=float))
-        out = [self.epoch + timedelta(seconds=float(s / self.n)) for s in arr]
+        out = [self.epoch + timedelta(seconds=float((s - self.u0) / self.n)) for s in arr]
         return out[0] if is_scalar else out
 
-    # -- ECI vector queries ------------------------------------------------
+    # -- the Sun, frozen at the epoch ----------------------------------------
+
+    @cached_property
+    def _sun(self):
+        return sun_ra_dec(self.epoch)
+
+    @property
+    def beta_sun(self):
+        """Sun beta angle [rad]."""
+        return beta_uc(self.i, self.raan, *self._sun)[0]
+
+    @property
+    def uc_sun(self):
+        """Argument of latitude at which the Sun culminates [rad]."""
+        return beta_uc(self.i, self.raan, *self._sun)[1]
+
+    @cached_property
+    def sun_distance(self):
+        """Earth-Sun distance at the epoch [m]."""
+        return sun_dist(self.epoch)
+
+    def sun_eci(self):
+        """Sun direction unit vector in ECI (constant over the sweep)."""
+        if self.epoch is None:
+            raise ValueError("Orbit has no epoch — cannot compute sun_eci()")
+        ra, dec = self._sun
+        cd = math.cos(dec)
+        return np.array([math.cos(ra) * cd, math.sin(ra) * cd, math.sin(dec)])
+
+    def in_eclipse(self, u):
+        """True if the spacecraft is in the Earth's umbra at `u`."""
+        return in_shadow_cone(self.position_eci(u), self.sun_eci(), self.sun_distance)
+
+    @cached_property
+    def eclipse_arcs(self):
+        """The umbra over one sweep, as ((entry, exit), ...) in u [rad]: entry in
+        [0, 2π), exit after it (past 2π when the arc wraps). Found by sampling,
+        then bisection."""
+        steps = 720
+        grid = [2 * math.pi * k / steps for k in range(steps + 1)]
+        shade = [self.in_eclipse(u) for u in grid]
+
+        def edge(lo, hi, lo_shade):
+            while hi - lo > 1e-12:
+                mid = 0.5 * (lo + hi)
+                lo, hi = (mid, hi) if self.in_eclipse(mid) == lo_shade else (lo, mid)
+            return hi
+
+        entries = [edge(grid[k], grid[k + 1], False) for k in range(steps) if not shade[k] and shade[k + 1]]
+        exits = [edge(grid[k], grid[k + 1], True) for k in range(steps) if shade[k] and not shade[k + 1]]
+        arcs = []
+        for start in entries:
+            after = [x for x in exits if x > start] or [x + 2 * math.pi for x in exits]
+            if after:
+                arcs.append((start % (2 * math.pi), min(after)))
+        return tuple(sorted(arcs))
+
+    # -- ECI vector queries ----------------------------------------------------
 
     def r_hat_eci(self, u):
-        """Radial (zenith) unit vector in ECI at argument of latitude *u*."""
-        cu, su = math.cos(u), math.sin(u)
-        cO, sO = math.cos(self.omega), math.sin(self.omega)
+        """Radial (zenith) unit vector in ECI at `u`."""
+        lat = self.true_latitude(u)
+        cu, su = math.cos(lat), math.sin(lat)
+        cO, sO = math.cos(self.raan), math.sin(self.raan)
         ci, si = math.cos(self.i),     math.sin(self.i)
         return np.array([
             cu * cO - su * ci * sO,
@@ -235,14 +285,20 @@ class Orbit:
             su * si,
         ])
 
+    def position_eci(self, u):
+        """Position [m] in ECI at `u`."""
+        return self.radius(u) * self.r_hat_eci(u)
+
     def nadir_eci(self, u):
         """Nadir (toward Earth centre) unit vector in ECI."""
         return -self.r_hat_eci(u)
 
     def v_hat_eci(self, u):
-        """Along-track (velocity) unit vector in ECI at argument *u*."""
-        cu, su = math.cos(u), math.sin(u)
-        cO, sO = math.cos(self.omega), math.sin(self.omega)
+        """Along-track unit vector in ECI at `u`: in the plane, perpendicular to
+        the radius (the velocity direction on a circular orbit)."""
+        lat = self.true_latitude(u)
+        cu, su = math.cos(lat), math.sin(lat)
+        cO, sO = math.cos(self.raan), math.sin(self.raan)
         ci, si = math.cos(self.i),     math.sin(self.i)
         return np.array([
             -su * cO - cu * ci * sO,
@@ -253,20 +309,12 @@ class Orbit:
     @property
     def h_hat_eci(self):
         """Orbit-normal (angular momentum) unit vector in ECI."""
-        cO, sO = math.cos(self.omega), math.sin(self.omega)
+        cO, sO = math.cos(self.raan), math.sin(self.raan)
         si, ci = math.sin(self.i),     math.cos(self.i)
         return np.array([si * sO, -si * cO, ci])
 
-    def sun_eci(self):
-        """Sun direction unit vector in ECI (constant over one orbit)."""
-        if self.epoch is None:
-            raise ValueError("Orbit has no epoch — cannot compute sun_eci()")
-        ra, dec = sun_ra_dec(self.epoch)
-        cd = math.cos(dec)
-        return np.array([math.cos(ra) * cd, math.sin(ra) * cd, math.sin(dec)])
-
     def eci_from_lvlh(self, u):
-        """3×3 rotation matrix mapping LVLH vectors to ECI at argument *u*.
+        """3×3 rotation matrix mapping LVLH vectors to ECI at `u`.
 
         Columns: [v_hat, h_hat, r_hat] — the LVLH (T, W, R) axes in ECI.
         """

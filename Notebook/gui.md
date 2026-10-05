@@ -159,9 +159,11 @@ propagating them by two-body motion. The goal is simulating the satellite's
 background temperatures; the stages after it, each to get its own plan:
 
 1. **Environment profile.** Orbit file + spacecraft model -> `orbit.thermal.pipeline`
-   (orbit extra) -> per-face environment temperature over one orbit, written as a
-   recorder-format CSV so the Plots tab shows it with no new code. Open: the
-   pipeline's `Orbit` is circular (a, i, raan), so generalise it or require e near 0;
+   -> per-face environment temperature over one orbit, written as a
+   recorder-format CSV so the Plots tab shows it with no new code. Since
+   2026-10-05 the pipeline's `Orbit` is built from the orbit file's elements
+   (eccentric included) and numpy is in the base install, so view, flux and
+   environment temperature run anywhere; the transient solver needs scipy. Open:
    how the spacecraft is described (a file with its own grammar?).
 2. **3D view.** Orbit, Earth, Sun direction, the spacecraft's attitude. Open: plotly
    (`scene3d`) is multi-MB; a small vendored WebGL library or hand-drawn canvas,
@@ -238,7 +240,8 @@ Functional
 
 Non-functional
 - N1 Runs on Windows, Linux (Pi included) and, ideally, Mac; any current browser.
-- N2 No build step, no internet, no new base dependency (the orbit extra stays optional).
+- N2 No build step, no internet, no new base dependency beyond numpy (added 2026-10-05 for the
+  orbit models; scipy and matplotlib stay in the optional `orbit` extra).
 - N3 Does not open any instrument, ever.
 - N4 Usable with no host running (plans, plots, orbit view still work).
 - N5 A page reload loses nothing: state lives in files.

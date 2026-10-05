@@ -1,6 +1,6 @@
 """SV-7 systems measures, computed from the canonical pass model.
 
-Every value in the matrix is derived from :func:`orbit.imaging.pass_case.build_pass_case`
+Every value in the matrix is derived from :func:`formslab.orbit.imaging.pass_case.build_pass_case`
 sweeps -- the same model the poster figures draw -- so the table and the
 figures cannot drift apart.
 

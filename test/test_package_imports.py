@@ -29,13 +29,16 @@ FIRMWARE = {"formslab.devices.cryocooler.pico_board_control"}
 # Modules that legitimately need an extra, and the distribution that provides
 # it, by module-name prefix. The map is asserted in both directions below, so a
 # module that needs an extra has to be covered here.
-#   formslab.orbit.*  the `orbit` extra (numpy, scipy, matplotlib). The bare
-#                     `formslab.orbit` package imports nothing, so it is not.
+#   ...plots          matplotlib, the `orbit` extra (numpy is in the base
+#                     install; scipy is imported only when the transient
+#                     solver runs).
 #   ...scene3d        interactive 3-D views; plotly, which no extra installs.
 # First matching prefix wins.
 EXTRA_ONLY_PREFIXES = {
     "formslab.orbit.geometry.cubesat.scene3d": "plotly",
-    "formslab.orbit.": "numpy",
+    "formslab.orbit.geometry.cubesat.plots": "matplotlib",
+    "formslab.orbit.viewfactor.plots": "matplotlib",
+    "formslab.orbit.thermal.plots": "matplotlib",
 }
 
 

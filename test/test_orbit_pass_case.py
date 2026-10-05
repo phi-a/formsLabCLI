@@ -11,13 +11,6 @@ import math
 import unittest
 from datetime import datetime, timezone
 
-import pytest
-
-# formslab.orbit needs the `orbit` extra (numpy, scipy, matplotlib); a base
-# install skips these tests.
-for _dist in ("numpy", "scipy", "matplotlib"):
-    pytest.importorskip(_dist)
-
 from formslab.orbit.imaging.optimize import Instrument, optimize
 from formslab.orbit.imaging.pass_case import (
     DEFAULT_MIN_EXPOSURE_S,

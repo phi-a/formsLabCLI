@@ -112,5 +112,5 @@ def test_which_elements_an_orbit_still_lacks():
 
 
 def test_the_elements_are_the_orbit_files_own():
-    from formslab.kepler.file import ORDER
+    from formslab.orbit.file import ORDER
     assert run_js([], "T.ELEMENTS") == list(ORDER)

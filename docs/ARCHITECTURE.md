@@ -27,7 +27,7 @@ hardware test sequences against them. Running those sequences is its central job
 | Grammar | `formslab.rscripts.grammar`, `cast` | The commands each routine declares, as data: parses a cast-tab line or a plan step, lists what can come next (completion, the GUI's dropdowns), and builds the help cards. |
 | Sequences | `formslab.sequence` | Lab plans, one step per line: which routines run, and the ordered steps of a test. Steps talk to routines through CAST, never to a driver. |
 | Host | `formslab.host` | One run of one plan. Lock, ctrl, pacing, recording, shutdown. |
-| Orbit files | `formslab.kepler` | `.orbit` files: Keplerian elements, their grammar (the same `Grammar`), two-body propagation, umbra and beta. Standard library only; the GUI opens them, nothing runs them (docs/ORBIT.md). |
+| Orbits | `formslab.orbit` | `.orbit` files (`file`: Keplerian elements, read with the same `Grammar`; the GUI opens them, nothing runs them, docs/ORBIT.md), and the models they feed, in layers: `propagate` (two-body motion, the `Orbit` the models sweep), `geometry` (attitude, spacecraft), `viewfactor`, `thermal` (flux, environment temperature), `visibility` and `imaging`. numpy; the transient solver needs scipy and the plots matplotlib (the `orbit` extra). |
 | Console | `formslab.console`, `formslab.app` | The operator: start and stop runs, watch and command instruments. |
 
 CAST (`castfile.json`) is the bus between them: a request block per instrument
@@ -73,11 +73,11 @@ routines as ordinary variables (rSLTA reads `InUmbra`, `UmbraDuration`,
 `UmbraTimeRemaining`). The replay step itself (a plan step that follows a
 profile file) is not built yet.
 
-An orbit file (`formslab.kepler`) is lab-side configuration, not FORMS: one orbit
-by two-body motion, for the GUI to show and, later, for the environment models in
-`formslab.orbit` to start from. Its constants and Sun ephemeris are copies of
-`formslab.orbit.propagate`'s, because that package imports nothing outside itself
-and this one must not need numpy; a test holds the copies identical.
+An orbit file is lab-side configuration, not FORMS: one orbit by two-body motion,
+which the GUI shows live and the environment models in `formslab.orbit` sweep
+(`file.load` gives the `Orbit`). `formslab.orbit` is part of formsLabCLI; its
+models import no other part of it, and only the orbit file reaches into the
+grammar (`test/test_orbit_layout.py`).
 
 ## Known conflicts
 

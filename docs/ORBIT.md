@@ -50,8 +50,8 @@ orbit is a fixed ellipse. Left out:
 - **Drag** and the Moon and Sun's pull.
 
 The Sun's direction is a low-precision ephemeris (the Astronomical Almanac's). The
-umbra is the cone tangent to the Sun and the Earth, the model `formslab.orbit`
-uses. Altitude is above a spherical Earth of radius 6378.1 km.
+umbra is the cone tangent to the Sun and the Earth. Altitude is above a spherical
+Earth of radius 6378.1 km.
 
 ## In the GUI
 
@@ -78,4 +78,26 @@ Shipped: `leo_dawn_dusk` (the plane faces the Sun, no eclipse: the hot case) and
 `leo_noon` (the Sun in the plane, 35 minutes of umbra every orbit: the cold case).
 Names are shared with plans: an orbit cannot take a plan's name.
 
-The code is `formslab.kepler`: standard library only, so it needs no extra.
+## In the models
+
+The same file drives the view-factor and environment models:
+
+```python
+from formslab.orbit.file import load
+from formslab.orbit.geometry import LVLHFixed
+from formslab.orbit.thermal.pipeline import CubeSat, catalog, view
+
+orbit = load("plans/leo_noon.orbit")
+sat = CubeSat(catalog("6u_double_deployable"))
+vl = view(sat.geometry, orbit, LVLHFixed(), facets=["bus_-Z"])
+```
+
+The models sweep one orbit by its mean argument of latitude, `argp + M`, which
+advances uniformly in time, so their samples are evenly spaced in time. Position,
+radius, the Earth's size seen from the satellite, and the umbra at each sample
+come from Kepler's equation, so an eccentric orbit sees more of the Earth at
+perigee. For the sweep the Sun is held where it is at the epoch (it moves about a
+degree a day); the live panel moves it.
+
+The code is `formslab.orbit`: `file` for the file, `propagate.kepler` for the
+motion, `propagate.orbit.Orbit` for the sweep.

@@ -1,9 +1,13 @@
 """CubeSat-scoped modeling container with layered analysis.
 
-Thin convenience facade over ``geometry``, ``viewfactor``, and ``thermal``.
-The notebooks import this module's public API directly:
+Thin convenience facade over ``geometry``, ``viewfactor``, and ``thermal``:
 
-    from orbit.thermal.pipeline import catalog, CubeSat, view, flux, transient, env
+    from formslab.orbit.file import load
+    from formslab.orbit.thermal.pipeline import catalog, CubeSat, view, flux, transient, env
+
+    orbit = load("plans/leo_noon.orbit")
+    sat = CubeSat(catalog("6u_double_deployable"))
+    vl = view(sat.geometry, orbit, law)
 
 Layers
 ------

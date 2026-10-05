@@ -11,9 +11,11 @@ requires-python = ">=3.10"
 # rendering plus the transports the drivers actually open. `pyvisa` and
 # `pyserial` are both here because the Rigol PSU driver prefers VISA and falls
 # back to a raw serial line (devices/dp832a/), and a lab box should have both
-# paths available rather than discovering the gap mid-test. Deliberately absent:
-# numpy, matplotlib and any astrodynamics library -- driving a PSU needs none of
-# them. That absence is the reason this package was split out of FORMS.
+# paths available rather than discovering the gap mid-test. numpy is here for
+# formslab.orbit: the orbit files the GUI opens and the view-factor and
+# environment models behind them (decided 2026-10-05; it builds on the Pi).
+# Deliberately absent: matplotlib, scipy and any astrodynamics library (FORMS),
+# which a lab box driving instruments does not need.
 #
 # `pyvisa` picks its backend itself: NI-VISA when that library is installed
 # (the Windows benches), otherwise pyvisa-py. Linux and the Pi have no NI-VISA,
@@ -27,6 +29,7 @@ dependencies = [
     "pyusb; sys_platform != 'win32'",
     "pymodbus",
     "psutil",
+    "numpy>=1.24",
 ]
 
 [project.scripts]
@@ -40,10 +43,10 @@ pico = ["mpremote"]
 # scripts/fz2fits.py, which converts sLTA frames. Separate because a bench box
 # that only drives instruments should not pull astropy in.
 images = ["astropy"]
-# formslab.orbit: the orbit, view-factor and radiative-environment models used
-# to simulate test conditions. The numpy stack stays out of the base install;
-# nothing in the console or host imports formslab.orbit.
-orbit = ["numpy>=1.24", "scipy>=1.10", "matplotlib>=3.8"]
+# The rest of formslab.orbit: the transient thermal solver (scipy, imported
+# when it runs) and the plots (matplotlib). Propagation, view factors, flux and
+# environment temperature need only numpy, which is in the base install.
+orbit = ["scipy>=1.10", "matplotlib>=3.8"]
 dev = ["pytest", "pytest-xdist"]
 
 [tool.setuptools]

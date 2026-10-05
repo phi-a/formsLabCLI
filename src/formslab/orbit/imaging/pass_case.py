@@ -14,7 +14,7 @@ of the same numbers.
 One geometry, one truth
 -----------------------
 ``eclipse_s`` is derived from ``geom.umbra_half_rad`` rather than from
-:func:`orbit.propagate.orbit.eclipse_duration`. ``visibility_geometry`` takes no
+:func:`formslab.orbit.propagate.orbit.eclipse_duration`. ``visibility_geometry`` takes no
 Sun-distance argument while ``eclipse_duration`` does, so mixing the two makes
 the drawn arcs and the drawn timeline disagree by ~0.07 s. Small, but it would
 show up as a visible seam where the readout blocks are supposed to end flush

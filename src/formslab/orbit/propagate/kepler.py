@@ -117,20 +117,24 @@ def beta(el: Elements, t: datetime) -> float:
     return math.asin(max(-1.0, min(1.0, sum(a * b for a, b in zip(s, h)))))
 
 
-def in_umbra(r, t: datetime) -> bool:
-    """True when position `r` [m, ECI] is in the Earth's umbra at `t`: inside the
-    cone tangent to the Sun and the Earth, on the night side (the conical model
-    of ``formslab.orbit.propagate.eclipse_half_angle``)."""
-    s = sun_direction(t)
-    x = sum(a * b for a, b in zip(r, s))          # along the Sun direction
+def in_shadow_cone(r, sun, distance: float) -> bool:
+    """True when position `r` [m, ECI] is in the Earth's umbra, for the Sun along
+    unit vector `sun` at `distance` [m]: inside the cone tangent to the Sun and
+    the Earth, on the night side (the conical model of `orbit.eclipse_half_angle`)."""
+    x = sum(a * b for a, b in zip(r, sun))        # along the Sun direction
     if x >= 0:
         return False
-    sin_a = (R_SUN - R_E) / sun_dist(t)
+    sin_a = (R_SUN - R_E) / distance
     behind_apex = R_E / sin_a + x                  # distance from the cone's apex, toward the Earth
     if behind_apex <= 0:
         return False
     across = math.sqrt(max(0.0, sum(a * a for a in r) - x * x))
     return across < behind_apex * math.tan(math.asin(sin_a))
+
+
+def in_umbra(r, t: datetime) -> bool:
+    """True when position `r` [m, ECI] is in the Earth's umbra at `t`."""
+    return in_shadow_cone(r, sun_direction(t), sun_dist(t))
 
 
 def umbra_at(el: Elements, t: datetime) -> bool:
