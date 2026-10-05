@@ -146,7 +146,7 @@ def _command(runner, run, segment) -> int:
     start = runner.elapsed
     while problems := assess(label, request):
         if any(definite for _, definite in problems) or runner.elapsed - start >= timeout:
-            raise SequenceError(f"{label}: {request} not sent: " + "; ".join(w for w, _ in problems))
+            raise SequenceError(f"{label}: {request} not sent. " + " ".join(w for w, _ in problems))
         tick()
     # The step ends when the request is taken, or, for an owner that reports
     # results (rLACO), when it has been carried out: a refusal stops the plan.

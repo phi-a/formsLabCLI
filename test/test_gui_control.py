@@ -274,7 +274,7 @@ def test_a_command_the_rules_forbid_is_not_sent(client, host_up, owner):
     castutils.UpdateStatus("hvc", {**castutils.ReadStatus("hvc"), "platen C": 85.0})
     code, body = client.json("POST", "/api/cast", {"line": "hvc vent open"})
     assert code == 200 and body["ok"] is False and body["state"] == "refused"
-    assert "needs platenT below 60 C" in body["text"] and "vent window" in body["text"]
+    assert "Needs Platen at most 60 \u00b0C." in body["text"] and "between 10 and 60 \u00b0C" in body["text"]
     assert owner == []
 
 

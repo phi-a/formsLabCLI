@@ -106,7 +106,7 @@ def test_the_rules_stop_a_step_before_it_is_sent(chamber, monkeypatch, tmp_path)
     plan = tmp_path / "gate.plan"
     plan.write_text("load rLACO\nhvc pump on\nhvc gate open\nlog never reached\n", encoding="utf-8")
     _quick(monkeypatch)
-    with pytest.raises(SequenceError, match="not sent: needs turbo on"):
+    with pytest.raises(SequenceError, match="not sent. Needs Turbo pump on"):
         sequence.channel(plan_path=plan)
     assert not chamber.state.devices["OG"] and not chamber.state.devices["OP"]
 

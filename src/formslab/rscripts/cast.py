@@ -174,7 +174,7 @@ def send(label: str, request: dict, *, host: dict | None, wait_result: bool | No
                 "text": "refused: no run is going, so nothing would apply it; nothing sent"}
     if why := refusal(label, request):
         return {**out, "state": "refused", "ok": False, "messages": [why],
-                "text": f"refused, nothing sent: {why}"}
+                "text": f"refused, nothing sent. {why}"}
     if wait_result is None:
         wait_result = reports_results(label)
     take_s = castutils.TAKE_S if take_s is None else take_s

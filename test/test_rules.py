@@ -28,20 +28,21 @@ def test_the_shipped_plans_have_no_rule_errors(name):
 def test_the_vent_plans_guards_establish_the_vent_window():
     _, warnings = review(find_plan("laco_vent").read_text(encoding="utf-8"))
     [(_, message)] = warnings
-    assert "rough closed, gate closed, which" in message and "platenT" not in message
+    assert message == ("Checked when the step runs: Vacuum valve closed and Gate valve closed. To settle it "
+                       "here, add hvc rough close and hvc gate close before this step.")
 
 
 def test_a_vent_with_nothing_established_is_a_warning_and_the_plan_reads():
     p = parse_plan(plan("hvc vent open"))
     [(line, message)] = p.warnings
-    assert line == 2 and "platenT above 10 C" in message and "checked when the step runs" in message
+    assert line == 2 and "Platen at least 10 \u00b0C" in message and "until platenT above 10 C" in message
 
 
 def test_a_plan_that_breaks_a_rule_cannot_run():
     with pytest.raises(PlanError) as e:
         parse_plan(plan("hvc rough open", "hvc vent open"))
     assert e.value.errors == [(3, e.value.errors[0][1])]
-    assert "needs rough closed (line 2 changed it)" in e.value.errors[0][1]
+    assert e.value.errors[0][1].startswith("Needs Vacuum valve closed (line 2 changed it). Air may only come in")
 
 
 def test_what_the_plan_establishes_is_not_warned_about():
@@ -50,13 +51,13 @@ def test_what_the_plan_establishes_is_not_warned_about():
 
 def test_a_guard_lasts_until_the_next_hold_or_command():
     p = parse_plan(plan("hvc rough close", "hvc gate close", GUARDS + "hold 1 s", "hvc vent open"))
-    assert "platenT above 10 C" in p.warnings[0][1]
+    assert "Platen at least 10 \u00b0C" in p.warnings[0][1]
 
 
 def test_a_looser_guard_does_not_establish_a_tighter_limit():
     loose = GUARDS.replace("below 60", "below 70")
     p = parse_plan(plan("hvc rough close", "hvc gate close", loose + "hvc vent open"))
-    assert "platenT below 60 C" in p.warnings[0][1] and "platenT above" not in p.warnings[0][1]
+    assert "Platen at most 60 \u00b0C" in p.warnings[0][1] and "Platen at least" not in p.warnings[0][1]
 
 
 def test_a_guard_in_kelvin_counts():
@@ -65,12 +66,12 @@ def test_a_guard_in_kelvin_counts():
 
 
 def test_stop_and_cycle_operations():
-    stopped = parse_plan(plan("hvc stop", "hvc foreline close", "hvc turbo off", "hvc pump off"))
+    stopped = parse_plan(plan("hvc stop", "hvc turbo off", "hvc foreline close", "hvc pump off"))
     assert stopped.warnings == ()
-    with pytest.raises(PlanError, match="needs rough closed"):
+    with pytest.raises(PlanError, match="Needs Vacuum valve closed"):
         parse_plan(plan("hvc rough open", "hvc foreline open"))
     after_cycle = parse_plan(plan("hvc rough open", "hvc vent2atm", "hvc foreline open"))
-    assert "rough closed" in after_cycle.warnings[-1][1]        # unknown again, not broken
+    assert "Vacuum valve closed" in after_cycle.warnings[-1][1]  # unknown again, not broken
 
 
 def test_the_gate_needs_the_crossover_pressure():
@@ -78,11 +79,11 @@ def test_the_gate_needs_the_crossover_pressure():
                         "until chamberP below 0.01 timeout 1 h", "hvc gate open"))
     assert p.warnings == ()
     p = parse_plan(plan("hvc rough close", "hvc foreline open", "hvc turbo on", "hvc gate open"))
-    assert "chamberP below 0.01 Torr" in p.warnings[0][1]
+    assert "Chamber pressure at most 0.01 Torr" in p.warnings[0][1] and "until chamberP below 0.01" in p.warnings[0][1]
 
 
 def test_an_owned_supply_channel_is_an_error_while_its_owner_is_loaded():
-    with pytest.raises(PlanError, match="psu1 ch1 feeds the cryocooler board; rCryoBoard, loaded here"):
+    with pytest.raises(PlanError, match="psu1 ch1 feeds the cryocooler board, and rCryoBoard, loaded here"):
         parse_plan(plan("psu1 ch1 off", load="rPSU rCryoBoard"))
     parse_plan(plan("psu1 ch1 off", load="rPSU"))                 # free while rCryoBoard is not
     parse_plan(plan("psu1 ch2 off", load="rPSU rCryoBoard"))      # another channel
@@ -112,14 +113,14 @@ def test_a_vent_inside_the_window_is_allowed_live():
 
 def test_a_vent_outside_the_window_is_refused_with_the_reason():
     why = rules.refusal("hvc", {"vent": "open"}, blocks=blocks(**{"platen C": 85.0}))
-    assert why.startswith("needs platenT below 60 C: air may only come in")
+    assert why.startswith("Needs Platen at most 60 \u00b0C. Air may only come in")
 
 
 def test_an_old_report_proves_nothing():
     old = {"hvc": {"timestamp": time.time() - 60, "status": SEALED}}
     problems = rules.assess("hvc", {"vent": "open"}, blocks=old)     # the vent rule, and the fault rule
     why = problems[0][0]
-    assert "rough closed (unknown)" in why and "has not reported for 60 s" in why
+    assert "Vacuum valve closed (unknown)" in why and "Nothing heard from hvc for 60 s." in why
     assert not any(definite for _, definite in problems)                # a plan step would wait
 
 
@@ -135,7 +136,7 @@ def test_a_fault_allows_only_what_makes_the_chamber_safer():
 
 def test_the_cryo_output_needs_its_supply():
     low = {"cryo": {"timestamp": time.time(), "status": {"CCVINM": 12.0}}}
-    assert "needs supplyV above 20 V" in rules.refusal("cryo", {"enabled": True}, blocks=low)
+    assert "Needs Board supply at least 20 V." in rules.refusal("cryo", {"enabled": True}, blocks=low)
     ok = {"cryo": {"timestamp": time.time(), "status": {"CCVINM": 24.0}}}
     assert rules.refusal("cryo", {"enabled": True}, blocks=ok) is None
     assert rules.refusal("cryo", {"enabled": False}, blocks=low) is None
@@ -147,3 +148,21 @@ def test_an_owned_channel_is_refused_while_its_owner_reports():
     assert rules.refusal("psu1", {"2": {"on": False}}, blocks=running) is None
     gone = {"cryo": {"timestamp": time.time() - 600, "status": {}}}
     assert rules.refusal("psu1", {"1": {"on": False}}, blocks=gone) is None
+
+
+def test_the_turbo_keeps_its_backing():
+    with pytest.raises(PlanError, match="Needs Turbo pump off"):
+        parse_plan(plan("hvc foreline open", "hvc turbo on", "hvc foreline close"))
+    with pytest.raises(PlanError, match="Needs Turbo pump off"):
+        parse_plan(plan("hvc turbo on", "hvc rough open"))
+    spinning = blocks(turbo=True, foreline=True)
+    assert "Needs Turbo pump off." in rules.refusal("hvc", {"foreline": "close"}, blocks=spinning)
+    assert "Turbo pump off" in rules.refusal("hvc", {"rough": "open"}, blocks=spinning)
+    assert rules.refusal("hvc", {"foreline": "close"}, blocks=blocks()) is None
+
+
+def test_reasons_are_whole_sentences():
+    from formslab.devices.hvc3500 import load_profile
+    from formslab.devices.hvc3500.rules import laco_rules
+    for rule in laco_rules(load_profile()):
+        assert rule.why[0].isupper() and rule.why.endswith(".") and "`" not in rule.why, rule.why

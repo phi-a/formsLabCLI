@@ -52,8 +52,9 @@ def RULES():
     from formslab.devices.cryocooler.config import CRYO_OUTPUT_SUPPLY_THRESHOLD_V as V
     from formslab.rscripts.rules import Rule, value
 
-    return [Rule("cryo", {"enabled": True}, (value("supplyV", "above", V, shown="V", live=True),),
-                 f"the board's converter cannot produce an output below about {V:g} V in")]
+    return [Rule("cryo", {"enabled": True},
+                 (value("supplyV", "above", V, shown="V", live=True, called="Board supply"),),
+                 f"The board's converter cannot produce an output with less than about {V:g} V in.")]
 
 
 def RULE_STATE(status):

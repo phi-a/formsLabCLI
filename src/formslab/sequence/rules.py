@@ -52,8 +52,8 @@ def walk(steps, scripts, published: dict):
 
         for ch, info in R.owned_channels(label, request):
             loaded = info["owner"] in scripts
-            findings.append({"why": f"{label} ch{ch} feeds the {info.get('feeds') or 'bench'}; "
-                                    f"{info['owner']} drives it while it runs",
+            findings.append({"why": f"{label} ch{ch} feeds the {info.get('feeds') or 'bench'}, and "
+                                    f"{info['owner']} drives it while it runs.",
                              "owner": info["owner"],
                              "conditions": [{"text": f"{info['owner']} not loaded",
                                              "status": BROKEN if loaded else OK}]})
@@ -71,7 +71,7 @@ def walk(steps, scripts, published: dict):
                         continue
                 else:
                     status = OK if _guarded(c, guards, units) else UNKNOWN
-                conditions.append({"text": c.text, "status": status})
+                conditions.append({"text": c.text, "status": status, **({"proof": c.proof} if c.proof else {})})
             findings.append({"why": rule.why, "conditions": conditions})
 
         yield n, findings
@@ -89,15 +89,17 @@ def check(steps, scripts, published: dict) -> tuple[list, list]:
     for n, findings in walk(steps, scripts, published):
         for f in findings:
             broken = [c["text"] for c in f["conditions"] if c["status"] == BROKEN]
-            unknown = [c["text"] for c in f["conditions"] if c["status"] == UNKNOWN]
+            unknown = [c for c in f["conditions"] if c["status"] == UNKNOWN]
             if broken and "owner" in f:
                 errors.append((n, f["why"].replace(f"{f['owner']} drives it while it runs",
                                                    f"{f['owner']}, loaded here, drives it")))
             elif broken:
-                errors.append((n, f"needs {', '.join(broken)}: {f['why']}"))
+                errors.append((n, f"Needs {R.listed(broken)}. {f['why']}"))
             elif unknown:
-                warnings.append((n, f"needs {', '.join(unknown)}, which this plan does not "
-                                    f"establish; checked when the step runs. Why: {f['why']}"))
+                proofs = [c["proof"] for c in unknown if c.get("proof")]
+                warnings.append((n, f"Checked when the step runs: {R.listed([c['text'] for c in unknown])}."
+                                    + (f" To settle it here, add {R.listed(proofs)} before this step."
+                                       if proofs else "")))
     return errors, warnings
 
 

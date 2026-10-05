@@ -109,7 +109,7 @@ def test_cast_a_refused_command_fails_with_the_reason(capsys, host):
 
 def test_cast_what_the_rules_forbid_is_not_sent(capsys, host):
     code, out = run(capsys, "cast", "hvc", "gate", "open")
-    assert code == 1 and "refused, nothing sent: needs turbo on, foreline open" in out
+    assert code == 1 and "refused, nothing sent. Needs Turbo pump on, Foreline valve open" in out
     assert host == []
 
 

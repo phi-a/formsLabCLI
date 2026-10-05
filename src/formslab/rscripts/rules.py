@@ -43,21 +43,38 @@ class Cond:
     want: object = None       # device: bool; value: (side, limit, unit or None)
     text: str = ""
     live: bool = False        # only checkable when sent (never while a plan is read)
+    proof: str = ""           # a plan line that establishes it (`hvc rough close`)
 
 
-def device(name: str, on: bool, text: str) -> Cond:
-    return Cond("device", name, bool(on), text)
+def device(name: str, on: bool, text: str, proof: str = "") -> Cond:
+    return Cond("device", name, bool(on), text, proof=proof)
 
 
 def value(name: str, side: str, limit: float, unit: str | None = None, *, shown: str | None = None,
-          live: bool = False) -> Cond:
-    """`name` above/below `limit`. `unit` (C or K) converts from the value's own
-    unit; `shown` is only how the limit is written."""
+          live: bool = False, called: str | None = None) -> Cond:
+    """`name` above/below `limit` (tested as at least / at most). `unit` (C or K)
+    converts from the value's own unit; `shown` is only how the limit is written;
+    `called` is the part's name in the text (`Platen at least 10 °C`). Its proof is
+    the `until` that waits for it."""
     tail = f" {unit or shown}" if (unit or shown) else ""
-    return Cond("value", name, (side, float(limit), unit), f"{name} {side} {limit:g}{tail}", live)
+    shown_tail = tail.replace(" C", " °C") if unit == "C" else tail
+    text = (f"{called} {'at least' if side == 'above' else 'at most'} {limit:g}{shown_tail}" if called
+            else f"{name} {side} {limit:g}{tail}")
+    proof = "" if live else f"until {name} {side} {limit:g}{' ' + unit if unit else ''}"
+    return Cond("value", name, (side, float(limit), unit), text, live, proof)
 
 
-NO_FAULT = Cond("fault", text="no fault", live=True)
+NO_FAULT = Cond("fault", text="No fault", live=True)
+
+
+def listed(items) -> str:
+    """`a`, `a and b`, `a, b and c`."""
+    items = list(items)
+    return items[0] if len(items) == 1 else f"{', '.join(items[:-1])} and {items[-1]}"
+
+
+def _sentence(s: str) -> str:
+    return s[:1].upper() + s[1:] + ("" if s.endswith(".") else ".")
 
 
 @dataclass(frozen=True)
@@ -177,8 +194,8 @@ def live_state(module, block: dict, now: float) -> tuple[dict, str | None]:
     if not _fresh(block, now):
         ts = block.get("timestamp")
         label = labels_of(module)[0] if labels_of(module) else "the instrument"
-        return {}, (f"{label} has not reported for {_age(now - ts)}" if isinstance(ts, (int, float))
-                    else f"{label} has not reported yet")
+        return {}, (f"Nothing heard from {label} for {_age(now - ts)}" if isinstance(ts, (int, float))
+                    else f"Nothing heard from {label} yet")
     return fn(block.get("status") or {}) or {}, None
 
 
@@ -201,8 +218,8 @@ def explain(label: str, request: dict, *, blocks: dict | None = None,
     for ch, info in owned_channels(label, request):
         owner = next((m for m in labels.values() if cast.script_name(m) == info["owner"]), None)
         running = owner is not None and any(_fresh(blocks.get(lb) or {}, now) for lb in cast.labels_of(owner))
-        out.append({"why": f"{label} ch{ch} feeds the {info.get('feeds') or 'bench'}; "
-                           f"{info['owner']} drives it while it runs",
+        out.append({"why": f"{label} ch{ch} feeds the {info.get('feeds') or 'bench'}, and "
+                           f"{info['owner']} drives it while it runs.",
                     "conditions": [{"text": f"{info['owner']} not running",
                                     "status": "broken" if running else "ok"}]})
     rules = covering(module, label, request)
@@ -215,13 +232,13 @@ def explain(label: str, request: dict, *, blocks: dict | None = None,
                 ok = holds(c, state, units)
                 conditions.append({"text": c.text,
                                    "status": "ok" if ok else "broken" if ok is False else "unknown"})
-            out.append({"why": rule.why + (f" ({stale})" if stale else ""), "conditions": conditions})
+            out.append({"why": rule.why + (f" {_sentence(stale)}" if stale else ""), "conditions": conditions})
     return out
 
 
 def refusal(label: str, request: dict, *, blocks: dict | None = None, now: float | None = None) -> str | None:
     """Why `request` to `label` must not be sent now, or None."""
-    return "; ".join(why for why, _ in assess(label, request, blocks=blocks, now=now)) or None
+    return " ".join(why for why, _ in assess(label, request, blocks=blocks, now=now)) or None
 
 
 def assess(label: str, request: dict, *, blocks: dict | None = None,
@@ -242,8 +259,8 @@ def assess(label: str, request: dict, *, blocks: dict | None = None,
         owner = next((m for m in labels.values() if cast.script_name(m) == info["owner"]), None)
         if owner is not None and any(_fresh(blocks.get(lb.lower()) or {}, now)
                                      for lb in cast.labels_of(owner)):
-            reasons.append((f"{label} ch{ch} feeds the {info.get('feeds') or 'bench'}; "
-                            f"{info['owner']} drives it while it runs", True))
+            reasons.append((f"{label} ch{ch} feeds the {info.get('feeds') or 'bench'}, and "
+                            f"{info['owner']} drives it while it runs.", True))
 
     rules = covering(module, label, request)
     if rules:
@@ -259,6 +276,6 @@ def assess(label: str, request: dict, *, blocks: dict | None = None,
                 elif ok is None:
                     missing.append(f"{c.text} (unknown)")
             if missing:
-                reasons.append((f"needs {', '.join(missing)}: {rule.why}"
-                                + (f" ({stale})" if stale else ""), definite))
+                reasons.append((f"Needs {listed(missing)}. {rule.why}"
+                                + (f" {_sentence(stale)}" if stale else ""), definite))
     return reasons

@@ -50,15 +50,19 @@ Some commands are only safe in some states, and the routine that owns them
 says which (`RULES`, rScripts/README.md). The chamber's, with limits from
 `tvac_bench.json`:
 
+Parts are named as on the chamber's screen (docs/WRITING.md): `rough` is the
+vacuum valve, `pump` the vacuum pump.
+
 | command | needs first |
 |---|---|
-| `hvc vent open`, `hvc fill open` | rough and gate closed; every zone inside the vent window (10..60 C) |
-| `hvc rough open` | vent, fill, foreline and gate closed |
-| `hvc pump off` | rough and foreline closed, turbo off (`hvc stop` does it in order) |
-| `hvc foreline open` | rough closed |
-| `hvc turbo on` | foreline open |
-| `hvc gate open` | turbo on, foreline open, chamberP below the crossover (0.01 Torr) |
-| `cryo on` | its supply at 20 V or more |
+| `hvc vent open`, `hvc fill open` | Vacuum valve and Gate valve closed; Platen and Shroud each at least 10 and at most 60 °C |
+| `hvc rough open` | Turbo pump off; Vent, Fill, Foreline and Gate valves closed |
+| `hvc pump off` | Vacuum valve and Foreline valve closed, Turbo pump off (`hvc stop` does it in order) |
+| `hvc foreline open` | Vacuum valve closed |
+| `hvc foreline close` | Turbo pump off: the foreline is a running turbo's only backing |
+| `hvc turbo on` | Foreline valve open |
+| `hvc gate open` | Turbo pump on, Foreline valve open, Chamber pressure at most 0.01 Torr (the crossover) |
+| `cryo on` | Board supply at least 20 V |
 | anything, during a fault (severity F) | refused, except closing valves, `stop`, zones off, `closeall`, `reset`, `abort` |
 | a supply channel the hardware map gives an owner | refused while that owner runs (psu1 ch1: rCryoBoard) |
 
@@ -66,13 +70,20 @@ They are checked when the plan is read. A step that breaks one is an error
 and the plan cannot start:
 
 ```
-bad.plan:5: needs rough closed (line 4 changed it): air may only come in with the chamber sealed ...
+bad.plan:5: Needs Vacuum valve closed (line 4 changed it). Air may only come in with the chamber sealed ...
 ```
 
 A step whose conditions the plan does not itself establish is a **warning**
-(amber in the editor; the plan can run). The plan establishes a state by
-commanding it (`hvc rough close`), or a value with an `until` just before the
-step (`until platenT below 60 C ...`, as `laco_vent` does). Every rule is then
+(amber in the editor; the plan can run). It says what would settle it:
+
+```
+Checked when the step runs: Vacuum valve closed and Gate valve closed. To settle it here,
+add hvc rough close and hvc gate close before this step.
+```
+
+The plan establishes a state by commanding it (`hvc rough close`), or a value
+with an `until` just before the step (`until platenT below 60 C ...`, as
+`laco_vent` does). Every rule is then
 checked again, live, when the step runs, against what the chamber last reported:
 a step it fails stops the plan, before anything is sent. The command box, the
 cast tab and `labcli cast` check the same rules and refuse with the reason.

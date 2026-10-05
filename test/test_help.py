@@ -55,15 +55,15 @@ def test_a_plan_step_shows_its_prerequisites_as_the_plan_leaves_them():
     info = describe_step(text, vent)
     assert info["cards"][0]["usage"] == "hvc <valve> open|close"
     status = {c["text"]: c["status"] for r in info["rules"] for c in r["conditions"]}
-    assert status == {"rough closed": "unknown", "gate closed": "unknown", "platenT above 10 C": "ok",
-                      "platenT below 60 C": "ok", "shroudT above 10 C": "ok", "shroudT below 60 C": "ok",
-                      "no fault": "live"}                      # the fault rule, which covers every command
+    assert status == {"Vacuum valve closed": "unknown", "Gate valve closed": "unknown", "Platen at least 10 \u00b0C": "ok",
+                      "Platen at most 60 \u00b0C": "ok", "Shroud at least 10 \u00b0C": "ok", "Shroud at most 60 \u00b0C": "ok",
+                      "No fault": "live"}                      # the fault rule, which covers every command
 
 
 def test_a_plan_step_that_breaks_a_rule_shows_where():
     info = describe_step("load rLACO\nhvc rough open\nhvc vent open\n", 3)
     [cond] = [c for r in info["rules"] for c in r["conditions"] if c["status"] == "broken"]
-    assert cond["text"] == "rough closed (line 2 changed it)"
+    assert cond["text"] == "Vacuum valve closed (line 2 changed it)"
 
 
 def test_the_load_record_and_comment_lines():
@@ -80,7 +80,7 @@ def test_the_command_box_shows_prerequisites_as_the_chamber_is_now():
                                    "platen C": 20.0, "shroud C": 20.0})
     info = cast.describe(["hvc", "vent", "open"])
     status = {c["text"]: c["status"] for r in info["rules"] for c in r["conditions"]}
-    assert status["rough closed"] == "broken" and status["gate closed"] == "ok" and status["no fault"] == "ok"
+    assert status["Vacuum valve closed"] == "broken" and status["Gate valve closed"] == "ok" and status["No fault"] == "ok"
 
 
 @pytest.fixture
@@ -95,7 +95,7 @@ def test_describe_over_http(client):
     code, body = me.json("POST", "/api/describe", {"text": "load rLACO\nhvc pump on\n", "line": 2})
     assert code == 200 and body["cards"][0]["help"] == "Turn a pump on or off"
     code, body = me.json("POST", "/api/describe", {"words": ["hvc", "gate", "open"]})
-    assert code == 200 and any(c["text"] == "turbo on" for r in body["rules"] for c in r["conditions"])
+    assert code == 200 and any(c["text"] == "Turbo pump on" for r in body["rules"] for c in r["conditions"])
     assert me.json("POST", "/api/describe", {"words": "hvc"})[0] == 400
     assert stranger.json("POST", "/api/describe", {"words": []})[0] == 401
 

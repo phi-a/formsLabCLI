@@ -255,7 +255,7 @@ def test_the_tab_refuses_what_the_rules_forbid_and_sends_nothing(run_going):
     from formslab.console.cast.castutils import ReadStatus, UpdateStatus
     UpdateStatus("hvc", {**ReadStatus("hvc"), "gate": True})
     result = castcli.execute_command(["hvc", "rough", "open"])
-    assert "refused, nothing sent: needs gate closed" in result.content.plain and not result.ok
+    assert "refused, nothing sent. Needs Gate valve closed." in result.content.plain and not result.ok
     assert ReadCommand("hvc") == {}
 
 
