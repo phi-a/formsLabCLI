@@ -227,6 +227,11 @@ def channel(plan_path, relay_func=None):
 
 
 def main(argv=None) -> int:
+    for stream in (sys.stdout, sys.stderr):          # the host log is UTF-8, however it was started
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
     ap = ArgumentParser(prog="python -m formslab.host.sequence",
                         description="Run a lab plan against the bench.")
     ap.add_argument("plan", help="a .plan file: a path, or a name found in plans/ (e.g. tvac)")

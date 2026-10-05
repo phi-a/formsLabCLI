@@ -13,6 +13,7 @@ Windows the pid is the real interpreter, not the venv launcher in front of it.
 
 Every handler returns a CLIResult; nothing prints.
 """
+import os
 import subprocess
 import sys
 import threading
@@ -56,8 +57,12 @@ def _launch_sequence(plan_path: str) -> CLIResult:
         flags = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS}
     else:
         flags = {"start_new_session": True}
-    log = log_path().open("w")
-    proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT,
+    # The host log is UTF-8 whatever the console's codepage: on Windows a redirected
+    # stdout defaults to cp1252, and a log line with a character outside it ("→", "❌")
+    # would otherwise raise inside the host.
+    log = log_path().open("w", encoding="utf-8")
+    env = dict(os.environ, PYTHONIOENCODING="utf-8")
+    proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, env=env,
                             stdin=subprocess.DEVNULL, **flags)
     log.close()                                       # the host has its own copy
     # Collect the host when it exits, so a long-lived caller (the web GUI) does

@@ -210,3 +210,39 @@ def test_a_timestamp_is_when_the_owner_reported_not_when_something_else_touched_
     assert block["timestamp"] == reported                         # still when it last reported
     assert block["status"] == {"TC01 C": 20.0}                    # the old values stay, as old
     assert block["request"] == {} and block["processed"] is True  # the pending command is cleared
+
+
+
+# --- the host log and characters outside the console's codepage ------------------------------------
+
+def test_a_log_line_the_stream_cannot_encode_does_not_raise():
+    """On Windows a redirected stdout is cp1252: '→' or '❌' in a log line used to raise
+    UnicodeEncodeError inside the host. Now the line is kept, with the character replaced."""
+    import io
+    from formslab.rscripts import Run
+    raw = io.BytesIO()
+    stream = io.TextIOWrapper(raw, encoding="cp1252", errors="strict")
+    Run(name="t", stream=stream).log("platen 20 \u2192 25 C \u274c failed")
+    stream.flush()
+    assert "platen 20 ? 25 C ? failed" in raw.getvalue().decode("cp1252")
+
+
+def test_the_host_is_launched_writing_utf8(monkeypatch):
+    from formslab.console.ctrl import ctrlcli
+    seen = {}
+
+    class Proc:
+        def wait(self):
+            return 0
+
+    def popen(cmd, **kw):
+        seen.update(kw)
+        return Proc()
+
+    monkeypatch.setattr(ctrlcli.subprocess, "Popen", popen)
+    monkeypatch.setattr(ctrlcli, "running", lambda: None)
+    monkeypatch.setattr(ctrlcli.time, "sleep", lambda s: None)
+    monkeypatch.setattr(ctrlcli.time, "monotonic", iter([0.0, 10.0, 10.0, 10.0]).__next__)
+    ctrlcli._launch_sequence("x.plan")
+    assert seen["env"]["PYTHONIOENCODING"] == "utf-8"
+    assert seen["stdout"].encoding.lower().replace("-", "") == "utf8"

@@ -30,7 +30,7 @@ def load_commands():
 # Command handlers
 def show_log(args):
     try:
-        data = log_path().read_text().splitlines()
+        data = log_path().read_text(encoding="utf-8", errors="replace").splitlines()
     except Exception as e:
         return CLIResult(Text(f"Error reading log: {e}", style=ERROR))
     return CLIResult(Text("\n".join(data), style=TEXT), clear=True, suppress_prompt=True)
@@ -49,7 +49,7 @@ def tail_log(args):
     if n > 10000:
         return CLIResult(Text("✗ Count too large (max: 10000 lines)", style=ERROR))
 
-    data = log_path().read_text().splitlines()
+    data = log_path().read_text(encoding="utf-8", errors="replace").splitlines()
     return CLIResult(Text("\n".join(data[-n:]), style=TEXT))
 
 def grep_log(args):
@@ -63,7 +63,7 @@ def grep_log(args):
     except re.error as e:
         return CLIResult(Text(f"✗ Invalid regex pattern: {e}", style=ERROR))
 
-    data = log_path().read_text().splitlines()
+    data = log_path().read_text(encoding="utf-8", errors="replace").splitlines()
     hits = [l for l in data if re.search(pat, l)]
     return CLIResult(Text("\n".join(hits), style=TEXT))
 

@@ -167,6 +167,13 @@ class Run:
         line = f"{_utc_now()} [{level}] [{component or self.component}] {message}"
         try:
             print(line, file=self._stream or sys.stdout, flush=True)
+        except UnicodeEncodeError:                 # a stream that cannot hold the text: keep the line
+            stream = self._stream or sys.stdout
+            enc = getattr(stream, "encoding", None) or "ascii"
+            try:
+                print(line.encode(enc, "replace").decode(enc), file=stream, flush=True)
+            except (OSError, ValueError):
+                pass
         except OSError:
             pass
 
