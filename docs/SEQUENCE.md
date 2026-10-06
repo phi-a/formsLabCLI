@@ -14,7 +14,7 @@ record every 2 s
 psu1 ch1 set 1.0 0.1
 psu1 ch1 on
 hold 60 s
-until TC01 above 30 C timeout 10 min
+until TC01 > 30 C within 10 min
 psu1 ch1 off
 log done
 ```
@@ -24,11 +24,36 @@ log done
 | `<label> <words>` | a command to the routine that owns the label (`hvc vent open`, `psu1 ch1 on`, `cryo ccv 14`) -- the cast tab's words; waits until the routine has taken it, and for the chamber (rLACO) until it is done | a prerequisite is not met (below); not taken within 10 s; the chamber refuses it |
 | `hold <time> s\|min\|h` | runs the routines for a while | — |
 | `hold until end` | runs until ctrl `end` (`tvac.plan`: manual operation) | — |
-| `until <variable> above\|below <limit> [C\|K] timeout <time> s\|min\|h` | runs until a published value crosses a limit; `C`/`K` converts from the value's own unit | not met by the timeout (required: a wait on hardware always has a limit) |
+| `until <condition> within <time> s\|min\|h` | runs until the condition holds (Conditions, below) | the condition does not hold within the time (required: a wait on hardware always has a limit) |
+| `until <condition> within <time> s\|min\|h or go on` | the same, but goes on at the limit | — |
 | `log <text>` | one line in the run log | — |
+| `repeat …` … `end` | the steps between them again: n times, until a condition holds, or until `end` (Loops, below) | a `repeat until` whose condition does not hold within its time |
 
 `#` starts a comment, on a line of its own (a `#` after a step is an error,
 since `log` text may contain one). Words and value names ignore case.
+
+### Conditions
+
+A condition compares a value a loaded routine publishes:
+
+| value | written | examples |
+|---|---|---|
+| a number | `<value> < \| <= \| > \| >= <limit> [C\|K]` | `chamberP < 5`, `platenT >= 10 C` |
+| on or off | `<value> = \| != true \| false` | `InUmbra = true`, `PSU1_CH1_ON != true` |
+
+- **Spaces** go between the value, the comparison and the limit: `platenT < 60`,
+  not `platenT<60`.
+- **`C` or `K`** after a temperature's limit converts from the value's own unit.
+- **`=` is for on/off values only.** A number is compared with `<`, `<=`, `>` or `>=`,
+  since two readings are almost never exactly equal. On/off values are declared with
+  the unit `bool` (rOrbit's `InUmbra`, a supply channel's `_ON`); one is true when it
+  is not 0.
+- **`within`** is the time the wait has. If the condition does not hold by then, the run
+  stops and each routine's shutdown runs. Add **`or go on`** at the end to carry on
+  instead: `until InUmbra = true within 2 h or go on`.
+- **Old plans:** `above`, `below` and `timeout` are no longer words of a condition. A
+  plan that uses them is refused with what to write instead: `>` (or `>=`), `<` (or
+  `<=`), `within`.
 
 The commands and value names come from what the loaded routines declare
 (`COMMANDS`, `VARIABLES`; see rScripts/README.md), and the plan is checked
@@ -82,8 +107,9 @@ add hvc rough close and hvc gate close before this step.
 ```
 
 The plan establishes a state by commanding it (`hvc rough close`), or a value
-with an `until` just before the step (`until platenT below 60 C ...`, as
-`laco_vent` does). Every rule is then
+with an `until` just before the step (`until platenT < 60 C ...`, as
+`laco_vent` does). A wait that may go on without it (`... or go on`) proves
+nothing. Every rule is then
 checked again, live, when the step runs, against what the chamber last reported:
 a step it fails stops the plan, before anything is sent. The command box, the
 cast tab and `labcli cast` check the same rules and refuse with the reason.
@@ -101,7 +127,7 @@ load rLACO
 
 hvc vent close
 ...
-until chamberP below {pressure} timeout 20 min
+until chamberP < {pressure} within 20 min
 hvc stop
 ```
 
@@ -128,9 +154,70 @@ the plan `pump_soak_vent` is built, and `eclipse within <minutes>` and `sunrise
 within <minutes>`, which wait for the orbit a run follows to enter or leave the
 umbra (docs/ORBIT.md, In a run). `labcli plans` lists the blocks too.
 
+### Loops
+
+The steps between `repeat` and `end` run again:
+
+```
+# Image every umbra for ten orbits
+load rOrbit rPSU rSLTA
+record every 10 s
+
+orbit replay leo_noon
+psu1 ch1 set 5.0 0.5
+repeat 10 times
+  eclipse within 120
+  psu1 ch1 on
+  slta image
+  sunrise within 60
+  psu1 ch1 off
+end
+```
+
+| line | does |
+|---|---|
+| `repeat <n> times` | the steps up to `end`, n times (1 to 10000) |
+| `repeat until <condition> within <time> s\|min\|h [or go on]` | the steps again until the condition holds (Conditions, above); if it does not within the time, the run stops, or with `or go on` the plan goes on after `end` |
+| `repeat until end` | the steps again until the run is ended: a chamber held in a cycle for days |
+| `end` | closes the nearest open `repeat` |
+
+- A condition is read **before each pass**: a loop whose condition already holds runs
+  no pass.
+- A pass is **never cut short**. A condition that comes to hold during a pass is seen
+  when that pass ends, so keep the passes short when the timing matters.
+- **In the editor**, choosing `repeat` adds its `end`, with an empty step between them
+  to fill in. `end` is offered only inside an open loop, and deleting a `repeat` or its
+  `end` deletes both and keeps the steps between them.
+- **Nesting:** loops nest up to eight deep, and may call blocks. A block may hold a
+  loop, closed inside the block, but not `repeat until end`, since nothing after its
+  call would run.
+- **Indentation** is for reading only. The editor writes the steps inside a loop two
+  spaces in.
+- **The rules see a loop as its later passes do.** A step is checked against what the
+  steps before it left, both before the first pass and at the end of a pass. So
+  `hvc vent open` followed by `hvc rough open` in the same loop is an error on the
+  vent: on the second pass, the vacuum valve is open.
+- **After a loop**, a `repeat until` proves its condition, as an `until` does.
+- **The log** marks each pass: `[7/23] repeat 10 times: pass 3 of 10`.
+
+A plan that holds the chamber at its temperatures until the run is ended:
+
+```
+# Hold the platen at -20 C until the run is ended
+load rLACO rSMTC08
+record every 30 s
+
+hvc platen -20
+repeat until end
+  until platenT < -15 C within 2 h
+  log platen cold
+  hold 30 min
+end
+```
+
 Shipped plans: `tvac` (manual operation from the cast tab, until `end`),
 `psu1_smtc08_first` (PSU1 + thermocouples), `laco_pumpdown`
-(pump on, rough open, until below 5 Torr, stop), `laco_vent` (temperature
+(pump on, rough open, until under 5 Torr, stop), `laco_vent` (temperature
 guards, vent valve open, until atmosphere) and `pump_soak_vent` (the blocks).
 
 Orbit content (`orbit.*`, `propagate`, `@procedure`) is refused: that is FORMS'

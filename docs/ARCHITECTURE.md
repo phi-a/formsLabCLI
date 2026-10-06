@@ -27,7 +27,7 @@ hardware test sequences against them. Running those sequences is its central job
 | Grammar | `formslab.rscripts.grammar`, `cast` | The commands each routine declares, as data: parses a cast-tab line or a plan step, lists what can come next (completion, the GUI's dropdowns), and builds the help cards. |
 | Sequences | `formslab.sequence` | Lab plans, one step per line: which routines run, and the ordered steps of a test. Steps talk to routines through CAST, never to a driver. |
 | Host | `formslab.host` | One run of one plan. Lock, ctrl, pacing, recording, shutdown. |
-| Orbits | `formslab.orbit` | `.orbit` files (`file`: Keplerian elements, read with the same `Grammar`; the GUI opens them, and the rScript rOrbit follows one during a run, docs/ORBIT.md), and the models they feed, in layers: `propagate` (two-body motion, the `Orbit` the models sweep), `geometry` (attitude, spacecraft), `viewfactor`, `thermal` (flux, environment temperature), `visibility` and `imaging`. numpy; the transient solver needs scipy and the plots matplotlib (the `orbit` extra). |
+| Orbits | `formslab.orbit` | `.orbit` files (`file`: Keplerian elements, read with the same `Grammar`; the GUI opens them, and the rScript rOrbit follows one during a run, docs/ORBIT.md), and the models they feed, in layers: `propagate` (Kepler motion with J2 drift, the `Orbit` the models sweep), `geometry` (attitude, spacecraft), `viewfactor`, `thermal` (flux, environment temperature), `visibility` and `imaging`. numpy; the transient solver needs scipy and the plots matplotlib (the `orbit` extra). |
 | Console | `formslab.console`, `formslab.app` | The operator: start and stop runs, watch and command instruments. |
 
 CAST (`castfile.json`) is the bus between them: a request block per instrument
@@ -72,7 +72,7 @@ and formsLabCLI replays them on the wall clock. Orbit-driven inputs reach
 routines as ordinary variables (rSLTA reads `InUmbra`, `UmbraDuration`,
 `UmbraTimeRemaining`). A step that replays a FORMS profile file is not built yet.
 
-An orbit file is lab-side configuration, not FORMS: one orbit by two-body motion,
+An orbit file is lab-side configuration, not FORMS: one orbit, by Kepler motion with J2,
 which the GUI shows live, the environment models in `formslab.orbit` sweep
 (`file.load` gives the `Orbit`), and the rScript rOrbit follows during a run,
 publishing the umbra variables above from it. `formslab.orbit` is part of formsLabCLI; its

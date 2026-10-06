@@ -44,6 +44,10 @@ pattern syntax):
     ]
     VARIABLES = [("PSU1_CH1_V", "V"), ...]      # (name, unit) of every value it publishes
 
+An on/off value has the unit `bool` (published as 1 or 0), so a plan waits on it with
+`= true` or `= false`; every other value is a number, compared with `<`, `<=`, `>`, `>=`
+(docs/SEQUENCE.md, Conditions).
+
 Either list may be a function returning it, when it depends on the bench (rLACO
 reads its zones from `tvac_bench.json`). Importing a routine must not touch
 hardware, start threads or write files: the console imports it to read these.
@@ -55,6 +59,8 @@ A routine may also say what must be true before a command is sent
     def RULE_STATE(status): ...        # its CAST status block -> the names conditions use
     def RULE_EFFECTS(request): ...     # what a request leaves set (default: its on/off keys)
     RESULT_LABELS = ("hvc",)           # it reports done or refused for each request it takes
+    STARTED_BY = ("follow", "replay")  # it publishes its VARIABLES only after one of these requests:
+                                       # a plan that waits on one before is refused when read
     PARTS = {"rough": "valve", ...}    # which word names a valve, pump, zone or setting
     def READINGS(label, status): ...   # its status block in named groups, for the status page
 

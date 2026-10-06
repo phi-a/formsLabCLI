@@ -71,7 +71,7 @@ def test_vent_plan_refuses_outside_the_vent_window(chamber, monkeypatch):
     with chamber.state.lock:
         chamber.state.temps = [80.0] * len(chamber.state.temps)
     _quick(monkeypatch, until={"timeout_s": 2.0})
-    with pytest.raises(SequenceError, match="platenT not below 60"):
+    with pytest.raises(SequenceError, match="platenT < 60 C not met"):
         sequence.channel(plan_path=find_plan("laco_vent"))
     assert chamber.state.devices["OV"] is False
 
@@ -81,7 +81,7 @@ def test_a_failed_pumpdown_still_ends_with_rough_closed_and_pump_off(chamber, mo
         chamber.state.pressure = 743.0
         chamber.state.vacuum_setpoint = 600.0      # the "pump" cannot get below 600
     _quick(monkeypatch, until={"timeout_s": 4.0})
-    with pytest.raises(SequenceError, match="chamberP not below 5"):
+    with pytest.raises(SequenceError, match="chamberP < 5 not met"):
         sequence.channel(plan_path=find_plan("laco_pumpdown"))
     assert not chamber.state.devices["OR"] and not chamber.state.devices["OP"]
 

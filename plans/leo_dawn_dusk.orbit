@@ -2,11 +2,12 @@
 # orbit: leo_dawn_dusk -- sun-synchronous, 550 km, along the terminator
 # ============================================================
 # The plane faces the Sun (beta near 90 degrees), so the satellite is in
-# sunlight the whole orbit: the hot case. Open it in the GUI's Plans tab to see
+# sunlight the whole orbit: the hot case. Around the June solstice the Sun
+# leaves the plane's normal far enough for short eclipses (about 20 minutes). Open it in the GUI's Plans tab to see
 # it propagated on the wall clock (docs/ORBIT.md).
 #
-# Two-body motion: the plane does not turn with the Sun, so over weeks it
-# drifts away from dawn-dusk. Move the epoch forward to start it again.
+# J2 turns the plane with the Sun, about a degree a day, so it keeps its local
+# time all year.
 
 epoch 2026-10-05T12:00:00Z
 a 6928 km

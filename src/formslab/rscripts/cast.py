@@ -31,7 +31,7 @@ __all__ = ["Grammar", "GrammarError", "Option", "commands", "complete", "grammar
            "help_rows", "owners", "reports_results", "request", "send", "variables"]
 
 # Plan keywords: a CAST label may not be one of these.
-RESERVED = ("hold", "until", "log", "load", "record")
+RESERVED = ("hold", "until", "log", "load", "record", "repeat", "end")
 
 
 def _declared(module, attr: str) -> list:

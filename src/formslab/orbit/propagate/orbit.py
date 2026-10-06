@@ -121,9 +121,11 @@ class Orbit:
     is the argument of latitude itself. Position, radius, the Earth's size and the
     umbra at each u come from Kepler's equation.
 
-    The Sun is frozen at the epoch for the whole sweep (it moves about 1 degree a
-    day); eclipse is the umbra cone at that Sun distance. Hashable, so laws can
-    cache per orbit.
+    The sweep is one orbit of two-body motion from the epoch: in an orbit J2
+    turns the plane, and the Sun moves, about 0.07 degrees, so both are held where
+    they are at the epoch; eclipse is the umbra cone at that Sun distance. For
+    another date, sweep ``Orbit(elements.at(t))``: the elements J2 has carried
+    there. Hashable, so laws can cache per orbit.
     """
     elements: Elements
 

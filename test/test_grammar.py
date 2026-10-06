@@ -12,7 +12,7 @@ TOY = Grammar([
     ("recipe <n:integer 1..20>", "Select a recipe", lambda n: {"recipe": n}),
     ("imagedir <name:text>", "Image folder", lambda n: {"IMAGEDIR": n}),
     ("log <msg:rest>", "A log line", lambda m: {"log": m}),
-    ("until chamberP|platenT above|below <v:number>", "Wait", lambda var, side, v: (var, side, v)),
+    ("until chamberP|platenT <|<=|>|>= <v:number>", "Wait", lambda var, op, v: (var, op, v)),
     ("closeall", "Close every valve", {"close_all": True}),
 ])
 
@@ -26,7 +26,7 @@ TOY = Grammar([
     ("recipe 3.0", {"recipe": 3}),
     ("imagedir Darks_A", {"IMAGEDIR": "Darks_A"}),            # text keeps its case
     ("log pump on; #2 next", {"log": "pump on; #2 next"}),
-    ("until chamberp below 5", ("chamberP", "below", 5.0)),   # a choice keeps its declared spelling
+    ("until chamberp < 5", ("chamberP", "<", 5.0)),   # a choice keeps its declared spelling
     ("closeall", {"close_all": True}),
 ])
 def test_parse(line, meaning):
@@ -74,7 +74,7 @@ def test_complete_cascades():
     assert after_zone[0] == Option("number", "C", "Zone setpoint", -180.0, 200.0, "C")
     assert [o.text for o in after_zone[1:]] == ["on", "off"]
     assert all(o.help == "Thermal control" for o in after_zone[1:])
-    assert [o.text for o in TOY.complete(["until", "platenT"])] == ["above", "below"]
+    assert [o.text for o in TOY.complete(["until", "platenT"])] == ["<", "<=", ">", ">="]
     assert TOY.complete(["closeall"]) == []
     assert TOY.complete(["nonsense"]) == []
 
@@ -100,7 +100,7 @@ def test_two_commands_matching_one_line_is_an_error():
 
 def test_rows_are_the_help_table():
     assert TOY.rows()[0] == ("<zone> <C>", "Zone setpoint")
-    assert TOY.rows()[6] == ("until chamberP|platenT above|below <v>", "Wait")
+    assert TOY.rows()[6] == ("until chamberP|platenT <|<=|>|>= <v>", "Wait")
     assert ("closeall", "Close every valve") in TOY.rows()
 
 

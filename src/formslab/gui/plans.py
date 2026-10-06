@@ -13,7 +13,8 @@ is refused.
 
 *Edit* moves a shipped file into this machine's folder, so it can be changed;
 *Ship* moves one of yours into the checkout's ``plans/``, read-only again. A name
-is only ever in one place, so neither shadows anything.
+is only ever in one place, so neither shadows anything. *Rename* renames one of
+yours, and what refers to it: a block's calls, an orbit's `orbit follow` lines.
 
 Saving writes the file in one step and refuses to overwrite a file that changed
 since it was opened (compared by a hash of its contents). Deleting moves the file
@@ -182,6 +183,73 @@ def _moved(path: Path, target: Path, name: str) -> dict:
     except OSError as e:
         raise PlanFileError(403, f"could not move {name!r} to {target.parent}: {e}") from None
     return read(name)
+
+
+_FIRST = re.compile(r"^(\s*)(\S+)")
+_ORBIT_USE = re.compile(r"^(\s*orbit\s+(?:follow|replay)\s+)(\S+)", re.IGNORECASE)
+
+
+def _renamed_lines(text: str, kind: str, old: str, new: str) -> str | None:
+    """`text` with its references to the block or orbit `old` renamed `new`, or
+    None when it has none. A plan or block calls a block by its first word, and
+    follows an orbit with `orbit follow|replay <orbit>`."""
+    out, changed = [], False
+    for line in text.split("\n"):
+        if not line.lstrip().startswith("#"):
+            if kind == "block" and (m := _FIRST.match(line)) and m.group(2).lower() == old.lower():
+                line, changed = m.group(1) + new + line[m.end():], True
+            elif kind == "orbit" and (m := _ORBIT_USE.match(line)) and m.group(2).lower() == old.lower():
+                line, changed = m.group(1) + new + line[m.end():], True
+        out.append(line)
+    return "\n".join(out) if changed else None
+
+
+def rename(old: str, new: str, base_hash: str | None) -> dict:
+    """Rename one of your files to `new`. A block's `block` line is renamed with it,
+    and so are the calls to it (a block) or the `orbit follow|replay` lines (an
+    orbit) in your plans and blocks. Refused if a shipped file refers to it: Edit
+    that file first. {**read(new), "updated": [the other files changed]}."""
+    path = find(old) if NAME.match(old or "") else None
+    if path is None:
+        raise PlanFileError(404, f"no plan {old!r}")
+    kind = kind_of(path)
+    if not is_editable(path):
+        raise PlanFileError(403, f"{old!r} is shipped; Edit it first, then rename it")
+    if base_hash != content_hash(path.read_bytes()):
+        raise PlanFileError(409, f"{old!r} changed on disk since you opened it; reload it first")
+    if kind == "block":
+        new = (new or "").strip().lower()
+        if not blockfile._NAME.match(new) or new in blockfile.RESERVED:
+            raise PlanFileError(400, "a block's name is one lowercase word (letters, digits and _), "
+                                     "starting with a letter, and not a step's word")
+        from formslab.rscripts import cast
+        if new in cast.owners()[0]:
+            raise PlanFileError(409, f"{new!r} is an instrument's name; choose another")
+    elif not NAME.match(new or ""):
+        raise PlanFileError(400, "a name is letters, digits, - and _ (at most 64, starting with a letter or digit)")
+    if new.lower() != old.lower() and find(new) is not None:
+        raise PlanFileError(409, f"a plan, block or orbit named {new!r} already exists; choose another name")
+    updates = {}
+    if kind in ("block", "orbit"):
+        for p in [*discover(), *blockfile.discover()]:
+            if p == path:
+                continue
+            if (text := _renamed_lines(p.read_text(encoding="utf-8"), kind, old, new)) is not None:
+                updates[p] = text
+        if shipped := sorted(p.stem for p in updates if not is_editable(p)):
+            raise PlanFileError(409, f"shipped files use {old!r}: {', '.join(shipped)}; Edit them first, "
+                                     "so they can be updated, or keep the name")
+    text = path.read_text(encoding="utf-8")
+    if kind == "block":
+        text = "\n".join(re.sub(r"^(\s*block\s+)(\S+)", lambda m: m.group(1) + new, line, count=1,
+                                flags=re.IGNORECASE) if line.strip().lower().startswith("block") else line
+                         for line in text.split("\n"))
+    target = path.with_name(new + path.suffix)
+    os.replace(path, target)                          # (a change of case only is the same file on Windows)
+    atomic_write_text(target, text)
+    for p, updated in updates.items():
+        atomic_write_text(p, updated)
+    return {**read(new), "updated": sorted(p.stem for p in updates)}
 
 
 def edit(name: str, base_hash: str | None) -> dict:

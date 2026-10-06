@@ -42,13 +42,16 @@ A mistake is reported with its line number, as a plan's is:
 
 ## How it moves
 
-The satellite follows Kepler's two-body motion: the Earth is a point mass, so the
-orbit is a fixed ellipse. Left out:
+The satellite follows a Kepler ellipse whose plane and perigee turn at the rates
+the Earth's flattening (J2) gives them. The node turning is what keeps a
+sun-synchronous orbit's local time: at 550 km and 97.6 degrees it turns 0.987
+degrees a day, with the Sun. Left out:
 
-- **J2.** The Earth's flattening turns a real orbit's plane. A sun-synchronous orbit
-  relies on it to keep its local time; here the plane stays put, so over weeks the
-  Sun moves away from it. Move the epoch forward to start it again.
-- **Drag** and the Moon and Sun's pull.
+- **J2's short-period wobble**, a few kilometres around the drifting ellipse.
+- **Drag**, and the Moon's and Sun's pull.
+
+The local time still wobbles by up to half an hour over a year: that is the
+equation of time, the true Sun running ahead of and behind the mean one.
 
 The Sun's direction is a low-precision ephemeris (the Astronomical Almanac's). The
 umbra is the cone tangent to the Sun and the Earth. Altitude is above a spherical
@@ -78,7 +81,8 @@ mistake.
 Under them, the panel says how to use the orbit in a plan, and *Use in a plan*
 makes one: it follows the orbit and waits for its umbra.
 
-Shipped: `leo_dawn_dusk` (the plane faces the Sun, no eclipse: the hot case) and
+Shipped: `leo_dawn_dusk` (the plane faces the Sun, no eclipse but for a short
+season around the June solstice: the hot case) and
 `leo_noon` (the Sun in the plane, 35 minutes of umbra every orbit: the cold case).
 Names are shared with plans: an orbit cannot take a plan's name.
 
@@ -107,11 +111,13 @@ sunrise within 60
 | `sunrise within <minutes>` | a block: waits for it to leave the umbra |
 
 The orbit names offered are the orbit files on the plan path. A file that does not
-read is refused when the step runs, and the run stops there.
+read is refused when the step runs, and the run stops there. Nothing is published
+before `orbit follow` or `orbit replay`, so a plan that waits on one of these values
+before either is refused when it is read: that wait could only time out.
 
 | value | means |
 |---|---|
-| `InUmbra` | 1 in the umbra, 0 in sunlight |
+| `InUmbra` | on or off: true in the umbra, false in sunlight (`until InUmbra = true within 2 h`) |
 | `UmbraDuration` | s: in the umbra, its whole length; in sunlight, the next one's; 0 if there is none |
 | `UmbraTimeRemaining` | s left in this umbra; 0 in sunlight |
 | `NextUmbra` | s until the next umbra begins |
@@ -136,7 +142,9 @@ vl = view(sat.geometry, orbit, LVLHFixed(), facets=["bus_-Z"])
 ```
 
 The models sweep one orbit by its mean argument of latitude, `argp + M`, which
-advances uniformly in time, so their samples are evenly spaced in time. Position,
+advances uniformly in time, so their samples are evenly spaced in time. That
+orbit is the one at the file's epoch; `Orbit(elements.at(t))` sweeps the orbit J2
+has carried to another date. Position,
 radius, the Earth's size seen from the satellite, and the umbra at each sample
 come from Kepler's equation, so an eccentric orbit sees more of the Earth at
 perigee. For the sweep the Sun is held where it is at the epoch (it moves about a

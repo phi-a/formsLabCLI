@@ -9,7 +9,7 @@ A block is a `.block` file beside the plans (the same folders, docs/SEQUENCE.md)
 
     hvc vent close
     ...
-    until chamberP below {pressure} timeout 20 min
+    until chamberP < {pressure} within 20 min
     hvc stop
 
 - The leading comments describe it: the first is the summary, the rest the
@@ -34,7 +34,7 @@ from formslab.rscripts.grammar import Grammar, GrammarError, _Slot, _Word, _comp
 SUFFIX = ".block"
 MAX_DEPTH = 8
 # Words a block may not be named: the plan's own steps, and FORMS' verbs.
-RESERVED = ("hold", "until", "log", "load", "record", "block", "propagate", "call", "observe")
+RESERVED = ("hold", "until", "log", "load", "record", "block", "repeat", "end", "propagate", "call", "observe")
 _NAME = re.compile(r"^[a-z][a-z0-9_]*$")
 _INPUT = re.compile(r"^\{(\w+)\}$")
 
@@ -113,8 +113,9 @@ def parse_block(text: str, path: Path | None = None) -> Block:
         elif head == "record":
             raise BlockError("a block has no `record`: how often to record is the plan's", n)
         else:
-            if [w.lower() for w in words] == ["hold", "until", "end"]:
-                raise BlockError("a block cannot `hold until end`: the steps after its call would never run", n)
+            if [w.lower() for w in words] in (["hold", "until", "end"], ["repeat", "until", "end"]):
+                raise BlockError(f"a block cannot `{' '.join(words[:3]).lower()}`: the steps after its call "
+                                 "would never run", n)
             if head != "log" and "#" in t:
                 raise BlockError("comments go on their own line", n)
             steps.append((n, tuple(words)))
@@ -214,7 +215,13 @@ def review(text: str) -> tuple[list, list]:
         return [(e.line, str(e))], []
     if b.name in cast.owners()[0]:
         return [(0, f"{b.name} is an instrument's name; choose another name for the block")], []
-    return review_plan(as_plan(text))
+    from formslab.sequence.rules import ADD_START, NOT_STARTED
+
+    errors, warnings = review_plan(as_plan(text))
+    # A wait on a value the calling plan starts (the orbit it chooses) is the caller's to settle.
+    callers = [(n, m.replace(ADD_START, "The plan that calls this block must do it first."))
+               for n, m in errors if NOT_STARTED in m]
+    return [e for e in errors if NOT_STARTED not in e[1]], sorted(warnings + callers)
 
 
 def tokens(text: str) -> list[list[dict]]:
@@ -234,6 +241,8 @@ def tokens(text: str) -> list[list[dict]]:
                     toks.append({"text": part.strip("<>").split(":")[0], "role": "value"})
                 else:
                     toks += [{"text": w, "role": "kw"} for w in part.split()]
+            if len(toks) > 1 and toks[1]["role"] == "kw":
+                toks[1]["role"] = "name"                    # the block's name: the first word after `block`
             out[i] = toks
         elif any(_INPUT.match(w) for w in words) and i < len(out):
             out[i] = [{**t, "text": w, "role": "value"} if _INPUT.match(w) else t

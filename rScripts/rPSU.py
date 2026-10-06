@@ -64,7 +64,7 @@ def READINGS(label, status):
 
 
 VARIABLES = [(f"PSU{n}_CH{c}_{q}", unit) for n in (1, 2) for c in (1, 2, 3)
-             for q, unit in (("V", "V"), ("I", "A"), ("ON", None))]
+             for q, unit in (("V", "V"), ("I", "A"), ("ON", "bool"))]
 
 
 name = os.path.splitext(os.path.basename(__file__))[0]
@@ -160,7 +160,7 @@ def _publish_channels(run, label, state):
             value = s.get(key)
             run.publish(f"{prefix}_CH{ch}_{suffix}", math.nan if value is None else float(value), unit)
         on = s.get("on")
-        run.publish(f"{prefix}_CH{ch}_ON", math.nan if on is None else float(bool(on)))
+        run.publish(f"{prefix}_CH{ch}_ON", math.nan if on is None else float(bool(on)), "bool")
 
 
 def _publish_gap(run, label):

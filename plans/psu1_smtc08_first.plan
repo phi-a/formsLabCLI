@@ -33,4 +33,4 @@ psu1 ch1 off
 hold 20 s
 
 # A heating step waits on a temperature, with a limit, like this:
-#   until TC01 above 30 C timeout 10 min
+#   until TC01 > 30 C within 10 min

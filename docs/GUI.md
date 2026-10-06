@@ -87,7 +87,7 @@ foreline pressure, and each zone's own on/off (the controller reports one
 chamber-wide "holding temperature" state).
 
 **Plans.** A plan editor for people who do not want to remember the words.
-Pick a plan on the left; a plan you open is shown line by line:
+Pick a plan on the left (a green page before its name); a plan you open is shown line by line:
 
 - the `load` line is a row of checkboxes, one per rScript;
 - `record every` is a number and a unit;
@@ -101,8 +101,17 @@ Pick a plan on the left; a plan you open is shown line by line:
   and unit (`<C -180..200 C>`), and a value that does not fit is flagged under
   the row with what would. The choices come from the same declarations the cast
   tab and `labcli check` use, so they cannot disagree;
-- comments and blank lines are kept, and rows can be moved, inserted and deleted.
-  *Edit as text* shows the plain file for pasting or fine changes;
+- comments and blank lines are kept. Each row's ⋯ menu moves it, inserts a step or a
+  comment below it, or deletes it. *Edit as text* shows the plain file for pasting or
+  fine changes;
+- a finished step offers what may still follow it (`or go on` after a wait's time) in a
+  small … box, shown on the row you are on;
+- a loop (docs/SEQUENCE.md, Loops) is a `repeat` row and an `end` row, each with a
+  circular arrow. Choosing `repeat` adds its `end`, with an empty step between them;
+  `end` is offered only inside an open loop; deleting either deletes both and keeps
+  the steps between them. The rows inside are set in, with a bar for each loop around
+  them, and the file is saved with those steps two spaces in;
+- a wait's `within` says, when you point at it, what happens when its time runs out;
 - beside the rows, a help card follows the row you are on: what the step does,
   its inputs, and what it needs first, as the plan leaves things at that line
   (✓ the plan establishes it, ✗ the plan breaks it, ? it depends on the chamber at
@@ -117,7 +126,7 @@ plan and in the command box's suggestions, so the grammar can be seen:
 | Shape | Means | Example |
 |---|---|---|
 | solid block, in the instrument's colour | the first word: an instrument (`hvc` blue, `psu1`/`psu2` amber, `cryo` teal, `slta` violet, `tc` green) or a step (`hold`, `until`, `log`, `load`, `record`, slate) | `hvc` |
-| tinted pill, same colour | a fixed keyword, so a command reads as one phrase | `platen`, `on`, `timeout` |
+| tinted pill, same colour | a fixed keyword, so a command reads as one phrase | `platen`, `on`, `<=`, `within` |
 | shaded box, its unit inside | a value you type | `25 °C`, `30` |
 | dashed underline | free text | a `log` message |
 
@@ -143,6 +152,12 @@ shipped plans and yours, so a name is only ever in one place:
   again. Git sees it as changed or new: commit it to share it. A file with
   problems is not shipped, and neither is the plan that is running.
 
+*Rename* renames one of yours, and what refers to it in your plans and blocks: the
+calls to a block, the `orbit follow` and `orbit replay` lines of an orbit. If a shipped
+file refers to it, the rename is refused and names that file: Edit it first. A
+block's name is also the first box on its `block` line; changing it there renames it
+the same way.
+
 *Save as...* makes your own copy in
 `~/.formslab/plans/`, which never changes what `run <name>` does for anyone
 else, and a name already taken by any plan is refused. Saving writes the file
@@ -163,7 +178,7 @@ Start list: a plan follows it. The panel says how (`load rOrbit`, then `orbit
 follow <orbit>`), and *Use in a plan* makes a plan that follows the orbit and
 waits for its umbra (docs/ORBIT.md, In a run).
 
-A **block** (docs/SEQUENCE.md, Blocks) is listed with stacked squares and opens in
+A **block** (docs/SEQUENCE.md, Blocks) is listed with a purple square and opens in
 the same editor: its `block` line is the call, each `{input}` an amber value box.
 *New block* starts one; *Register as block* makes one from the open plan (its
 comments, `load` and steps; `record` is the calling plan's). In a plan, a call is

@@ -155,7 +155,7 @@ Other needs:
 
 Stage 1, built 2026-10-05: orbit files (`.orbit`, docs/ORBIT.md) in the Plans tab,
 classical elements with their own grammar, colour and symbols, and a live panel
-propagating them by two-body motion. The goal is simulating the satellite's
+propagating them by Kepler motion (J2 drift added 2026-10-05). The goal is simulating the satellite's
 background temperatures; the stages after it, each to get its own plan:
 
 1. **Environment profile.** Orbit file + spacecraft model -> `orbit.thermal.pipeline`

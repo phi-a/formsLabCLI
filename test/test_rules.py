@@ -9,8 +9,8 @@ from formslab.rscripts import rules
 from formslab.sequence import PlanError, find_plan, parse_plan
 from formslab.sequence.plan import review
 
-GUARDS = "".join(f"until {z}T {s} {v} C timeout 1 min\n"
-                 for z in ("platen", "shroud") for s, v in (("above", 10), ("below", 60)))
+GUARDS = "".join(f"until {z}T {s} {v} C within 1 min\n"
+                 for z in ("platen", "shroud") for s, v in ((">=", 10), ("<=", 60)))
 
 
 def plan(*steps, load="rLACO"):
@@ -35,7 +35,7 @@ def test_the_vent_plans_guards_establish_the_vent_window():
 def test_a_vent_with_nothing_established_is_a_warning_and_the_plan_reads():
     p = parse_plan(plan("hvc vent open"))
     [(line, message)] = p.warnings
-    assert line == 2 and "Platen at least 10 \u00b0C" in message and "until platenT above 10 C" in message
+    assert line == 2 and "Platen at least 10 \u00b0C" in message and "until platenT >= 10 C" in message
 
 
 def test_a_plan_that_breaks_a_rule_cannot_run():
@@ -55,7 +55,7 @@ def test_a_guard_lasts_until_the_next_hold_or_command():
 
 
 def test_a_looser_guard_does_not_establish_a_tighter_limit():
-    loose = GUARDS.replace("below 60", "below 70")
+    loose = GUARDS.replace("<= 60", "<= 70")
     p = parse_plan(plan("hvc rough close", "hvc gate close", loose + "hvc vent open"))
     assert "Platen at most 60 \u00b0C" in p.warnings[0][1] and "Platen at least" not in p.warnings[0][1]
 
@@ -76,10 +76,16 @@ def test_stop_and_cycle_operations():
 
 def test_the_gate_needs_the_crossover_pressure():
     p = parse_plan(plan("hvc rough close", "hvc foreline open", "hvc turbo on",
-                        "until chamberP below 0.01 timeout 1 h", "hvc gate open"))
+                        "until chamberP < 0.01 within 1 h", "hvc gate open"))
     assert p.warnings == ()
     p = parse_plan(plan("hvc rough close", "hvc foreline open", "hvc turbo on", "hvc gate open"))
-    assert "Chamber pressure at most 0.01 Torr" in p.warnings[0][1] and "until chamberP below 0.01" in p.warnings[0][1]
+    assert "Chamber pressure at most 0.01 Torr" in p.warnings[0][1] and "until chamberP <= 0.01" in p.warnings[0][1]
+
+
+def test_a_wait_that_may_go_on_proves_nothing():
+    p = parse_plan(plan("hvc rough close", "hvc foreline open", "hvc turbo on",
+                        "until chamberP < 0.01 within 1 h or go on", "hvc gate open"))
+    assert "Chamber pressure at most 0.01 Torr" in p.warnings[0][1]
 
 
 def test_an_owned_supply_channel_is_an_error_while_its_owner_is_loaded():
@@ -176,5 +182,5 @@ def test_roughing_is_refused_once_the_chamber_is_below_the_crossover():
     assert why.startswith("Needs Chamber pressure at least 0.01 Torr. Opening the roughing line")
     assert rules.refusal("hvc", {"rough": "open"}, blocks=blocks(pressure=743.0, **sealed)) is None
     p = parse_plan(plan("hvc turbo off", "hvc vent close", "hvc fill close", "hvc foreline close",
-                        "hvc gate close", "until chamberP above 0.01 timeout 1 min", "hvc rough open"))
+                        "hvc gate close", "until chamberP > 0.01 within 1 min", "hvc rough open"))
     assert p.warnings == ()

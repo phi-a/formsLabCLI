@@ -9,9 +9,9 @@ load rLACO
 
 hvc gate close
 hvc rough close
-until platenT above 10 C timeout {minutes} min
-until platenT below 60 C timeout {minutes} min
-until shroudT above 10 C timeout {minutes} min
-until shroudT below 60 C timeout {minutes} min
+until platenT > 10 C within {minutes} min
+until platenT < 60 C within {minutes} min
+until shroudT > 10 C within {minutes} min
+until shroudT < 60 C within {minutes} min
 hvc vent open
-until chamberP above 700 timeout 10 min
+until chamberP > 700 within 10 min

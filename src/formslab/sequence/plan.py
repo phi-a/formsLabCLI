@@ -10,7 +10,7 @@ One step per line. ``load`` names the rScripts that own the instruments;
     psu1 ch1 set 1.0 0.1
     psu1 ch1 on
     hold 60 s
-    until TC01 above 30 C timeout 10 min
+    until TC01 > 30 C within 10 min
     psu1 ch1 off
     log done
 
@@ -22,11 +22,14 @@ Steps:
                         for one that reports results until it is done or refused
     hold <time> s|min|h run the loaded rScripts for a while
     hold until end      until the operator's ctrl `end` (plans/tvac.plan)
-    until <variable> above|below <limit> [C|K] timeout <time> s|min|h
-                        run until a published value crosses a limit, or fail
-                        at the timeout (required: a wait on hardware always has
-                        a limit). C or K converts from the variable's own unit
+    until <condition> within <time> s|min|h [or go on]
+                        run until a condition on a published value holds: a
+                        number with < <= > >= and a limit (C or K converts from
+                        its own unit), an on/off value = or != true or false.
+                        Not held in time, the run stops (required: a wait on
+                        hardware always has a limit), or with `or go on` goes on
     log <text>          one line in the run log
+    repeat ... / end    a loop: <n> times, until <condition> within ..., or until end
 
 ``#`` starts a comment on its own line. Commands and variable names come from
 what the loaded rScripts declare (COMMANDS, VARIABLES), checked while the plan
@@ -53,6 +56,7 @@ COMMAND_TIMEOUT_S = 10.0
 _SECONDS = {"s": 1.0, "min": 60.0, "h": 3600.0}
 _RECORD_UNIT = {"s": "seconds", "min": "minutes", "h": "hours"}
 _FORMS_VERBS = ("propagate", "call", "observe")
+MAX_LOOP_DEPTH = 8
 _GLUED = re.compile(r"^\d+(\.\d+)?(s|min|h)$", re.IGNORECASE)
 
 
@@ -237,14 +241,31 @@ def parse_plan(source: str, *, path: Path | None = None, steps_out: list | None 
                 fail(n, f"{head} is declared by {cast.script_name(module)}; add it to `load`")
             if not cast.commands(module):
                 fail(n, f"{head} takes no commands (it only reports readings)")
-        if head == "until":
-            if len(words) > 1 and words[1].lower() not in {v.lower() for v in published}:
-                if by := _publisher(words[1], scripts):
-                    fail(n, f"{words[1]} is published by {by}; add it to `load`")
+        lowered = [w.lower() for w in words]
+        cond = (words if head == "until" else
+                words[1:] if lowered[:2] == ["repeat", "until"] and lowered[2:3] != ["end"] else None)
+        if cond:
+            what = "until" if head == "until" else "repeat until"
+            if old := next((w for w in lowered if w in _OLD_WORDS), None):
+                fail(n, f"`{old}` is no longer a word of a condition: {_OLD_WORDS[old]}")
+            if glued := next((w for w in cond[1:] if _GLUED_OP.match(w)), None):
+                fail(n, f"{glued!r}: write the value, the comparison and the limit apart, with spaces "
+                        "(platenT < 60)")
+            if len(cond) > 1 and cond[1].lower() not in {v.lower() for v in published}:
+                if by := _publisher(cond[1], scripts):
+                    fail(n, f"{cond[1]} is published by {by}; add it to `load`")
                 if not published:
                     fail(n, "no loaded rScript publishes a value to wait on")
-            if "timeout" not in (w.lower() for w in words):
-                fail(n, "until needs `timeout <time> s|min|h`: a wait on hardware always has a limit")
+            elif len(cond) > 2 and (own := next((u for v, u in published.items()
+                                                  if v.lower() == cond[1].lower()), 0)) != 0:
+                if own == "bool" and cond[2] in ("<", "<=", ">", ">="):
+                    fail(n, f"{cond[1]} is on or off: write {cond[1]} = true or {cond[1]} = false")
+                if own != "bool" and cond[2] in ("=", "!="):
+                    fail(n, f"{cond[1]} is a number, compared with <, <=, > or >=; two readings are "
+                            "almost never exactly equal")
+            # Once the condition is whole and only its time is missing (not while it is still being written).
+            if "within" not in lowered and any(o.kind == "word" and o.text == "within" for o in grammar.complete(words)):
+                fail(n, f"{what} needs `within <time> s|min|h`: a wait on hardware always has a limit")
         return replace(_parse(fail, n, grammar, words), label=" ".join(words))
 
     def expand(n, seg, stack):
@@ -258,8 +279,12 @@ def parse_plan(source: str, *, path: Path | None = None, steps_out: list | None 
             fail(n, f"blocks nest more than {blocks_.MAX_DEPTH} deep: {chain}")
         if missing := [s for s in b.scripts if s not in scripts]:
             fail(n, f"{b.name} needs {', '.join(missing)}; add {'it' if len(missing) == 1 else 'them'} to `load`")
-        out = []
+        out, depth = [], 0
         for ln, words in b.body(seg.params["values"]):
+            head = words[0].lower()
+            depth += (head == "repeat") - (head == "end")
+            if depth < 0:
+                fail(n, f"In {b.name} (line {ln}): `end` with no `repeat` above it")
             try:
                 inner = check_step(n, words)
                 parts = expand(n, inner, (*stack, b.name)) if inner.verb == "block" else [inner]
@@ -267,13 +292,21 @@ def parse_plan(source: str, *, path: Path | None = None, steps_out: list | None 
                 fail(n, f"In {b.name} (line {ln}): {e.message}")
             out += [replace(p, label=f"{b.name} > {p.label}", origin=((b.name, ln), *p.origin))
                     for p in parts]
+        if depth:
+            fail(n, f"In {b.name}: a `repeat` with no `end`; a block's loops close inside it")
         return out
 
     def check_line(n, words):
         seg = check_step(n, words)
         return expand(n, seg, ()) if seg.verb == "block" else [seg]
 
-    numbered = [(n, seg) for n, words in steps for seg in (attempt(check_line, n, words) or [])]
+    def read_line(n, words):
+        segs = attempt(check_line, n, words)
+        if segs is None and words[0].lower() == "repeat":          # a mistake in it, already noted:
+            return [_loop()]                                       # its `end` still has its `repeat`
+        return segs or []
+
+    numbered = _pair_loops([(n, seg) for n, words in steps for seg in read_line(n, words)], errors)
     if steps_out is not None:
         steps_out.extend(numbered)
     from formslab.sequence.rules import check as check_rules
@@ -287,6 +320,28 @@ def parse_plan(source: str, *, path: Path | None = None, steps_out: list | None 
     return Plan(name=name, path=path, rscripts=scripts, record_interval=interval, record_unit=unit,
                 sequence=Sequence(name=name, segments=segments, rscripts=scripts),
                 warnings=tuple(sorted(warnings)))
+
+
+def _pair_loops(numbered, errors):
+    """`numbered` with each `repeat` and its `end` told of each other (`end_at`,
+    `start_at`: indexes in the list); an `end` with no `repeat`, a `repeat` with no
+    `end` and loops more than MAX_LOOP_DEPTH deep go in `errors`."""
+    out, open_ = list(numbered), []
+    for k, (n, seg) in enumerate(out):
+        if seg.verb == "repeat":
+            if len(open_) == MAX_LOOP_DEPTH:
+                errors.append((n, f"loops nest more than {MAX_LOOP_DEPTH} deep"))
+            open_.append(k)
+        elif seg.verb == "end":
+            if not open_:
+                errors.append((n, "`end` with no `repeat` above it"))
+                continue
+            s = open_.pop()
+            out[s] = (out[s][0], replace(out[s][1], params={**out[s][1].params, "end_at": k}))
+            out[k] = (n, replace(seg, params={"start_at": s}))
+    for s in open_:
+        errors.append((out[s][0], "`repeat` with no `end` below it; every loop closes with `end`"))
+    return out
 
 
 def review(text: str) -> tuple[list[tuple[int, str]], list[tuple[int, str]]]:
@@ -378,6 +433,8 @@ def needed_rscripts(text: str) -> list[str]:
                 need.add(cast.script_name(labels[head]))
             elif head == "until" and len(words) > 1 and words[1].lower() in value_owner:
                 need.add(value_owner[words[1].lower()])
+            elif head == "repeat" and len(words) > 2 and words[2].lower() in value_owner:
+                need.add(value_owner[words[2].lower()])
             elif head in blocks and head not in seen:             # a block: what its steps use
                 need.update(blocks[head].scripts)
                 visit([list(w) for _, w in blocks[head].steps], seen | {head})
@@ -493,15 +550,32 @@ def _hold(n, unit):
     return Segment("hold", {"seconds": _positive("hold", n) * _SECONDS[unit]})
 
 
-def _until(units):
-    def build(variable, side, value, *rest):
+def _until(units, go_on=False):
+    """The builder for an `until` condition: a number against a limit (`platenT <
+    60 C`), or an on/off value against true or false (`InUmbra = true`), then the
+    time it has, `within <time>`; `go_on`: at the limit, the plan goes on."""
+    def build(variable, op, value, *rest):
         unit, t, t_unit = rest if len(rest) == 3 else (None, *rest)
         own = units.get(variable)
         if unit and own not in ("C", "K"):
             raise GrammarError(f"{variable} is in {own or 'no unit'}; C and K only apply to temperatures")
-        return Segment("until", {"variable": variable, "side": side, "value": value, "unit": unit,
-                                 "timeout_s": _positive("timeout", t) * _SECONDS[t_unit]})
+        if op in ("=", "!="):
+            value = value == "true"
+        return Segment("until", {"variable": variable, "op": op, "value": value, "unit": unit,
+                                 "timeout_s": _positive("within", t) * _SECONDS[t_unit], "go_on": go_on})
     return build
+
+
+# Words a condition used to be written with, and what to write now.
+_OLD_WORDS = {"above": "write > (or >=) in place of above", "below": "write < (or <=) in place of below",
+              "timeout": "write within in place of timeout"}
+_GLUED_OP = re.compile(r"^(?!(<=|>=|!=|<|>|=)$).*[<>=]")      # a comparison stuck to a word
+
+
+def _loop(times=None, until=None, forever=False):
+    """A `repeat` line: `times` passes, or passes until the `until` condition is
+    met, or passes until the run is ended. Its `end` is paired once the plan is read."""
+    return Segment("repeat", {"times": times, "until": until, "forever": forever})
 
 
 def _command(label, request):
@@ -542,21 +616,22 @@ def _grammar(scripts):
         ("log <message:rest>", """Write a line in the run log
          The text goes to the host log with the time, to mark where a phase begins.""",
          lambda m: Segment("log", {"message": m})),
+        ("repeat <count:integer 1..10000> times", """Repeat the steps up to end a number of times
+         The steps between this line and its end line run count times, in order, one
+         pass after another.""",
+         lambda count: _loop(times=count)),
+        ("repeat until end", """Repeat until the run is ended
+         The steps between this line and its end line run again and again, until
+         someone ends the run: End run in the GUI, or labcli end. Use it to hold the
+         chamber in a cycle for as long as a test lasts.""",
+         lambda: _loop(forever=True)),
+        ("end", """Close the loop above
+         Marks where the steps of the nearest open repeat end. The plan goes back to
+         that repeat, which decides whether to run another pass.""",
+         lambda: Segment("end", {})),
     ]
     if published:
-        var = f"<variable:{'|'.join(published)}>"
-        until = f"until {var} above|below <limit:number>"
-        why = """
-         Runs until the value is past the limit, then goes on. If it is not past it
-         within the timeout, the plan stops here and each rScript's shutdown runs. A
-         wait on hardware always has a timeout. Just before a command, it also proves
-         that command's prerequisite: until platenT below 60 C before hvc vent open."""
-        steps += [
-            (f"{until} timeout <time:number 0..> s|min|h", "Wait for a value to pass a limit" + why,
-             _until(published)),
-            (f"{until} C|K timeout <time:number 0..> s|min|h",
-             "Wait for a temperature in °C or K to pass a limit" + why, _until(published)),
-        ]
+        steps += _conditions(published)
     from formslab.sequence import block as blocks_
 
     blocks, _ = blocks_.available(labels)
@@ -564,6 +639,48 @@ def _grammar(scripts):
                                                                             "values": b.values(captured)}))
              for b in blocks.values()]
     return Grammar(steps + cast.label_commands(scripts, build=_command) + calls), labels, published
+
+
+_WAIT_WHY = """
+ Runs until the condition holds, then goes on. A number is compared with <, <=, >
+ or >=; an on/off value is = true or = false, or != either. If the condition does
+ not hold within the time given, the run stops here and each rScript's shutdown
+ runs: a wait on hardware always has a limit. Add or go on at the end to carry on
+ instead."""
+_PROOF_WHY = """ Just before a command, a wait that stops the run also proves that
+ command's prerequisite: until platenT < 60 C before hvc vent open."""
+_LOOP_WHY = """
+ The steps between this line and its end line run again and again. Before each
+ pass the condition is read: once it holds, the loop is done and the plan goes on
+ after its end line, so a loop whose condition already holds runs no pass. A pass
+ is never cut short; a change during a pass is seen when that pass ends. If the
+ condition does not hold within the time given, the run stops there. Add or go on
+ at the end to leave the loop and carry on instead."""
+
+
+def _conditions(published):
+    """The `until` and `repeat until` patterns for the values published: numbers
+    against a limit, on/off values (unit `bool`) against true or false; each with
+    its time limit, `within`, and with or without `or go on`."""
+    numbers = [v for v, u in published.items() if u != "bool"]
+    flags = [v for v, u in published.items() if u == "bool"]
+    within = "within <time:number 0..> s|min|h"
+    shapes = []                                      # (condition, summary end)
+    if numbers:
+        number = f"<value:{'|'.join(numbers)}> <|<=|>|>= <limit:number>"
+        shapes += [(number, "a value passes a limit"), (f"{number} C|K", "a temperature passes a limit")]
+    if flags:
+        shapes += [(f"<value:{'|'.join(flags)}> =|!= true|false", "a value is true or false")]
+    out = []
+    for cond, what in shapes:
+        for go_on in (False, True):
+            tail = " or go on" if go_on else ""
+            build = _until(published, go_on)
+            out += [(f"until {cond} {within}{tail}", f"Wait until {what}{tail}"
+                     + _WAIT_WHY + ("" if go_on else _PROOF_WHY), build),
+                    (f"repeat until {cond} {within}{tail}", f"Repeat until {what}{tail}" + _LOOP_WHY,
+                     lambda *a, build=build: _loop(until=build(*a).params))]
+    return out
 
 
 def _publisher(variable, scripts):

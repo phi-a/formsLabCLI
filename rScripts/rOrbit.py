@@ -17,7 +17,6 @@ from datetime import datetime, timedelta, timezone
 from formslab.console.cast.castutils import ReportResult, TakeCommand, UpdateStatus
 from formslab.orbit import file as orbitfile
 from formslab.orbit.propagate import kepler
-from formslab.orbit.propagate.constants import R_E
 
 name = os.path.splitext(os.path.basename(__file__))[0]
 LABEL = "orbit"
@@ -45,7 +44,11 @@ def COMMANDS():
     ]
 
 
-VARIABLES = [("InUmbra", None), ("UmbraDuration", "s"), ("UmbraTimeRemaining", "s"),
+# Nothing is published until a request chooses an orbit, so a plan that waits on
+# one of the VARIABLES before `orbit follow` or `orbit replay` is refused when read.
+STARTED_BY = ("follow", "replay")
+
+VARIABLES = [("InUmbra", "bool"), ("UmbraDuration", "s"), ("UmbraTimeRemaining", "s"),
              ("NextUmbra", "s"), ("OrbitBeta", "deg"), ("OrbitAltitude", "km")]
 
 
@@ -90,29 +93,20 @@ def _choose(request):
 
 
 def where(el, t, spans):
-    """What rOrbit publishes for orbit time `t`, given the umbra `spans` around it."""
-    current = next(((a, b) for a, b in spans if a <= t < b), None)
-    coming = next(((a, b) for a, b in spans if a > t), None)
-    r, _ = kepler.state(el, t)
+    """What rOrbit publishes for orbit time `t`, given the umbra `spans` around it:
+    the live panel's own reading (kepler.situation), in the published names."""
+    s = kepler.situation(el, t, spans)
     return {
-        "InUmbra": 1 if current else 0,
-        # In umbra, this umbra's whole length; in sunlight, the next one's (rSLTA sets
-        # its exposure from it ahead of time); 0 when there is none.
-        "UmbraDuration": ((current or coming)[1] - (current or coming)[0]).total_seconds()
-                         if current or coming else 0.0,
-        "UmbraTimeRemaining": (current[1] - t).total_seconds() if current else 0.0,
-        "NextUmbra": (coming[0] - t).total_seconds() if coming else float("nan"),
-        "OrbitBeta": math.degrees(kepler.beta(el, t)),
-        "OrbitAltitude": (sum(c * c for c in r) ** 0.5 - R_E) / 1000,
+        "InUmbra": 1 if s["in_umbra"] else 0,
+        "UmbraDuration": s["umbra_duration_s"],
+        "UmbraTimeRemaining": s["umbra_left_s"],
+        "NextUmbra": float("nan") if s["next_umbra_s"] is None else s["next_umbra_s"],
+        "OrbitBeta": s["beta_deg"],
+        "OrbitAltitude": s["altitude_km"],
     }
 
 
-def spans_around(el, t):
-    """Umbra spans from one period before `t` to three after, and the time after
-    which they no longer reach far enough: so an umbra under way, and the next one,
-    are always whole."""
-    period = timedelta(seconds=el.period)
-    return kepler.umbra_spans(el, t - period, t + 3 * period), t + period
+spans_around = kepler.umbra_window       # an umbra under way, and the next, are whole in it
 
 
 def rScript(run):

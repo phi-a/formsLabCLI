@@ -23,15 +23,29 @@
     liveSeq: 0, liveTimer: null,              // the orbit's live panel
   };
 
-  const { kindOf, withHeader, missingHeaders, missingElements } = window.PlanText;
+  const { kindOf, withHeader, missingHeaders, missingElements, depths, indent, partner, withLoopEnd, withoutLoop } = window.PlanText;
   const isOrbit = () => S.kind === "orbit";
   const isBlock = () => S.kind === "block";
   const blockIcon = (title) => el("span", { class: "part-icon", "data-part": "block", "data-fam": "block",
                                             title: title || "A block", role: "img", "aria-label": "Block:" });
+  // Phrases that only come whole, drawn as one choice.
+  const PHRASES = [["or", "go", "on"]];
+  // What a wait's time limit means, on its `within`.
+  const WITHIN = "The time this wait has. If it has not happened within it, the run stops. "
+               + "Add or go on at the end to carry on instead.";
+  // A loop's two lines, `repeat` and `end`, carry a circular arrow.
+  const isLoopWord = (w) => ["repeat", "end"].includes((w || "").toLowerCase());
+  const loopIcon = () => el("span", { class: "part-icon", "data-part": "loop", "data-fam": "flow",
+                                      title: "A loop: the steps between repeat and end run again", role: "img",
+                                      "aria-label": "Loop:" });
+  const planIcon = () => el("span", { class: "part-icon", "data-part": "plan", "data-fam": "plan",
+                                      title: "A plan: steps the host runs", role: "img", "aria-label": "Plan:" });
+  const orbitIcon = () => el("span", { class: "part-icon", "data-part": "shape", "data-fam": "orbit",
+                                       title: "An orbit file", role: "img", "aria-label": "Orbit:" });
   // The colour of a line: an orbit's is always the orbit's; a plan's, its first word's.
   const famFor = (word) => (isOrbit() ? "orbit" : famOf(word));
   const splitWords = (line) => line.trim().split(/\s+/).filter(Boolean);
-  const text = () => S.lines.join("\n") + "\n";
+  const text = () => indent(S.lines).join("\n") + "\n";        // the steps in a loop two spaces in
   const dirty = () => S.name !== null && text() !== S.original;     // nothing open: nothing to lose
   const scriptsOf = () => {
     const load = S.lines.find((l) => kindOf(l) === "load");
@@ -55,9 +69,9 @@
     for (const p of r.plans) {
       const b = el("button", { type: "button", class: p.name === S.name ? "active" : "" });
       const name = el("span", {}, p.name);
-      if (p.kind === "orbit") name.prepend(el("span", { class: "part-icon", "data-part": "shape", "data-fam": "orbit",
-                                                        title: "An orbit file", role: "img", "aria-label": "Orbit:" }));
+      if (p.kind === "orbit") name.prepend(orbitIcon());
       if (p.kind === "block") name.prepend(blockIcon("A block: steps a plan calls by name"));
+      if (p.kind === "plan") name.prepend(planIcon());
       b.append(name, el("small", {}, (p.kind === "block" ? "block, " : "") + (p.editable ? "yours" : "shipped")
         + (p.error ? (p.kind === "orbit" ? " - not whole" : p.kind === "block" ? " - cannot be used" : " - cannot run") : "")));
       if (p.error) b.title = p.error;
@@ -93,6 +107,7 @@
 
   function renderAll() {
     $("#plan-title").textContent = S.name || "No plan open";
+    $("#plan-icon").replaceChildren(...(!S.name ? [] : isOrbit() ? [orbitIcon()] : isBlock() ? [blockIcon()] : [planIcon()]));
     const badge = $("#plan-badge");
     badge.textContent = !S.name ? "" : S.editable ? "yours" : "shipped: Edit to change it";
     $("#plan-text").hidden = !S.raw;
@@ -123,6 +138,11 @@
     }, 150);
   }
 
+  // One row's tool menu open at a time; a click anywhere else closes it.
+  document.addEventListener("click", (ev) => {
+    for (const d of document.querySelectorAll("#plan-rows details.tools[open]")) if (!d.contains(ev.target)) d.open = false;
+  });
+
   for (const kind of ["focusin", "click"]) {
     $("#plan-rows").addEventListener(kind, (ev) => {
       const idx = S.rows.findIndex((r) => r.row.contains(ev.target));
@@ -135,22 +155,31 @@
     box.replaceChildren();
     S.rows = [];
     if (!S.name) { box.append(el("p", { class: "note" }, "Pick a plan on the left, or make a new one.")); return; }
+    const depth = depths(S.lines);
     S.lines.forEach((line, i) => {
       const row = el("div", { class: "prow " + kindOf(line) });
+      if (depth[i]) { row.dataset.depth = depth[i]; row.style.setProperty("--depth", depth[i]); }   // inside a loop
       row.append(el("div", { class: "no" }, String(i + 1)));
       const body = el("div", { class: "body" });
       row.append(body);
-      const tools = el("div", { class: "tools" });
+      // The row's tools, in one small menu so the step keeps the width.
+      const tools = el(S.editable ? "details" : "div", { class: "tools" });
       if (S.editable) {
         const header = kindOf(line) === "load" || kindOf(line) === "record";     // their place is fixed
-        for (const [label, title, fn] of [...(header ? [] : [["^", "Move up", () => move(i, -1)], ["v", "Move down", () => move(i, 1)]]),
-                                          ["+", isOrbit() ? "Insert an element below" : "Insert a step below", () => insert(i + 1, "")],
-                                          ["#", "Insert a comment below", () => insert(i + 1, "# ")],
-                                          ["x", "Delete this line", () => remove(i)]]) {
+        const loop = partner(S.lines, i) >= 0;
+        const menu = el("div", { class: "menu" });
+        for (const [label, title, fn] of [...(header ? [] : [["Move up", "Move up", () => move(i, -1)],
+                                                              ["Move down", "Move down", () => move(i, 1)]]),
+                                          [isOrbit() ? "Insert an element below" : "Insert a step below",
+                                           isOrbit() ? "Insert an element below" : "Insert a step below", () => insert(i + 1, "")],
+                                          ["Insert a comment below", "Insert a comment below", () => insert(i + 1, "# ")],
+                                          [loop ? "Delete the loop (keep its steps)" : "Delete this line",
+                                           "Delete this line", () => remove(i)]]) {
           const b = el("button", { type: "button", title }, label);
-          b.addEventListener("click", fn);
-          tools.append(b);
+          b.addEventListener("click", () => { tools.open = false; fn(); });
+          menu.append(b);
         }
+        tools.append(el("summary", { title: "Move, insert or delete", "aria-label": "Line " + (i + 1) + " tools" }, "⋯"), menu);
       }
       row.append(tools, el("div", { class: "rowerr" }), el("div", { class: "rowwarn" }));
       box.append(row);
@@ -179,15 +208,24 @@
     else renderStep(i, body);
   }
 
-  // A block's own line: its name, then the words a plan writes to call it, each input
-  // as <name:number lo..hi unit>. Plain text, checked as it is typed.
+  // A block's own line: its name in a box of its own (changing it renames the block),
+  // then the words a plan writes after the name to call it, each input as
+  // <name:number lo..hi unit>. Plain text, checked as it is typed.
   function renderBlockLine(i, body) {
-    const rest = S.lines[i].trim().replace(/^block\s*/i, "");
-    const input = el("input", { class: "tok text", value: rest, "aria-label": "The block's name and call",
-                                title: "The block's name, then the words a plan writes to call it, e.g. "
-                                       + "pumpdown to <pressure:number 0.01..760 Torr>" });
-    input.addEventListener("input", () => setLine(i, "block " + input.value.trim(), false));
-    body.append(h("div", { class: "chain" }, blockIcon(), el("span", { class: "tok verb", "data-fam": "block" }, "block"), input));
+    const [, rest = ""] = S.lines[i].trim().replace(/^block\s*/i, "").match(/^\S*\s*(.*)$/) || [];
+    const name = el("input", { value: S.name, "aria-label": "The block's name", size: Math.max(4, S.name.length),
+                               title: "The block's name: a plan writes it to call the block. Change it to rename the block." });
+    name.addEventListener("keydown", (ev) => { if (ev.key === "Enter") name.blur(); });
+    name.addEventListener("change", () => {
+      const wanted = name.value.trim().toLowerCase();
+      if (wanted && wanted !== S.name) renameTo(wanted); else name.value = S.name;
+    });
+    const call = el("input", { class: "tok text", value: rest, "aria-label": "The words after the name",
+                               title: "The words a plan writes after the name to call the block, e.g. "
+                                      + "to <pressure:number 0.01..760 Torr>" });
+    call.addEventListener("input", () => setLine(i, `block ${S.name} ${call.value.trim()}`.trim(), false));
+    body.append(h("div", { class: "chain" }, blockIcon(), el("span", { class: "tok verb", "data-fam": "block" }, "block"),
+                  h("span", { class: "tok name", "data-fam": "block" }, name), call));
   }
 
   // A read-only plan is drawn with the same tokens, from the server's reading of it.
@@ -220,6 +258,8 @@
         }
       }
       if (idx === 0 && fam === "block") line.append(blockIcon());
+      if (idx === 0 && isLoopWord(t.text)) line.append(loopIcon());
+      if (t.text.toLowerCase() === "within" && fam === "flow") tok.title = WITHIN;
       line.append(tok);
     });
     return line;
@@ -248,8 +288,16 @@
   }
 
   function setLine(i, value, rerender) {
+    const was = S.lines[i].trim().split(/\s+/)[0].toLowerCase(), now = value.trim().split(/\s+/)[0].toLowerCase();
     S.lines[i] = value;
-    if (rerender) renderLine(i);
+    if (now === "repeat" && was !== "repeat") {                // a new loop: its end, and a step to fill in
+      const r = withLoopEnd(S.lines, i);
+      S.lines = r.lines;
+      if (r.fresh >= 0) S.fresh = r.fresh;
+    }
+    // A line that becomes, or stops being, `repeat` or `end` moves every line after it in or out.
+    if (isLoopWord(was) !== isLoopWord(now)) { renderRows(); showErrors(); }
+    else if (rerender) renderLine(i);
     scheduleCheck();
     updateButtons();
   }
@@ -326,6 +374,20 @@
         continue;
       }
       const current = words[k];
+      // A phrase that can only come whole (`or go on`) is one choice, not a box per word.
+      const phrase = PHRASES.find((p) => opts.length === 1 && opts[0].kind === "word" && opts[0].text.toLowerCase() === p[0]);
+      if (phrase) {
+        const has = words.slice(k, k + phrase.length).join(" ").toLowerCase() === phrase.join(" ");
+        const sel = el("select", { class: "tok kw" + (has ? "" : " more"), "data-fam": famFor(words[0]),
+                                   "aria-label": "More", title: WITHIN });
+        sel.append(el("option", { value: "" }, has ? "(remove)" : "…"), el("option", { value: phrase.join(" ") }, phrase.join(" ")));
+        sel.value = has ? phrase.join(" ") : "";
+        sel.addEventListener("change", () => apply(words.slice(0, k).concat(sel.value ? phrase : [], has ? words.slice(k + phrase.length) : [])));
+        chain.append(sel);
+        if (!has) break;
+        k += phrase.length - 1;
+        continue;
+      }
       if (opts.some((o) => o.kind === "rest")) {              // the rest of the line is free text
         const rest = el("input", { value: words.slice(k).join(" "), placeholder: "message", "aria-label": "Message" });
         rest.addEventListener("input", () => { S.lines[i] = words.slice(0, k).concat(splitWords(rest.value)).join(" "); scheduleCheck(); updateButtons(); });
@@ -338,16 +400,22 @@
         const missing = missingElements(S.lines);
         wordOpts = wordOpts.filter((o) => missing.includes(o.text.toLowerCase()) || o.text.toLowerCase() === (current || "").toLowerCase());
       }
+      if (!isOrbit() && k === 0 && (current || "").toLowerCase() !== "end" && !depths(S.lines)[i]) {
+        wordOpts = wordOpts.filter((o) => o.text.toLowerCase() !== "end");   // only inside an open loop
+      }
       if (!slot) {                                            // only fixed words: a dropdown
         const chosen = current === undefined ? null : wordOpts.find((o) => o.text.toLowerCase() === current.toLowerCase());
         const part = chosen && chosen.part;
         const sel = el("select", { "aria-label": part ? partName(part) : "Choice " + (k + 1),
-          class: "tok " + (k === 0 ? "verb" : "kw") + (k === 0 && current === undefined ? " empty" : ""),
+          class: "tok " + (k === 0 ? "verb" : "kw") + (k === 0 && current === undefined ? " empty" : "")
+                 + (k > 0 && current === undefined && r.complete ? " more" : ""),   // optional: the step is whole without it
           "data-fam": famFor(k === 0 ? current : words[0]) });
         if (part) { sel.dataset.part = part; sel.title = partName(part); }
+        if ((current || "").toLowerCase() === "within") sel.title = WITHIN;
         if (part && k === (isOrbit() ? 0 : 1)) chain.append(partIcon(part, famFor(words[0])));   // before the word naming it
         if (k === 0 && current !== undefined && famOf(current) === "block") chain.append(blockIcon());
-        if (current === undefined) sel.append(el("option", { value: "" }, k > 0 ? "..." : isOrbit() ? "add an element..." : "add a step..."));
+        if (k === 0 && isLoopWord(current)) chain.append(loopIcon());
+        if (current === undefined) sel.append(el("option", { value: "" }, k > 0 ? "…" : isOrbit() ? "add an element..." : "add a step..."));
         const addable = k === 0 && current === undefined && !isOrbit()
           ? missingHeaders(S.lines).filter((h) => !(isBlock() && h === "record")) : [];   // load / record, if deleted
         for (const kind of addable) {
@@ -377,7 +445,9 @@
       } else {                                                // a value to type, maybe also fixed words
         const listId = `dl-${i}-${k}`;
         const isWord = current !== undefined && wordOpts.some((o) => o.text.toLowerCase() === current.toLowerCase());
-        const lim = slot.lo !== null || slot.hi !== null ? `${slot.lo ?? ""}..${slot.hi ?? ""}` : slot.text;
+        // The box says what it takes: a number in its range, or the word(s) the list offers.
+        const lim = (slot.lo !== null || slot.hi !== null ? `${slot.lo ?? ""}..${slot.hi ?? ""}` : slot.text)
+          + (wordOpts.length && wordOpts.length <= 2 ? " or " + wordOpts.map((o) => o.text).join(" or ") : "");
         const input = el("input", { value: current ?? "", placeholder: lim, size: Math.max(4, lim.length), class: slot.kind === "text" ? "wide" : "",
                                     "aria-label": limitsOf(slot), title: (slot.help || "") + (wordOpts.length ? " -- or pick a word from the list" : "") });
         const box = h("span", { class: "tok " + (isWord ? "kw" : "value"), "data-fam": famFor(words[0]) }, input);
@@ -429,7 +499,11 @@
     S.fresh = value === "" ? at : -1;
     renderRows(); scheduleCheck(); updateButtons();
   }
-  function remove(i) { S.lines.splice(i, 1); S.fresh = -1; renderRows(); scheduleCheck(); updateButtons(); }
+  // Deleting a loop's `repeat` or its `end` deletes both; the steps between them stay.
+  function remove(i) {
+    if (partner(S.lines, i) >= 0) S.lines = withoutLoop(S.lines, i); else S.lines.splice(i, 1);
+    S.fresh = -1; renderRows(); scheduleCheck(); updateButtons();
+  }
   function move(i, d) {
     const j = i + d;
     if (j < 0 || j >= S.lines.length) return;
@@ -457,7 +531,11 @@
       const holder = r.row.querySelector(".rowerr");
       const msgs = new Set(S.errors.filter((e) => e.line === idx + 1).map((e) => e.message));
       if (holder.dataset.stepError) msgs.add(holder.dataset.stepError);
-      holder.textContent = [...msgs].join("  ");
+      // A step still being written is not a mistake: say so plainly; the full list is in the tooltip.
+      const unfinished = S.editable && msgs.size > 0 && [...msgs].every((m) => m.startsWith("incomplete:"));
+      holder.classList.toggle("unfinished", unfinished);
+      holder.title = unfinished ? [...msgs].join("  ") : "";
+      holder.textContent = unfinished ? "Unfinished: choose what comes next in the last box." : [...msgs].join("  ");
       // A warning: a rule this plan does not establish. It can still run; the step is checked live.
       const warn = msgs.size ? [] : S.warnings.filter((w) => w.line === idx + 1).map((w) => w.message);
       r.row.querySelector(".rowwarn").textContent = warn.length ? `\u26a0 ${warn.join("  ")}` : "";
@@ -477,6 +555,8 @@
     $("#plan-raw").disabled = !S.name;
     $("#plan-delete").disabled = !S.name || !S.editable || S.busy;
     $("#plan-delete").hidden = !S.editable;
+    $("#plan-rename").hidden = !S.name || !S.editable;
+    $("#plan-rename").disabled = S.busy;
     $("#plan-edit").hidden = !S.name || S.editable;
     $("#plan-edit").disabled = S.busy;
     $("#plan-ship").hidden = !S.name || !S.editable;
@@ -528,6 +608,28 @@
       say(`Deleted "${r.deleted}". It is kept in the trash folder if you need it back.`);
     } catch (e) { say(e.message, true); }
   });
+  // Rename one of yours. A block's calls and an orbit's `orbit follow` lines in your
+  // plans and blocks are renamed with it, by the server, in the same step.
+  async function renameTo(wanted) {
+    if (dirty()) { say("Save your changes first, then rename.", true); renderAll(); return; }
+    const refs = isBlock() ? " Plans and blocks of yours that call it are updated."
+      : isOrbit() ? " Plans and blocks of yours that follow it are updated." : "";
+    if (!confirm(`Rename the ${S.kind} "${S.name}" to "${wanted}"?${refs}`)) { renderAll(); return; }
+    S.busy = true; updateButtons();
+    try {
+      const r = await api("/api/plan/rename", { name: S.name, new: wanted, base_hash: S.hash });
+      load(r);
+      say(`Renamed to "${r.name}".` + (r.updated.length ? ` Updated to match: ${r.updated.join(", ")}.` : ""));
+      await loadList();
+    } catch (e) { say(e.message, true); renderAll(); }
+    finally { S.busy = false; updateButtons(); }
+  }
+  $("#plan-rename").addEventListener("click", () => {
+    const wanted = prompt(isBlock() ? "New name for the block (one lowercase word):"
+                                    : "New name (letters, digits, - and _):", S.name);
+    if (wanted && wanted.trim() !== S.name) renameTo(wanted.trim());
+  });
+
   // Edit and Ship move the file: out of formsLabCLI's plans folder into yours, and back.
   async function move(action, question, done) {
     if (!confirm(question)) return;
@@ -655,7 +757,7 @@
   }
 
   function renderLive(box, r) {
-    const title = el("div", { class: "title" }, "Now, by two-body motion");
+    const title = el("div", { class: "title" }, "Now");
     box.classList.toggle("stale", !!r.error);
     if (r.error) { box.replaceChildren(title, el("p", { class: "details" }, `Not propagated: ${r.error}`)); return; }
     const deg = (x) => `${x.toFixed(1)}°`;

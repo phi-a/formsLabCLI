@@ -22,7 +22,7 @@ load rLACO rNotThere
 record every 0 s
 hvc pump onn
 hold 30s
-until chamberp below 5
+until chamberp < 5
 orbit.a = 7
 log fine
 psu1 ch1 on
@@ -37,7 +37,7 @@ def test_a_draft_reports_every_problem_with_its_line():
     assert errors[3] == "record needs a positive duration"
     assert "did you mean 'on'" in errors[4]
     assert "write `30 s`, with a space" in errors[5]
-    assert "until needs `timeout" in errors[6]
+    assert "until needs `within" in errors[6]
     assert "FORMS mission configuration" in errors[7]
     assert errors[9] == "psu1 is declared by rPSU; add it to `load`"
     assert 8 not in errors and 1 not in errors                         # the log line and the comment are fine
@@ -73,7 +73,7 @@ def test_every_shipped_plan_checks_clean(name):
 def test_options_at_every_position_of_a_step():
     r = line_options(["rLACO"], ["hvc", "platen"])
     first, second, third = r["positions"]
-    assert [o["text"] for o in first] == ["hold", "log", "until", "hvc", "eclipse", "pumpdown", "sunrise", "vent"]   # blocks last
+    assert [o["text"] for o in first] == ["hold", "log", "repeat", "end", "until", "hvc", "eclipse", "pumpdown", "sunrise", "vent"]   # blocks last
     assert [o["text"] for o in second][:3] == ["platen", "shroud", "vacuum"]
     assert third[0] == {"kind": "number", "text": "temperature", "help": "Set the platen temperature",
                         "lo": -180.0, "hi": 200.0, "unit": "C", "part": "zone"}
@@ -312,7 +312,7 @@ def roles(text):
 
 def test_every_word_gets_its_role_in_the_grammar():
     got = roles("# pump down\nload rLACO rNope\nrecord every 5 s\n\nhvc pump on\nhold 15 s\n"
-                "until platenT above 10 C timeout 30 s\nlog pumpdown done: closed\n")
+                "until platenT > 10 C within 30 s\nlog pumpdown done: closed\n")
     assert got == [
         [("# pump down", "comment")],
         [("load", "verb"), ("rLACO", "script"), ("rNope", "bad")],
@@ -320,8 +320,8 @@ def test_every_word_gets_its_role_in_the_grammar():
         [],
         [("hvc", "verb"), ("pump", "kw"), ("on", "kw")],
         [("hold", "verb"), ("15", "value"), ("s", "kw")],
-        [("until", "verb"), ("platenT", "kw"), ("above", "kw"), ("10", "value"), ("C", "kw"),
-         ("timeout", "kw"), ("30", "value"), ("s", "kw")],
+        [("until", "verb"), ("platenT", "kw"), (">", "kw"), ("10", "value"), ("C", "kw"),
+         ("within", "kw"), ("30", "value"), ("s", "kw")],
         [("log", "verb"), ("pumpdown", "text"), ("done:", "text"), ("closed", "text")],
     ]
 
@@ -454,12 +454,86 @@ def test_edit_and_ship_over_http(client, shipped, monkeypatch):
     assert "tester edit plan ours" in log and "tester ship plan ours" in log
 
 
+# --- rename -------------------------------------------------------------------------------------------------
+
+SEAL = "# Seal the chamber\nblock seal\nload rLACO\n\nhvc vent close\n"
+
+
+def test_renaming_a_block_renames_its_line_and_your_calls_to_it():
+    saved = plans.save("seal", SEAL, None, as_new=True, kind="block")
+    plans.save("mine", "load rLACO\n\nseal\n  seal\n# seal stays: a comment\nlog seal is done\n", None, as_new=True)
+    out = plans.rename("seal", "close_up", saved["hash"])
+    assert out["name"] == "close_up" and out["kind"] == "block" and out["updated"] == ["mine"]
+    assert "block close_up\n" in out["text"] and not (user_plans_dir() / "seal.block").exists()
+    assert plans.read("mine")["text"] == "load rLACO\n\nclose_up\n  close_up\n# seal stays: a comment\nlog seal is done\n"
+    assert plans.read("mine")["errors"] == []
+
+
+def test_renaming_an_orbit_renames_the_plans_that_follow_it():
+    orbit = (Path(__file__).resolve().parents[1] / "plans" / "leo_noon.orbit").read_text(encoding="utf-8")
+    saved = plans.save("my_orbit", orbit, None, as_new=True, kind="orbit")
+    plans.save("watch", "load rOrbit\n\norbit follow my_orbit\nhold 1 s\n", None, as_new=True)
+    out = plans.rename("my_orbit", "noon2", saved["hash"])
+    assert out["updated"] == ["watch"] and "orbit follow noon2" in plans.read("watch")["text"]
+    assert plans.read("watch")["errors"] == []
+
+
+def test_a_plan_is_renamed_and_nothing_else_changes():
+    saved = plans.save("mine", "load rSMTC08\nhold 1 s\n", None, as_new=True)
+    out = plans.rename("mine", "Mine-2", saved["hash"])
+    assert out["name"] == "Mine-2" and out["updated"] == [] and find_plan("Mine-2") and find_plan("mine") is None
+
+
+def test_rename_refuses_what_it_should():
+    saved = plans.save("seal", SEAL, None, as_new=True, kind="block")
+    for new, code in (("Two Words", 400), ("hold", 400), ("hvc", 409), ("tvac", 409), ("vent", 409)):
+        with pytest.raises(plans.PlanFileError) as e:
+            plans.rename("seal", new, saved["hash"])
+        assert e.value.code == code, new
+    with pytest.raises(plans.PlanFileError, match="changed on disk"):
+        plans.rename("seal", "other", "stale")
+    with pytest.raises(plans.PlanFileError, match="shipped") as e:
+        plans.rename("tvac", "tvac2", sha(find_plan("tvac")))
+    assert e.value.code == 403
+
+
+def test_a_block_a_shipped_plan_calls_is_not_renamed(shipped):
+    saved = plans.save("seal", SEAL, None, as_new=True, kind="block")
+    (shipped / "uses_seal.plan").write_text("load rLACO\nseal\n", encoding="utf-8")
+    with pytest.raises(plans.PlanFileError, match="uses_seal") as e:
+        plans.rename("seal", "close_up", saved["hash"])
+    assert e.value.code == 409 and (user_plans_dir() / "seal.block").exists()
+
+
+def test_a_change_of_case_only_keeps_the_file():
+    saved = plans.save("mine", "load rSMTC08\nhold 1 s\n", None, as_new=True)
+    assert plans.rename("mine", "MINE", saved["hash"])["text"] == "load rSMTC08\nhold 1 s\n"
+    assert [p.name for p in user_plans_dir().glob("*.plan")] == ["MINE.plan"]
+
+
+def test_rename_over_http(client, monkeypatch):
+    saved = plans.save("seal", SEAL, None, as_new=True, kind="block")
+    monkeypatch.setattr(api, "host", lambda: {"pid": 1, "plan": "seal", "started": "t", "output": "/x"})
+    assert client.json("POST", "/api/plan/rename", {"name": "seal", "new": "x", "base_hash": saved["hash"]})[0] == 409
+    monkeypatch.setattr(api, "host", lambda: None)
+    code, body = client.json("POST", "/api/plan/rename", {"name": "seal", "new": "close_up", "base_hash": saved["hash"]})
+    assert code == 200 and body["name"] == "close_up"
+    assert "tester rename block seal to close_up" in (config.run_dir() / "gui.log").read_text(encoding="utf-8")
+
+
+def test_a_blocks_name_is_drawn_as_its_name():
+    from formslab.sequence.block import tokens
+    assert [(t["text"], t["role"]) for t in tokens(SEAL)[1]] == [("block", "verb"), ("seal", "name")]
+    assert [t["role"] for t in tokens("block pumpdown to <p:number 1..2 Torr>\nload rLACO\n")[0]] == \
+        ["verb", "name", "kw", "value"]
+
+
 # --- which rScripts a plan's steps use (to put a deleted load line back) -----------------------------------
 
 def test_the_rscripts_the_steps_use_are_found_from_the_steps():
     from formslab.sequence.plan import needed_rscripts
-    assert needed_rscripts("hvc vent open\nuntil chamberP above 700 timeout 1 min\n") == ["rLACO"]
-    assert needed_rscripts("psu1 ch1 on\nuntil TC01 above 30 C timeout 1 min\nhvc stop\n") == ["rLACO", "rPSU", "rSMTC08"]
+    assert needed_rscripts("hvc vent open\nuntil chamberP > 700 within 1 min\n") == ["rLACO"]
+    assert needed_rscripts("psu1 ch1 on\nuntil TC01 > 30 C within 1 min\nhvc stop\n") == ["rLACO", "rPSU", "rSMTC08"]
     assert needed_rscripts("# a note\nload rLACO\nrecord every 2 s\nlog hi\nhold 5 s\n") == []   # nothing uses an instrument
     assert needed_rscripts("") == [] and needed_rscripts("hvc teleport now\nnonsense\n") == ["rLACO"]
 

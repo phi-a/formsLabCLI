@@ -35,23 +35,23 @@ def plan(*lines):
 
 def test_a_plan_parses_into_segments():
     p = parse_plan("# a comment\nload rPSU rSMTC08\nrecord every 5 s\n\n"
-                   "log go\npsu1 CH1 on\nhold 2 min\nuntil TC01 above 30 C timeout 1 min\n")
+                   "log go\npsu1 CH1 on\nhold 2 min\nuntil TC01 > 30 C within 1 min\n")
 
     segs = p.sequence.segments
     assert [s.verb for s in segs] == ["log", "command", "hold", "until"]
     assert segs[0].params == {"message": "go"}
     assert segs[1].params == {"label": "psu1", "request": {"1": {"on": True}}, "timeout_s": 10.0}
     assert segs[2].params == {"seconds": 120.0}
-    assert segs[3].params == {"variable": "TC01", "side": "above", "value": 30.0, "unit": "C",
+    assert segs[3].params == {"variable": "TC01", "op": ">", "value": 30.0, "unit": "C", "go_on": False,
                               "timeout_s": 60.0}
     assert [s.label for s in segs] == ["log go", "psu1 CH1 on", "hold 2 min",
-                                       "until TC01 above 30 C timeout 1 min"]
+                                       "until TC01 > 30 C within 1 min"]
     assert p.rscripts == ("rPSU", "rSMTC08") and (p.record_interval, p.record_unit) == (5.0, "seconds")
     assert p.sequence.to_manifest()["clock"] == "wall"
 
 
 def test_record_and_durations_take_s_min_h():
-    p = parse_plan("load rSMTC08\nrecord every 2 min\nhold 1.5 h\nuntil TC01 below 300 timeout 30 s\n")
+    p = parse_plan("load rSMTC08\nrecord every 2 min\nhold 1.5 h\nuntil TC01 < 300 within 30 s\n")
     assert (p.record_interval, p.record_unit) == (2.0, "minutes")
     assert p.sequence.segments[0].params == {"seconds": 5400.0}
     assert p.sequence.segments[1].params["timeout_s"] == 30.0
@@ -62,7 +62,7 @@ def test_record_and_durations_take_s_min_h():
     (PLAN + "orbit.a = 7000\n", ":3: `orbit.a` is FORMS mission configuration"),
     (PLAN + "@variables\ndef declare():\n    pass\n", "FORMS mission code"),
     (plan("propagate 60 s"), "`propagate` is a FORMS mission operation"),
-    (plan("until TC01 above 30 C"), "a wait on hardware always has a limit"),
+    (plan("until TC01 > 30 C"), "a wait on hardware always has a limit"),
     (plan("psu9 ch1 on"), "got 'psu9'"),
     (plan("psu1 ch4 on"), "expected ch1, ch2, ch3 or update after 'psu1', got 'ch4'; did you mean 'ch3'?"),
     (plan("hold -1 s"), "-1 must be >= 0"),
@@ -72,9 +72,9 @@ def test_record_and_durations_take_s_min_h():
     (plan("hold 30 min # soak"), "comments go on their own line"),
     (plan("hvc pump on"), "hvc is declared by rLACO; add it to `load`"),
     (plan("tc read"), "tc takes no commands"),
-    (plan("until chamberP below 5 timeout 1 min"), "chamberP is published by rLACO; add it to `load`"),
-    (plan("until TC99 below 5 timeout 1 min"), "after 'until', got 'TC99'"),
-    ("load rLACO\nuntil chamberP below 5 C timeout 1 min\n", "chamberP is in Torr"),
+    (plan("until chamberP < 5 within 1 min"), "chamberP is published by rLACO; add it to `load`"),
+    (plan("until TC99 < 5 within 1 min"), "after 'until', got 'TC99'"),
+    ("load rLACO\nuntil chamberP < 5 C within 1 min\n", "chamberP is in Torr"),
     (plan("hold 1 s", "load rLACO"), ":3: `load` goes before the first step"),
     ("load rPSU\nload rSMTC08\nhold 1 s\n", "`load` appears twice"),
     ("hold 1 s\n", "a plan starts with `load"),
@@ -89,7 +89,7 @@ def test_what_a_plan_refuses(source, needle):
 
 
 def test_names_and_keywords_ignore_case_but_keep_their_spelling():
-    p = parse_plan(plan("HOLD 1 S", "until tc01 ABOVE 30 c TIMEOUT 1 MIN"))
+    p = parse_plan(plan("HOLD 1 S", "until tc01 > 30 c WITHIN 1 MIN"))
     assert p.sequence.segments[1].params["variable"] == "TC01"
     assert p.sequence.segments[1].params["unit"] == "C"
 
@@ -175,8 +175,8 @@ def command(label, request, timeout_s=10.0):
     return Segment("command", {"label": label, "request": request, "timeout_s": timeout_s})
 
 
-def until(variable, side, value, unit, timeout_s):
-    return Segment("until", {"variable": variable, "side": side, "value": value, "unit": unit,
+def until(variable, op, value, unit, timeout_s, go_on=False):
+    return Segment("until", {"variable": variable, "op": op, "value": value, "unit": unit, "go_on": go_on,
                              "timeout_s": timeout_s})
 
 
@@ -234,7 +234,7 @@ def rScript(run):
     run.publish("TC01", (run.get("TC01") or 293.15) + 1.0, "K")
 ''')
     rscripts.load(run, ["rA"])
-    _, _, go = start(run, [until("TC01", "above", 25.0, "C", 60)], fake_time)
+    _, _, go = start(run, [until("TC01", ">", 25.0, "C", 60)], fake_time)
 
     go()
 
@@ -245,7 +245,7 @@ def test_until_times_out_with_the_last_value(run, fake_time, script_dir):
     write(script_dir, "rA", 'def rScript(run):\n'
                             '    run.publish("TC01", 293.15, "K")\n')
     rscripts.load(run, ["rA"])
-    _, _, go = start(run, [until("TC01", "above", 25.0, "C", 3)], fake_time)
+    _, _, go = start(run, [until("TC01", ">", 25.0, "C", 3)], fake_time)
 
     with pytest.raises(SequenceError, match=r"last 20 C"):
         go()

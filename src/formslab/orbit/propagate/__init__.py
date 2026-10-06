@@ -1,4 +1,4 @@
-"""Shared constants, Sun ephemeris, two-body motion and orbit geometry."""
+"""Shared constants, Sun ephemeris, Kepler motion with J2 drift, and orbit geometry."""
 
 from .constants import *  # noqa: F401,F403
 from .kepler import Elements, live, state, umbra_spans  # noqa: F401
