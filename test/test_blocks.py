@@ -35,8 +35,8 @@ def test_a_block_file_draws_and_completes_with_its_inputs():
     assert lines[7] == [{"text": "block", "role": "verb"}, {"text": "pumpdown", "role": "name"},
                         {"text": "to", "role": "kw"}, {"text": "pressure", "role": "value"}]
     assert lines[16][3] == {"text": "{pressure}", "role": "value"}
-    r = api.plan_line(["rLACO"], ["until", "chamberP", "below", "{pressure}"], "block")
-    assert r["error"] is None and "timeout" in [o["text"] for o in r["positions"][4]]
+    r = api.plan_line(["rLACO"], ["until", "chamberP", "<", "{pressure}"], "block")
+    assert r["error"] is None and "within" in [o["text"] for o in r["positions"][4]]
     card = api.describe(text=text, line=8, kind="block")["cards"][0]
     assert card["help"] == "Rough the chamber down to a pressure, then seal it" and len(card["steps"]) == 8
 
@@ -62,7 +62,7 @@ def test_a_block_reads_its_description_inputs_and_steps():
     assert b.name == "pumpdown" and b.inputs == ("pressure",) and b.scripts == ("rLACO",)
     assert b.summary == "Rough the chamber down to a pressure, then seal it"
     assert b.details.startswith("Closes the vent, fill and gate valves") and b.details.endswith(".")
-    assert b.body({"pressure": 5.0})[6][1] == ["until", "chamberP", "below", "5", "timeout", "20", "min"]
+    assert b.body({"pressure": 5.0})[6][1] == ["until", "chamberP", "<", "5", "within", "20", "min"]
 
 
 @pytest.mark.parametrize("text, message", [
@@ -91,7 +91,7 @@ def test_a_call_expands_into_the_blocks_steps_with_its_inputs():
     assert until.params["value"] == 5 and until.origin == (("pumpdown", 17),)
     assert "hold 30 min" in labels and labels[-1] == "log pumped down, soaked and vented"
     assert [s.label for s in p.sequence.segments if s.label.startswith("vent >")][-1] == \
-        "vent > until chamberP above 700 timeout 10 min"
+        "vent > until chamberP > 700 within 10 min"
 
 
 def test_an_input_out_of_range_is_refused_at_the_call():
@@ -181,7 +181,7 @@ def test_the_help_card_for_a_call_lists_its_steps_and_every_prerequisite():
     info = describe_step(plan("pumpdown to 5"), 2)
     [card] = info["cards"]
     assert card["help"] == "Rough the chamber down to a pressure, then seal it"
-    assert card["steps"][0] == "hvc vent close" and "until chamberP below {pressure} timeout 20 min" in card["steps"]
+    assert card["steps"][0] == "hvc vent close" and "until chamberP < {pressure} within 20 min" in card["steps"]
     texts = {c["text"] for r in info["rules"] for c in r["conditions"]}
     assert {"Gate valve closed", "Turbo pump off", "Chamber pressure at least 0.01 Torr"} <= texts
 

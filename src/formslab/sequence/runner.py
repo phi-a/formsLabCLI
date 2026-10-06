@@ -141,14 +141,15 @@ class LabSequenceRunner:
         if p["times"] is not None:
             finished = done >= p["times"]
         elif p["until"] is not None:
-            met, value = _met(self.run, p["until"])
+            u = p["until"]
+            met, value = _met(self.run, u)
             finished = met
-            if not met and self.elapsed - self._entered[i] >= p["until"]["timeout_s"]:
-                u = p["until"]
-                shown = f" {u['unit']}" if u["unit"] else ""
-                last = "it was never published" if value is None else f"last {value:.4g}{shown}"
-                raise SequenceError(f"{segment.label}: {u['variable']} not {u['side']} {u['value']:g}{shown} "
-                                    f"within {u['timeout_s']:g} s, after {done} pass(es) ({last})")
+            if not met and self.elapsed - self._entered[i] >= u["timeout_s"]:
+                why = _not_met(u, value, f", after {done} pass(es)")
+                if not u.get("go_on"):
+                    raise SequenceError(f"{segment.label}: {why}")
+                self.run.log(f"{segment.label}: {why}; going on", level="WARNING", component=COMPONENT)
+                finished = True
         else:
             finished = False                             # until the run is ended
         if finished:
@@ -228,9 +229,14 @@ def _convert(value: float, have: str | None, want: str | None) -> float:
     raise SequenceError(f"cannot compare a value in {have} with a limit in {want}")
 
 
+_COMPARE = {"<": lambda a, b: a < b, "<=": lambda a, b: a <= b, ">": lambda a, b: a > b,
+            ">=": lambda a, b: a >= b, "=": lambda a, b: a == b, "!=": lambda a, b: a != b}
+
+
 def _met(run, p) -> tuple[bool, float | None]:
-    """(the value is past the limit, the value in the limit's unit) for an `until`
-    condition `p`; (False, None) while nothing publishes it."""
+    """(the condition holds, the value in the limit's unit) for an `until`
+    condition `p`; (False, None) while nothing publishes it. An on/off value is
+    true when it is not 0; one that cannot be read (NaN) is neither."""
     var = run.variable(p["variable"])
     if var is None:
         return False, None
@@ -238,24 +244,39 @@ def _met(run, p) -> tuple[bool, float | None]:
         value = _convert(float(var.value), getattr(var, "unit", None), p["unit"])
     except (TypeError, ValueError):
         value = math.nan
-    return (value > p["value"] if p["side"] == "above" else value < p["value"]), value
+    if p["op"] in ("=", "!=") and isinstance(p["value"], bool):
+        return (not math.isnan(value)) and _COMPARE[p["op"]](value != 0, p["value"]), value
+    return _COMPARE[p["op"]](value, p["value"]), value
+
+
+def _shown(p) -> str:
+    """The condition as written: `platenT < 60 C`, `InUmbra = true`."""
+    limit = str(p["value"]).lower() if isinstance(p["value"], bool) else f"{p['value']:g}"
+    return f"{p['variable']} {p['op']} {limit}" + (f" {p['unit']}" if p["unit"] else "")
+
+
+def _not_met(p, value, after: str = "") -> str:
+    """Why a condition's time ran out: `platenT < 60 C not met within 1800 s (last 72.3 C)`."""
+    shown = f" {p['unit']}" if p["unit"] else ""
+    last = "it was never published" if value is None else f"last {value:.4g}{shown}"
+    return f"{_shown(p)} not met within {p['timeout_s']:g} s{after} ({last})"
 
 
 def _until(runner, run, segment) -> int:
     p = segment.params
-    name, side, limit, unit = p["variable"], p["side"], p["value"], p["unit"]
-    shown = f" {unit}" if unit else ""
+    shown = f" {p['unit']}" if p["unit"] else ""
     start, n, value = runner.elapsed, 0, None
     while True:
         met, now = _met(run, p)
         value = now if now is not None else value
         if met:
-            run.log(f"{name} = {value:.4g}{shown}, {side} {limit:g}{shown}", component=COMPONENT)
+            run.log(f"{p['variable']} = {value:.4g}{shown}: {_shown(p)}", component=COMPONENT)
             return n
         if runner.elapsed - start >= p["timeout_s"]:
-            last = "it was never published" if value is None else f"last {value:.4g}{shown}"
-            raise SequenceError(f"{name} not {side} {limit:g}{shown} within "
-                                f"{p['timeout_s']:g} s ({last})")
+            if p.get("go_on"):
+                run.log(_not_met(p, value) + "; going on", level="WARNING", component=COMPONENT)
+                return n
+            raise SequenceError(_not_met(p, value))
         n += 1
         runner.step(segment.verb, n)
 

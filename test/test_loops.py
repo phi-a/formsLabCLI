@@ -35,8 +35,8 @@ def log(message):
     return Segment("log", {"message": message})
 
 
-def cond(variable, side, value, timeout_s):
-    return until(variable, side, value, None, timeout_s).params
+def cond(variable, op, value, timeout_s, go_on=False):
+    return until(variable, op, value, None, timeout_s, go_on).params
 
 
 COUNTER = 'def rScript(run):\n    run.publish("N", (run.get("N") or 0) + 1)\n'
@@ -57,7 +57,7 @@ repeat 10 times
   sunrise within 60
   psu1 ch1 off
 end
-repeat until platenT below 60 C timeout 2 h
+repeat until platenT < 60 C within 2 h
   hvc platen 20
   hold 5 min
 end
@@ -80,8 +80,8 @@ def test_each_form_reads_and_pairs_with_its_end():
     ("load rPSU\nend\n", 2, "`end` with no `repeat` above it"),
     ("load rPSU\nrepeat 3 times\nhold 1 s\n", 2, "`repeat` with no `end` below it"),
     ("load rPSU\nrepeat 0 times\nhold 1 s\nend\n", 2, "outside 1..10000"),
-    ("load rPSU\nrepeat until TC01 above 3 timeout 1 min\nend\n", 2, "published by rSMTC08; add it to `load`"),
-    ("load rLACO\nrepeat until platenT above 3\nend\n", 2, "repeat until needs `timeout"),
+    ("load rPSU\nrepeat until TC01 > 3 within 1 min\nend\n", 2, "published by rSMTC08; add it to `load`"),
+    ("load rLACO\nrepeat until platenT > 3\nend\n", 2, "repeat until needs `within"),
     ("load rPSU\n" + "repeat 2 times\n" * 9 + "end\n" * 9, 10, "loops nest more than 8 deep"),
 ])
 def test_what_a_loop_must_have(text, line, message):
@@ -148,9 +148,9 @@ def test_a_state_set_before_the_loop_and_kept_in_it_holds_on_every_pass():
 
 def test_a_condition_loop_proves_its_condition_after_it():
     text = ("load rLACO\nhvc rough close\nhvc gate close\n"
-            "repeat until platenT above 10 C timeout 1 h\nhold 1 min\nend\n"
-            "until platenT below 60 C timeout 1 h\nuntil shroudT above 10 C timeout 1 h\n"
-            "until shroudT below 60 C timeout 1 h\nhvc vent open\n")
+            "repeat until platenT > 10 C within 1 h\nhold 1 min\nend\n"
+            "until platenT < 60 C within 1 h\nuntil shroudT > 10 C within 1 h\n"
+            "until shroudT < 60 C within 1 h\nhvc vent open\n")
     assert review(text) == ([], [])
 
 
@@ -166,22 +166,22 @@ def test_a_condition_met_at_the_start_runs_no_pass(run, fake_time, script_dir):
     write(script_dir, "rA", 'def rScript(run):\n    run.publish("N", 5)\n')
     rscripts.load(run, ["rA"])
     run.publish("N", 5)
-    _, _, go = start(run, paired(loop(cond=cond("N", "above", 1, 60)), hold(1), Segment("end", {})), fake_time)
+    _, _, go = start(run, paired(loop(cond=cond("N", ">", 1, 60)), hold(1), Segment("end", {})), fake_time)
     assert go().segment_steps == []
 
 
 def test_a_condition_loop_stops_when_the_value_passes(run, fake_time, script_dir):
     write(script_dir, "rA", COUNTER)
     rscripts.load(run, ["rA"])
-    _, _, go = start(run, paired(loop(cond=cond("N", "above", 7, 60)), hold(1), Segment("end", {})), fake_time)
+    _, _, go = start(run, paired(loop(cond=cond("N", ">", 7, 60)), hold(1), Segment("end", {})), fake_time)
     assert go().segment_steps == [4, 4]                  # N is 4 after one pass, 8 after two
 
 
 def test_a_condition_loop_that_runs_out_of_time_stops_the_run(run, fake_time, script_dir):
     write(script_dir, "rA", 'def rScript(run):\n    run.publish("N", 0)\n')
     rscripts.load(run, ["rA"])
-    _, _, go = start(run, paired(loop(cond=cond("N", "above", 1, 2.5)), hold(1), Segment("end", {})), fake_time)
-    with pytest.raises(SequenceError, match=r"N not above 1 within 2.5 s, after 3 pass\(es\) \(last 0\)"):
+    _, _, go = start(run, paired(loop(cond=cond("N", ">", 1, 2.5)), hold(1), Segment("end", {})), fake_time)
+    with pytest.raises(SequenceError, match=r"N > 1 not met within 2.5 s, after 3 pass\(es\) \(last 0\)"):
         go()
 
 
@@ -264,7 +264,7 @@ def test_a_run_loops_until_the_umbra(bench):
              for l in (ROOT / "plans" / "leo_noon.orbit").read_text(encoding="utf-8").splitlines()]
     (bench / "near_umbra.orbit").write_text("\n".join(lines) + "\n", encoding="utf-8")
     (bench / "until_umbra.plan").write_text(
-        "load rOrbit\n\norbit replay near_umbra\nrepeat until InUmbra above 0.5 timeout 1 min\n"
+        "load rOrbit\n\norbit replay near_umbra\nrepeat until InUmbra = true within 1 min\n"
         "  hold 1 s\nend\nlog umbra\n", encoding="utf-8")
     began = time.monotonic()
     sequence.channel(plan_path=bench / "until_umbra.plan")

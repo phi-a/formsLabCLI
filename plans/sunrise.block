@@ -5,4 +5,4 @@
 block sunrise within <minutes:number 1..600 min>
 load rOrbit
 
-until InUmbra below 0.5 timeout {minutes} min
+until InUmbra = false within {minutes} min

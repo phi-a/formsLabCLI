@@ -116,8 +116,8 @@ sunrise within 60
 def test_a_plan_follows_an_orbit_and_waits_for_the_umbra():
     assert check_text(PLAN) == []
     labels = [s.label for s in parse_plan(PLAN).sequence.segments]
-    assert labels[2] == "eclipse > until InUmbra above 0.5 timeout 120 min"
-    assert labels[4] == "sunrise > until InUmbra below 0.5 timeout 60 min"
+    assert labels[2] == "eclipse > until InUmbra = true within 120 min"
+    assert labels[4] == "sunrise > until InUmbra = false within 60 min"
 
 
 def test_a_run_replays_an_orbit_and_the_eclipse_block_ends_at_the_umbra(tmp_path, monkeypatch):
@@ -166,8 +166,8 @@ NOT_YET = "InUmbra has no value yet: rOrbit publishes it only after `orbit follo
 
 @pytest.mark.parametrize("steps, line", [
     ("eclipse within 120\norbit follow leo_noon\n", 3),                               # through a block
-    ("until InUmbra above 0.5 timeout 10 min\norbit replay leo_noon\n", 3),
-    ("repeat until InUmbra above 0.5 timeout 2 h\nhold 10 s\nend\n", 3),               # never chosen
+    ("until InUmbra = true within 10 min\norbit replay leo_noon\n", 3),
+    ("repeat until InUmbra = true within 2 h\nhold 10 s\nend\n", 3),               # never chosen
     ("repeat 2 times\neclipse within 10\norbit follow leo_noon\nend\n", 4),            # the first pass waits first
 ])
 def test_a_wait_before_the_orbit_is_chosen_is_an_error(steps, line):
@@ -177,7 +177,7 @@ def test_a_wait_before_the_orbit_is_chosen_is_an_error(steps, line):
 
 @pytest.mark.parametrize("steps", [
     "orbit follow leo_noon\neclipse within 120\nsunrise within 60\n",
-    "repeat until InUmbra above 0.5 timeout 2 h\norbit follow leo_noon\nhold 10 s\nend\n",   # read again after a pass
+    "repeat until InUmbra = true within 2 h\norbit follow leo_noon\nhold 10 s\nend\n",   # read again after a pass
     "repeat 3 times\norbit follow leo_noon\nend\neclipse within 120\n",
 ])
 def test_a_wait_after_the_orbit_is_chosen_is_fine(steps):

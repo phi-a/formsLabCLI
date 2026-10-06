@@ -187,7 +187,7 @@ load rLACO
 hvc pump on
 hold 15 s
 hvc rough open
-until chamberP below 5 timeout 20 min
+until chamberP < 5 within 20 min
 hvc stop
 ```
 

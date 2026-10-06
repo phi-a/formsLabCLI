@@ -22,7 +22,7 @@ load rLACO rNotThere
 record every 0 s
 hvc pump onn
 hold 30s
-until chamberp below 5
+until chamberp < 5
 orbit.a = 7
 log fine
 psu1 ch1 on
@@ -37,7 +37,7 @@ def test_a_draft_reports_every_problem_with_its_line():
     assert errors[3] == "record needs a positive duration"
     assert "did you mean 'on'" in errors[4]
     assert "write `30 s`, with a space" in errors[5]
-    assert "until needs `timeout" in errors[6]
+    assert "until needs `within" in errors[6]
     assert "FORMS mission configuration" in errors[7]
     assert errors[9] == "psu1 is declared by rPSU; add it to `load`"
     assert 8 not in errors and 1 not in errors                         # the log line and the comment are fine
@@ -312,7 +312,7 @@ def roles(text):
 
 def test_every_word_gets_its_role_in_the_grammar():
     got = roles("# pump down\nload rLACO rNope\nrecord every 5 s\n\nhvc pump on\nhold 15 s\n"
-                "until platenT above 10 C timeout 30 s\nlog pumpdown done: closed\n")
+                "until platenT > 10 C within 30 s\nlog pumpdown done: closed\n")
     assert got == [
         [("# pump down", "comment")],
         [("load", "verb"), ("rLACO", "script"), ("rNope", "bad")],
@@ -320,8 +320,8 @@ def test_every_word_gets_its_role_in_the_grammar():
         [],
         [("hvc", "verb"), ("pump", "kw"), ("on", "kw")],
         [("hold", "verb"), ("15", "value"), ("s", "kw")],
-        [("until", "verb"), ("platenT", "kw"), ("above", "kw"), ("10", "value"), ("C", "kw"),
-         ("timeout", "kw"), ("30", "value"), ("s", "kw")],
+        [("until", "verb"), ("platenT", "kw"), (">", "kw"), ("10", "value"), ("C", "kw"),
+         ("within", "kw"), ("30", "value"), ("s", "kw")],
         [("log", "verb"), ("pumpdown", "text"), ("done:", "text"), ("closed", "text")],
     ]
 
@@ -532,8 +532,8 @@ def test_a_blocks_name_is_drawn_as_its_name():
 
 def test_the_rscripts_the_steps_use_are_found_from_the_steps():
     from formslab.sequence.plan import needed_rscripts
-    assert needed_rscripts("hvc vent open\nuntil chamberP above 700 timeout 1 min\n") == ["rLACO"]
-    assert needed_rscripts("psu1 ch1 on\nuntil TC01 above 30 C timeout 1 min\nhvc stop\n") == ["rLACO", "rPSU", "rSMTC08"]
+    assert needed_rscripts("hvc vent open\nuntil chamberP > 700 within 1 min\n") == ["rLACO"]
+    assert needed_rscripts("psu1 ch1 on\nuntil TC01 > 30 C within 1 min\nhvc stop\n") == ["rLACO", "rPSU", "rSMTC08"]
     assert needed_rscripts("# a note\nload rLACO\nrecord every 2 s\nlog hi\nhold 5 s\n") == []   # nothing uses an instrument
     assert needed_rscripts("") == [] and needed_rscripts("hvc teleport now\nnonsense\n") == ["rLACO"]
 

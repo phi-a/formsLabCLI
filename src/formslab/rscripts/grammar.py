@@ -8,6 +8,9 @@ spaces, each one of:
     <name:a|b|c>               the same choice, shown as ``<name>`` in help
     <name:type lo..hi unit>    a typed slot; captured as its value
 
+A word may be a symbol (``<|<=|>|>=`` is a choice of four): only ``<name:`` starts
+a slot.
+
 Slot types are ``number``, ``integer``, ``text`` (one word, case kept) and
 ``rest`` (every remaining word; last only). The range may be open on either
 side (``0..``, ``..32``) or left out, and so may the unit:
@@ -153,14 +156,14 @@ class _Slot:
 
 def _compile(pattern: str) -> tuple:
     elements = []
-    tokens = re.findall(r"<[^>]*>|\S+", pattern)
+    tokens = re.findall(r"<\s*\w[^>]*>|\S+", pattern)        # a slot is <name...>; a bare < is a word
     if not tokens:
         raise GrammarError("empty pattern")
     for i, tok in enumerate(tokens):
         if (tok.startswith("<") and (m := re.fullmatch(r"<\s*(\w+):([^\s|>]+(?:\|[^\s|>]+)*)\s*>", tok))
                 and m.group(2) not in TYPES):        # <name:a|b>, or <name:a> -- one member is a choice too
             elements.append(_Choice(m.group(2).split("|"), m.group(1)))
-        elif tok.startswith("<"):
+        elif re.match(r"<\s*\w", tok):                          # meant as a slot (<, <= are words)
             m = re.fullmatch(r"<\s*(\w+):(\w+)(?:\s+([-+\d.eE]*\.\.[-+\d.eE]*))?(?:\s+(\S+))?\s*>", tok)
             if not m or m.group(2) not in TYPES:
                 raise GrammarError(f"bad slot {tok!r} in {pattern!r} (want <name:{'|'.join(TYPES)} lo..hi unit>)")

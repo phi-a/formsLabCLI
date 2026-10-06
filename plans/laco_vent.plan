@@ -12,10 +12,10 @@
 load rLACO
 record every 2 s
 
-until platenT above 10 C timeout 30 s
-until platenT below 60 C timeout 30 s
-until shroudT above 10 C timeout 30 s
-until shroudT below 60 C timeout 30 s
+until platenT > 10 C within 30 s
+until platenT < 60 C within 30 s
+until shroudT > 10 C within 30 s
+until shroudT < 60 C within 30 s
 hvc vent open
-until chamberP above 700 timeout 10 min
+until chamberP > 700 within 10 min
 log vented; vent valve left open

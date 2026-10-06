@@ -10,7 +10,7 @@ A script that owns CAST labels may declare, beside its COMMANDS:
 requests its `when` matches -- the request dict the grammar builds, so `hvc vent
 open` and `hvc vent OPEN` are one thing -- and lists the conditions that must hold
 first. Conditions share one namespace: a device state (`rough closed`), a value the
-script publishes (`platenT above 10 C`), and `no fault`.
+script publishes (`Platen at least 10 °C`), and `no fault`.
 
 They are checked twice:
 
@@ -58,9 +58,10 @@ def value(name: str, side: str, limit: float, unit: str | None = None, *, shown:
     the `until` that waits for it."""
     tail = f" {unit or shown}" if (unit or shown) else ""
     shown_tail = tail.replace(" C", " °C") if unit == "C" else tail
+    op = ">=" if side == "above" else "<="
     text = (f"{called} {'at least' if side == 'above' else 'at most'} {limit:g}{shown_tail}" if called
-            else f"{name} {side} {limit:g}{tail}")
-    proof = "" if live else f"until {name} {side} {limit:g}{' ' + unit if unit else ''}"
+            else f"{name} {op} {limit:g}{tail}")
+    proof = "" if live else f"until {name} {op} {limit:g}{' ' + unit if unit else ''}"
     return Cond("value", name, (side, float(limit), unit), text, live, proof)
 
 

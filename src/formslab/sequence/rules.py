@@ -5,7 +5,7 @@ The steps are walked in order, keeping what the plan itself has made true:
 - a device state a command set (`hvc rough close` -> rough closed) until a
   command changes it, or a cycle operation (`hvc vent2atm`, `start`...) makes
   every state unknown again;
-- a value an `until` waited for (`until platenT below 60 C`), until the next
+- a value an `until` waited for (`until platenT < 60 C`), until the next
   `hold` or command, after which it may have drifted.
 
 A loop is walked as its second pass would find things (see `walk`), so a step
@@ -67,9 +67,14 @@ def walk(steps, scripts, published: dict):
     out: list = []
 
     def guard(p):
+        """What a wait proves after it: a number past its limit. Not an on/off
+        value (no rule needs one), and not a wait that may have gone on without it."""
+        side = {"<": "below", "<=": "below", ">": "above", ">=": "above"}.get(p["op"])
+        if side is None or p.get("go_on"):
+            return []
         own = units.get(p["variable"].lower())
         try:
-            return [(p["variable"].lower(), p["side"], R.convert(p["value"], p["unit"], own))]
+            return [(p["variable"].lower(), side, R.convert(p["value"], p["unit"], own))]
         except ValueError:
             return []
 

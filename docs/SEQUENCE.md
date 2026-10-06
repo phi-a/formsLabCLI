@@ -14,7 +14,7 @@ record every 2 s
 psu1 ch1 set 1.0 0.1
 psu1 ch1 on
 hold 60 s
-until TC01 above 30 C timeout 10 min
+until TC01 > 30 C within 10 min
 psu1 ch1 off
 log done
 ```
@@ -83,7 +83,7 @@ add hvc rough close and hvc gate close before this step.
 ```
 
 The plan establishes a state by commanding it (`hvc rough close`), or a value
-with an `until` just before the step (`until platenT below 60 C ...`, as
+with an `until` just before the step (`until platenT < 60 C ...`, as
 `laco_vent` does). Every rule is then
 checked again, live, when the step runs, against what the chamber last reported:
 a step it fails stops the plan, before anything is sent. The command box, the
@@ -102,7 +102,7 @@ load rLACO
 
 hvc vent close
 ...
-until chamberP below {pressure} timeout 20 min
+until chamberP < {pressure} within 20 min
 hvc stop
 ```
 
@@ -181,7 +181,7 @@ record every 30 s
 
 hvc platen -20
 repeat until end
-  until platenT below -15 C timeout 2 h
+  until platenT < -15 C within 2 h
   log platen cold
   hold 30 min
 end

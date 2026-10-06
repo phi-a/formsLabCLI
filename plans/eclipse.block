@@ -5,4 +5,4 @@
 block eclipse within <minutes:number 1..600 min>
 load rOrbit
 
-until InUmbra above 0.5 timeout {minutes} min
+until InUmbra = true within {minutes} min

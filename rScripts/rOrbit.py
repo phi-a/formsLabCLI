@@ -48,7 +48,7 @@ def COMMANDS():
 # one of the VARIABLES before `orbit follow` or `orbit replay` is refused when read.
 STARTED_BY = ("follow", "replay")
 
-VARIABLES = [("InUmbra", None), ("UmbraDuration", "s"), ("UmbraTimeRemaining", "s"),
+VARIABLES = [("InUmbra", "bool"), ("UmbraDuration", "s"), ("UmbraTimeRemaining", "s"),
              ("NextUmbra", "s"), ("OrbitBeta", "deg"), ("OrbitAltitude", "km")]
 
 

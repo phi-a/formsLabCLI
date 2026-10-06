@@ -9,7 +9,7 @@ A block is a `.block` file beside the plans (the same folders, docs/SEQUENCE.md)
 
     hvc vent close
     ...
-    until chamberP below {pressure} timeout 20 min
+    until chamberP < {pressure} within 20 min
     hvc stop
 
 - The leading comments describe it: the first is the summary, the rest the

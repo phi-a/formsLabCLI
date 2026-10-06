@@ -171,7 +171,7 @@ def test_rlaco_declares_what_it_publishes(laco):
 
 def test_every_other_script_declares_its_published_names():
     psu = _declared("rPSU")
-    assert psu["PSU1_CH1_V"] == "V" and psu["PSU2_CH3_I"] == "A" and psu["PSU1_CH2_ON"] is None
+    assert psu["PSU1_CH1_V"] == "V" and psu["PSU2_CH3_I"] == "A" and psu["PSU1_CH2_ON"] == "bool"
     tc = _declared("rSMTC08")
     assert list(tc) == [f"TC{i:02d}" for i in range(1, 17)] and set(tc.values()) == {"K"}
     assert _declared("rCryoBoard") == {} and _declared("rSLTA") == {}
