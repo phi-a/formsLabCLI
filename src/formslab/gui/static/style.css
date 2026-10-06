@@ -106,9 +106,21 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .prow { display: grid; grid-template-columns: 34px 1fr auto; gap: 8px; align-items: start; padding: 4px 0; border-bottom: 1px solid var(--grid); }
 .prow:last-child { border-bottom: 0; }
 .prow .no { color: var(--muted); font: 11px ui-monospace, Consolas, monospace; text-align: right; padding-top: 7px; }
-.prow .tools { display: flex; gap: 2px; opacity: .35; }
-.prow:hover .tools, .prow:focus-within .tools { opacity: 1; }
-.prow .tools button { padding: 0 6px; font-size: 12px; line-height: 22px; }
+/* the chooser for what may come next on a finished step: small, as it is optional */
+select.tok.more { padding-left: 6px; padding-right: 18px; background-position: calc(100% - 10px) 55%, calc(100% - 5px) 55%; }
+@media (hover: hover) { .prow:not(:hover):not(:focus-within) select.tok.more { display: none; } }
+/* a row's tools: one small menu, so the step has the width */
+.prow .tools { position: relative; opacity: .45; }
+.prow:hover .tools, .prow:focus-within .tools, .prow .tools[open] { opacity: 1; }
+.prow .tools summary { list-style: none; cursor: pointer; padding: 0 7px; line-height: 22px; font-size: 14px;
+                       border: 1px solid var(--line); border-radius: 5px; color: var(--muted); }
+.prow .tools summary::-webkit-details-marker { display: none; }
+.prow .tools .menu { position: absolute; right: 0; top: calc(100% + 2px); z-index: 5; display: grid; min-width: 190px;
+                     background: var(--bg); border: 1px solid var(--line); border-radius: 6px;
+                     box-shadow: 0 4px 14px rgba(0, 0, 0, .18); padding: 4px; }
+.prow .tools .menu button { text-align: left; border: 0; background: transparent; padding: 4px 8px;
+                            font-size: 13px; white-space: nowrap; }
+.prow .tools .menu button:hover { background: var(--panel); }
 .prow .rowerr { grid-column: 2 / 4; color: var(--bad); font-size: 12px; }
 .prow .rowwarn { grid-column: 2 / 4; color: var(--warn); font-size: 12px; }
 .prow .rowwarn:empty, .prow .rowerr:empty { display: none; }
@@ -196,12 +208,12 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 [data-fam="block"] { --fam: var(--fam-block); }   [data-fam="plan"] { --fam: var(--fam-plan); }
 
 .tok { --fam: var(--fam-other); display: inline-flex; align-items: center; gap: 4px; box-sizing: border-box;
-       font: 13px/20px ui-monospace, Consolas, monospace; border-radius: 5px; padding: 2px 9px;
+       font: 13px/20px ui-monospace, Consolas, monospace; border-radius: 5px; padding: 2px 7px;
        border: 1px solid transparent; min-height: 26px; width: auto; min-width: 0; }
 select.tok, button.tok { appearance: none; -webkit-appearance: none; cursor: pointer; }
-select.tok { padding-right: 22px;
+select.tok { padding-right: 18px;
   background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
-  background-position: calc(100% - 12px) 55%, calc(100% - 7px) 55%; background-size: 5px 5px; background-repeat: no-repeat; }
+  background-position: calc(100% - 10px) 55%, calc(100% - 5px) 55%; background-size: 5px 5px; background-repeat: no-repeat; }
 .tok.verb { background-color: var(--fam); color: #fff; font-weight: 600; border-color: var(--fam); }
 .tok.verb.empty { background-color: transparent; color: var(--muted); border: 1px dashed var(--line); font-weight: 400; }
 .tok.kw { background-color: color-mix(in srgb, var(--fam) 13%, transparent); color: var(--fam);
@@ -209,6 +221,7 @@ select.tok { padding-right: 22px;
 .tok.value { background-color: var(--value-bg); color: var(--value-fg); border-color: var(--value-line);
              box-shadow: inset 0 1px 2px rgba(0, 0, 0, .12); }
 .tok.value input { border: 0; background: transparent; color: inherit; font: inherit; padding: 0; width: 7ch; min-width: 3ch; outline: none; }
+@supports (field-sizing: content) { .tok.value input { field-sizing: content; width: auto; max-width: 14ch; } }
 .tok.value .unit { color: var(--muted); font-size: 11px; }
 /* a block's name, on its own `block` line: a box in the block's colour */
 .tok.name { background: var(--bg); color: var(--fam); border: 1.5px solid var(--fam); font-weight: 600; }
@@ -255,9 +268,9 @@ button.danger-outline:hover { background: color-mix(in srgb, var(--bad) 10%, tra
 /* a loop's `repeat` and `end`: a circular arrow */
 .part-icon[data-part="loop"] { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M13 8a5 5 0 1 1-1.6-3.7' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round'/%3E%3Cpath d='M9.2 2.6l3.3.5-.6 3.3z'/%3E%3C/svg%3E"); }
 /* the steps inside a loop: in by a step per loop, with a bar for each loop around them */
-.prow[data-depth] .body { padding-left: calc(var(--depth) * 16px);
-  background: repeating-linear-gradient(to right, color-mix(in srgb, var(--fam-flow) 55%, transparent) 0 2px, transparent 2px 16px)
-              left top / calc(var(--depth) * 16px) 100% no-repeat; }
+.prow[data-depth] .body { padding-left: calc(var(--depth) * 24px);
+  background: repeating-linear-gradient(to right, transparent 0 9px, color-mix(in srgb, var(--fam-flow) 70%, transparent) 9px 12px, transparent 12px 24px)
+              left top / calc(var(--depth) * 24px) 100% no-repeat; }
 /* a plan: a page with its corner folded */
 .part-icon[data-part="plan"] { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 1.5h6l3.5 3.5v9.5h-9.5z' fill='none' stroke='%23000' stroke-width='1.6' stroke-linejoin='round'/%3E%3Cpath d='M9.5 1.5v3.5h3.5' fill='none' stroke='%23000' stroke-width='1.6' stroke-linejoin='round'/%3E%3C/svg%3E"); }
 #plan-new, #orbit-new, #block-new { width: 100%; margin-top: 6px; }

@@ -139,3 +139,22 @@ def test_the_steps_in_a_loop_are_written_two_spaces_in():
     assert run_js(["load rPSU", "  repeat 2 times", "hold 1 s", "      end", "   "], "T.indent(P)") == \
         ["load rPSU", "repeat 2 times", "  hold 1 s", "end", ""]
     assert run_js(LOOP, "T.indent(P)")[6] == "    hold 1 s"
+
+
+def test_each_repeat_knows_its_end_and_each_end_its_repeat():
+    got = [run_js({"l": LOOP, "i": i}, "T.partner(P.l, P.i)") for i in range(len(LOOP))]
+    assert got == [-1, 8, -1, -1, -1, 7, -1, 5, 1, -1]
+    assert run_js({"l": ["repeat 2 times", "hold 1 s"], "i": 0}, "T.partner(P.l, P.i)") == -1
+
+
+def test_choosing_repeat_adds_its_end_and_a_step_inside():
+    got = run_js({"l": ["load rPSU", "repeat", "log done"], "i": 1}, "T.withLoopEnd(P.l, P.i)")
+    assert got == {"lines": ["load rPSU", "repeat", "", "end", "log done"], "fresh": 2}
+    closed = ["repeat 2 times", "hold 1 s", "end"]
+    assert run_js({"l": closed, "i": 0}, "T.withLoopEnd(P.l, P.i)") == {"lines": closed, "fresh": -1}
+
+
+def test_deleting_a_repeat_or_its_end_deletes_both_and_keeps_the_steps():
+    for i in (1, 8):
+        assert run_js({"l": LOOP, "i": i}, "T.withoutLoop(P.l, P.i)") == \
+            ["load rPSU", "psu1 ch1 on", "# a note", "", "repeat until end", "hold 1 s", "end", "log done"]

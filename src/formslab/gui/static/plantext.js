@@ -80,7 +80,37 @@
     return lines.map((l, i) => (l.trim() ? "  ".repeat(d[i]) + l.trim() : ""));
   };
 
-  const api = { kindOf, headerIndex, withHeader, missingHeaders, ELEMENTS, missingElements, depths, indent };
+  // The line that closes the `repeat` at `i`, or opens the `end` at `i`; -1 if none.
+  function partner(lines, i) {
+    const head = headOf(lines[i] || "");
+    if (head !== "repeat" && head !== "end") return -1;
+    const step = head === "repeat" ? 1 : -1;
+    let open = 0;
+    for (let k = i; k >= 0 && k < lines.length; k += step) {
+      const h = headOf(lines[k]);
+      if (h === head) open++;
+      else if (h === (head === "repeat" ? "end" : "repeat") && --open === 0) return k;
+    }
+    return -1;
+  }
+
+  // A `repeat` just chosen at `i` gets its own `end`, with an empty step between them
+  // for the next choice. { lines, fresh: the empty step's index, or -1 when it had one }.
+  function withLoopEnd(lines, i) {
+    if (partner(lines, i) >= 0) return { lines: lines.slice(), fresh: -1 };
+    const out = lines.slice();
+    out.splice(i + 1, 0, "", "end");
+    return { lines: out, fresh: i + 1 };
+  }
+
+  // The loop at `i` (its `repeat` or its `end`) removed: both lines go, the steps stay.
+  function withoutLoop(lines, i) {
+    const j = partner(lines, i);
+    return lines.filter((_, k) => k !== i && k !== j);
+  }
+
+  const api = { kindOf, headerIndex, withHeader, missingHeaders, ELEMENTS, missingElements, depths, indent,
+                partner, withLoopEnd, withoutLoop };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.PlanText = api;
 })(typeof window !== "undefined" ? window : globalThis);
