@@ -1,268 +1,292 @@
-# GUI: architecture and requirements
+# The GUI: intent, design and where it stands
 
-Status: **Stages 0-4 built** (shared-file locking; login, status, plots, control, the
-plan editor and the chamber view: `labcli gui`, docs/GUI.md). Only the space-environment
-view is still planning. Written 2026-10-03, after step 2 (declared commands,
-one-line plans, `labcli <command>`). Built so far: shared-file locking (Stage 0),
-read-only server with login, status and plots (Stage 1), start/end/pause/resume and
-commands with live suggestions (Stage 2), plan editor with cascading dropdowns (Stage 3).
-TVAC viewer (Stage 4). Next: the space-environment view, as its own plan.
+Updated 2026-10-05. Started 2026-10-03 as the plan for the GUI; Stages 0-4 are now
+built and in use, and the space-environment view has its first part (orbit files).
+How to use it is in docs/GUI.md; this note records what it is for, why it is built
+the way it is, and what is still to decide. Progress across the project is in
+[progress.md](progress.md).
 
-## What it is
+## What it is for
 
-One small web application that runs on the bench machine and is used from a
-browser. It is a *client* of what already exists; it never talks to an
-instrument.
+The bench is run by people who should not need to remember the console's words: a
+student starting a pumpdown, an engineer writing a soak, someone checking last
+night's run from another room. The GUI gives them the same lab as the console, on
+one web page:
 
-- **Plans:** edit and check `.plan` files.
-- **Control:** start and end runs, send commands, see the state.
-- **TVAC viewer:** valves, pumps and conditions of the chamber, live.
-- **Space environment viewer:** orbit, eclipse, view factors, environment temperature.
-- **Plot viewer:** temperatures and data from recorded runs.
+- **Plans:** write and check a test without knowing the grammar by heart.
+- **Status and control:** start, pause and end runs; send a command; see each
+  instrument's state and whether it is current.
+- **Chamber:** the chamber as its controller's own screen draws it, live.
+- **Plots:** what a run recorded, while it runs or after.
+- **Space environment:** the orbit a test is meant to reproduce, and in time the
+  satellite's background temperatures from it (section 4).
 
-## Decisions made
+It is a *client* of what already exists. It never opens an instrument, so it adds no
+new way for the bench to go wrong.
 
-| | |
-|---|---|
-| Form | A web page, not a desktop window. Runs on Windows, Linux, Pi and Mac because they all have a browser. |
-| Server | Python standard library only (`ThreadingHTTPServer`). No framework, no build step, no internet needed. |
-| Page | Plain HTML, CSS and JavaScript files served as they are. |
-| Access | The lab is locked, so a simple login is enough. Listens on `127.0.0.1` by default; reach it from another machine with an SSH tunnel. |
-| Login | One username and password, kept in `~/.formslab/gui.json`, **not in source and not in this repo**. The initial values were given in conversation and are deliberately not recorded here. |
-| Start | `labcli gui` (a new one-shot verb). |
+## How it is meant to be used
+
+1. **Write the test in Plans.** Each step is chosen from dropdowns that offer only
+   what fits; a step that breaks a prerequisite is red before anything runs. Repeated
+   steps become a block; a cycle becomes a loop; an orbit file says which orbit the
+   test follows.
+2. **Start it from Status.** A plan with problems is in the Start list, greyed, with
+   the reason; only one that can run can be started. The run is
+   the same sequence host the console starts, in its own process.
+3. **Watch it in Chamber and Status.** Every value says whether it is current. A
+   command sent from the box goes through the same checks as a plan step and says
+   what became of it.
+4. **Read it in Plots**, live or afterwards, from the CSV the recorder wrote.
+5. **End it from any tab.** End asks the host to stop, so each instrument's shutdown
+   runs.
+
+The console and SSH (`labcli <command>`) stay full equals: a run started in one is
+seen and ended from the others.
+
+## Decisions
+
+| | | Why |
+|---|---|---|
+| Form | A web page, not a desktop window | Windows, Linux, the Pi and Mac all have a browser. |
+| Server | Python standard library (`ThreadingHTTPServer`) | No framework, no build step, no internet needed at the bench. |
+| Page | Plain HTML, CSS and JavaScript, served as they are | Readable and changeable by the next student, with no toolchain. |
+| Charts | A hand-written canvas chart (`chart.js`, about 200 lines) | The vendored uPlot considered in the first draft was not needed. |
+| Access | One login; listens on `127.0.0.1`; SSH tunnel from elsewhere | The lab is locked. `--listen` opens it to the network on purpose only. |
+| Login | A salted hash in `~/.formslab/gui.json`, set with `labcli gui --set-login` | Not in the source or the repo. The initial values were given in conversation and are deliberately not recorded here. |
+| Live data | Polled about once a second; no websockets | Simple, and fast enough for a chamber that changes over minutes. |
 
 ## Principles
 
 1. **One owner per instrument.** The HVC-3500 takes exactly one TCP client, and a
-   Rigol or board should have one opener. The GUI server therefore never opens a
-   driver. It reads CAST status blocks and files, and sends commands the same way
-   the console does.
-2. **No grammar of its own.** Dropdowns, validation and error text come from the
-   existing grammar and plan parser (`rscripts.cast.complete`, `parse_plan`). A
-   command typed in the console, a plan line and a GUI click are the same thing.
-3. **The files are the truth.** Plans are plain `.plan` files; recorded runs are
-   CSVs. The GUI saves and reads those; it keeps no database.
-4. **Works with nothing running.** No host, no chamber, no orbit extra: each screen
-   says what is missing and stays usable where it can.
-5. **Read-only viewers.** Valve and pump *changes* happen on the Control screen,
-   through the same commands as the console, so interlock refusals appear the same way.
+   supply or board should have one opener. The server therefore never opens a
+   driver: it reads CAST status blocks and files, and sends commands the way the
+   console does. Tests hold that ports, VISA, sockets and new processes stay shut
+   while every screen's data is fetched.
+2. **No grammar of its own.** Dropdowns, checks, help cards and error text come from
+   what the rScripts declare (`COMMANDS`, `VARIABLES`, `RULES`) and the plan parser.
+   A command typed in the console, a plan line and a GUI click are the same thing,
+   so they cannot disagree.
+3. **The files are the truth.** Plans, blocks and orbits are text files; runs are
+   CSVs. The GUI reads and writes those and keeps no database, so a page reload loses
+   nothing and git can review every change.
+4. **Works with nothing running.** No host, no chamber: each screen says what is
+   missing and stays usable where it can. `scripts/gui_demo.py` runs the whole GUI
+   against a simulated chamber.
+5. **Say what is old.** A value that is not live is greyed with its age and the reason
+   (no run, owner not loaded, chamber not connected). The GUI never shows a stale
+   number as current.
+6. **Changes go through commands.** The viewers only read. Valves and pumps change on
+   the Status tab, through the same commands and prerequisite checks as the console,
+   so a refusal reads the same everywhere.
+7. **The grammar is visible.** Every step is drawn in four shapes (instrument block,
+   keyword pill, value box, free text) in its instrument's colour, so a plan can be
+   read at a glance and a wrong word stands out in red.
 
 ## Architecture
 
 ```
  browser (any machine)                    bench machine
  ┌──────────────────┐   HTTP + login     ┌───────────────────────────────┐
- │ Plans            │ ◀──── JSON ──────▶ │ gui server (stdlib)           │
- │ Control          │   polls ~1 s       │   api.py: thin wrappers       │
- │ TVAC viewer      │                    └───┬───────────┬───────────────┘
- │ Space env / orbit│                        │ reads     │ writes
- │ Plots            │            CAST status │           │ CAST commands, ctrl,
- └──────────────────┘            run lock,   │           │ plan files
+ │ Status / control │ ◀──── JSON ──────▶ │ gui server (stdlib)           │
+ │ Chamber          │   polls ~1 s       │   api.py: thin wrappers       │
+ │ Plans (+ orbits) │                    └───┬───────────┬───────────────┘
+ │ Plots            │                        │ reads     │ writes
+ └──────────────────┘            CAST status │           │ CAST commands, ctrl,
+                                 run lock,   │           │ plan/block/orbit files
                                  CSVs, logs  ▼           ▼
                                       ┌──────────────────────────────┐
                                       │ sequence host (one per run)  │──▶ instruments
                                       └──────────────────────────────┘
 ```
 
-- Live data is **polled once a second**. No websockets.
 - The server is a separate process from the host, so a GUI crash cannot stop a run
   and a run ending does not close the page.
-- All endpoints are thin: each calls an existing function and returns JSON.
+- Every endpoint calls an existing function and returns JSON; `api.py` is testable
+  without a server.
+- The shared files (`castfile.json`, `ctrlfile.json`) are written under a
+  cross-process lock (`console/safefile.py`), since the console, the host and the GUI
+  all write them.
 
-### Endpoints (draft)
+### Code
 
-| Endpoint | Does | Reuses |
+| File | Holds |
+|---|---|
+| `gui/server.py` | Routes, login, static files, the request checks (Host, a header other sites cannot set, body size) |
+| `gui/api.py` | One function per endpoint, over existing code |
+| `gui/auth.py` | The one login (PBKDF2) and in-memory sessions |
+| `gui/plans.py` | Plan, block and orbit files: one list, one set of names, save, trash, Edit and Ship |
+| `gui/runs.py` | The recorder's CSVs, parts stitched into one run |
+| `static/app.js` | Tabs, status and control, plots |
+| `static/editor.js` | The plan editor and the orbit's live panel |
+| `static/plantext.js` | Plan text as lines: header lines, loops, missing orbit elements (pure, tested under Node) |
+| `static/info.js` | The help card for a command or step |
+| `static/tvac.js` | The chamber view (`viewModel` pure and tested; `render` draws the SVG) |
+| `static/chart.js` | The canvas chart |
+
+Tests: `test/test_gui_*.py`, including the JavaScript's pure parts run under Node.
+
+### Endpoints
+
+| Group | Endpoints |
+|---|---|
+| Login | `/api/login`, `/api/logout`, `/api/me` |
+| State | `/api/status`, `/api/info`, `/api/rscripts` |
+| Control | `/api/run`, `/api/end`, `/api/pause`, `/api/resume`, `/api/cast`, `/api/complete` |
+| Plans | `/api/plans`, `/api/plans/<name>`, `/api/plan/check`, `/api/plan/line`, `/api/plan/tokens`, `/api/plan/needs`, `/api/describe`, `/api/plan/save`, `/api/plan/delete`, `/api/plan/rename`, `/api/plan/edit`, `/api/plan/ship` |
+| Runs | `/api/runs`, `/api/runs/<id>` |
+| Orbit | `/api/orbit/live` |
+
+## The screens
+
+### 1. Plans
+
+The editor is the GUI's main work, because writing a correct test is where people get
+stuck. A plan is shown line by line: `load` as checkboxes, `record` as a number and
+unit, each step as a chain of dropdowns whose choices come from the server. Built and
+in use:
+
+- live checking against the real parser, with the prerequisites each step needs
+  marked as the plan leaves them at that line (✓, ✗, ?, •);
+- blocks (named groups of steps, called by name, with `{input}` values) and loops
+  (`repeat … end`, building and deleting themselves as a pair);
+- conditions written `chamberP < 5`, `InUmbra = true`, with `within` and `or go on`;
+- three kinds of file in one list: plans (green page), blocks (purple square), orbits
+  (ellipse);
+- shipped files read-only; *Edit* and *Ship* move a file between the shipped plans and
+  your own; *Rename* renames what refers to it too; delete goes to a trash folder.
+
+A draft with mistakes can be saved, but it is listed as "cannot run" until it is fixed.
+
+### 2. Status and control
+
+Run state, the Start list, Pause and Resume, End in the header of every tab, a command
+box with the instruments' own completion and a help card, and one card per instrument
+with its readings grouped by part (Valves, Pumps, Zones, ...).
+
+### 3. Chamber
+
+The controller's Manual screen redrawn live, so operators see the picture they already
+know ([tvac-chamber.md](tvac-chamber.md) has the screenshot). What each item is in our
+software:
+
+| On the screen | Our name / source | Read? |
 |---|---|---|
-| `POST /login`, `POST /logout` | session cookie | new, small |
-| `GET /api/status` | run state, every CAST block, host log tail | `ctrlcli.running`, castfile, `logcli` |
-| `GET /api/plans`, `GET/PUT /api/plans/<name>` | list, read, save plan text | `plan.discover`, `find_plan` |
-| `POST /api/plans/check` | plan text in, line-numbered errors out | `parse_plan` |
-| `GET /api/complete?words=...` | what can come next, for a step or command | `cast.complete`, plan grammar |
-| `POST /api/run`, `/api/end`, `/api/pause`, `/api/resume` | run control | `ctrlcli` |
-| `POST /api/cast` | send a command, wait until it is taken | `cli._cast` logic |
-| `GET /api/runs`, `GET /api/runs/<id>?vars=...` | recorded runs and their columns | recorder CSVs |
-| `GET /api/env/...` | environment profile for the orbit view | `formslab.orbit` (lazy) |
-
-## Screens and what each needs
-
-### 1. Plans (editor)
-- A list of step rows, each row a chain of dropdowns: step type or instrument, then
-  words that fit, then number boxes showing limits and units.
-- Every row is checked live by the real parser, with the error beside it.
-- Save writes the plain text back, comments and blank lines kept.
-- **Built:** `line_options(scripts, words)` in sequence/plan.py (what was sketched as
-  `plan_options`), and the test that every shipped plan round-trips unchanged.
-
-### 2. Control
-- Run state, Start (plan list), End (always visible), Pause and Resume.
-- A command box with the same `?` completion as the cast tab; refused with a clear
-  message when no run is going (as `labcli cast` does).
-- Live CAST blocks for `hvc`, `tc`, `psu1`, `psu2`, `cryo`, `slta`.
-
-### 3. TVAC viewer (valves and conditions)
-
-Follow the controller's own Manual screen so operators see the picture they already
-know: [Notebook/tvac-chamber.md](tvac-chamber.md) has the screenshot and the
-chamber's description.
-
-![HMI Manual screen](img/hmi-manual-screen.png)
-
-Layout to reproduce (one SVG, values filled in from CAST):
-
-- **Chamber box**, large, with the pressure reading on it.
-- **Gas side, left:** Vent Valve and Fill Valve into the chamber.
-- **Vacuum side, right:** Gate Valve to the Turbo Pump, Vacuum (rough) Valve to the
-  Vacuum Pump, and the Foreline Valve between them.
-- **Three zone blocks inside:** Cntrl P (platen), Cntrl S (shroud), t2 (zone 3,
-  monitor only), each with temperature, a heater output percentage, and an ON/OFF
-  indicator.
-- **Side readouts:** the named thermocouples, and the LN2 dewar label.
-- **Banner:** faults (the screen shows "Pressure High" by the foreline).
-
-What each item on the screen is in our software, and whether we can show it today:
-
-| On the screen | Our name / source | Available now? |
-|---|---|---|
-| Chamber pressure (82.26 Torr) | `pressure`, `?VP` | yes |
+| Chamber pressure | `pressure`, `?VP` | yes |
 | Vent, Fill, Foreline, Gate valves | `vent`, `fill`, `foreline`, `gate` (`!OV/OF/O4/OG`) | yes, open or closed |
 | "Vacuum Valve" | `rough` (`!OR`) | yes |
 | Vacuum Pump, Turbo Pump | `pump`, `turbo` (`!OP/OT`) | yes, on or off |
-| Zone temperatures (19.5, 19.8, 19.7 C) | `<zone> C`, thermocouples T2, T3, T4 | yes |
-| Zone ON/OFF | `thermal_control` | no: one chamber-wide "holding temperature" flag, not per zone; drawn as such |
+| Zone temperatures | `<zone> C`, thermocouples T2, T3, T4 | yes |
 | Zone setpoint | `<zone> setpoint C` | yes |
+| Zone ON/OFF | `thermal_control` | one chamber-wide "holding temperature" flag, not per zone; drawn as such |
 | Side readouts (Cntrl P, ot1-ptn, ...) | named thermocouples `HVC_...` | yes. The HMI labels both lower rows "ot1-ptn"; the profile maps T0 and T1 to `ot1_ptn` and `ot2_shd`, so the second is presumably `ot2-shd` |
 | Fault banner | `faults`, `fault_severity` | yes |
-| **Heater output %** (0.0 % per zone) | no documented query | **not read** |
-| **Turbo speed %** (0.1 %) | no documented query | **not read** |
-| **Foreline pressure** (3.875 torr) | a fault code exists (25), no query known | **not read** |
-| LED Light, Manual Heat, Trend | HMI-only controls | no; Trend is replaced by the Plot viewer |
+| Heater output %, turbo speed %, foreline pressure | no documented query | **not read**: drawn "n/a" |
+| LED Light, Manual Heat, Trend | HMI-only controls | no; Trend is the Plots tab |
 
-So the viewer can be built now with the first group, and the three "not read" items
-are shown as unavailable until we find where the controller exposes them (an ASCII
-query, or one of the temperature or register inputs). Finding them is a small
-commissioning task, not GUI work.
+Finding where the controller exposes the three unread values is a commissioning task,
+not GUI work. The HMI's icon states (red X against pale pink) still need decoding from
+live observation.
 
-Icon states on the screen (red X versus the pale pink icons) need decoding against
-live observation: the screenshot shows everything closed or off, with some icons
-drawn faded.
+### 4. Space environment
 
-Other needs:
+**Goal:** simulate the satellite's background temperatures in orbit, and in time drive
+the chamber with them. This is the work still ahead, in stages, each to get its own plan.
 
-- Shows "no run" or "chamber unreachable" instead of stale numbers; every value
-  carries its age.
+**Built (2026-10-05): orbit files.** A `.orbit` file (docs/ORBIT.md) holds one Keplerian
+element per line in its own grammar and colour (deep blue). It opens in the Plans
+editor with a live panel beside it: sunlit or in umbra and when that changes, beta
+angle, altitude, speed, and the coming orbit as a strip. Motion is Kepler with J2
+drift, so a sun-synchronous orbit keeps its local time. During a run, the rScript
+rOrbit follows an orbit (`orbit follow`, `orbit replay`) and publishes `InUmbra` and
+the umbra timings, which plans wait on (`eclipse within`, `sunrise within`) and rSLTA
+follows. The same file builds the `Orbit` the environment models in `formslab.orbit`
+sweep, so one orbit feeds both the bench and the models.
 
-### 4. Space environment and orbit viewer
+**Next, in order:**
 
-Stage 1, built 2026-10-05: orbit files (`.orbit`, docs/ORBIT.md) in the Plans tab,
-classical elements with their own grammar, colour and symbols, and a live panel
-propagating them by Kepler motion (J2 drift added 2026-10-05). The goal is simulating the satellite's
-background temperatures; the stages after it, each to get its own plan:
-
-1. **Environment profile.** Orbit file + spacecraft model -> `orbit.thermal.pipeline`
-   -> per-face environment temperature over one orbit, written as a
-   recorder-format CSV so the Plots tab shows it with no new code. Since
-   2026-10-05 the pipeline's `Orbit` is built from the orbit file's elements
-   (eccentric included) and numpy is in the base install, so view, flux and
-   environment temperature run anywhere; the transient solver needs scipy. Open:
-   how the spacecraft is described (a file with its own grammar?).
+1. **Environment profile.** Orbit file + spacecraft model → `orbit.thermal.pipeline` →
+   per-face environment temperature over one orbit, written as a recorder-format CSV,
+   so the Plots tab shows it with no new code. View, flux and environment temperature
+   run on a base install (numpy); the transient solver needs scipy. Open: how the
+   spacecraft is described (a file with its own grammar, like the orbit?).
 2. **3D view.** Orbit, Earth, Sun direction, the spacecraft's attitude. Open: plotly
-   (`scene3d`) is multi-MB; a small vendored WebGL library or hand-drawn canvas,
-   given no internet and no build step.
+   (`scene3d`) is a multi-MB script; a small vendored WebGL library or a hand-drawn
+   canvas fits "no internet, no build step" better.
 3. **The satellite in the chamber.** A Chamber-view-style drawing with per-face
-   thermal overlays, from the profile, live or replayed.
-4. **Replay.** A plan step that follows a profile against the chamber (shroud
-   targets, `InUmbra` for rSLTA).
+   thermal overlays from the profile, live or replayed.
+4. **Replay against the chamber.** A plan step that follows a profile: shroud targets
+   from it, `InUmbra` for rSLTA as now. Then the orbit screen can show where the run is
+   in the profile.
 
-Notes from the first draft:
-- Orbit geometry, beta angle and eclipse timeline, view factors over the orbit, and
-  environment temperature versus time, from `formslab.orbit`.
-- **Constraint:** `formslab.orbit` needs numpy, scipy and matplotlib (the `orbit`
-  extra). The server imports it lazily and the screen says so when it is absent.
-- **Heavy work stays out of requests.** A profile is computed once, cached as JSON, and
-  the page draws it. Drawing is 2D in the browser.
-- **Open:** `orbit` has a 3D scene (`scene3d`) built on plotly, which is a multi-MB
-  script. Offline and "simple" argue for leaving it out of the first version.
-- **Dependency gap:** nothing yet *replays* a profile against the chamber (no plan step
-  for it). Until there is, this screen is a standalone orbit view; showing "where the
-  run is in the profile" waits for that step.
+Heavy work stays out of requests: a profile is computed once and cached, and the page
+draws it.
 
-### 5. Plot viewer
-- Pick one or more recorded runs, pick variables, plot against time; overlay runs;
-  zoom and pan; Celsius or Kelvin; export the picture or the CSV.
-- **Data:** the run recorder writes `<plan>_<UTC>.csv` with columns
-  `index, timestamp, <name> [<unit>]`. A run that gains a variable mid-run starts a
-  new file (`_1`, `_2`).
-- **Live plots lag by the record cadence** (30 s for `tvac`). Faster live plotting would
-  need the host to keep recent values in memory; deferred.
-- **Old files differ:** the `TVAC_*.csv`, `pumpdown_*.csv` and `LACO.jsonl` in
-  `outputs/` have other layouts. The viewer should read the recorder format first and
-  list the others as unsupported rather than guess.
-- **Plot library:** the one third-party file I'd allow is a vendored `uPlot` (small,
-  fast, MIT; license to be confirmed before it goes in the repo). A hand-written canvas
-  chart is the fallback if no third-party file is wanted.
+### 5. Plots
+
+Pick a recorded run and its variables; one chart per unit; zoom, pan, hover; Kelvin
+shown as Celsius on request; follow a run live; save PNG or CSV. Live plots lag by the
+record cadence (30 s for `tvac`); faster would need the host to keep recent values in
+memory, which is deferred. Older CSV layouts in `outputs/` are not listed rather than
+guessed.
 
 ## Login and safety
 
-- A session cookie after logging in; credentials compared in constant time; a short
-  delay after failed attempts. Plain HTTP is accepted: the lab is locked and the
-  default is localhost behind an SSH tunnel.
-- Listening beyond `127.0.0.1` is an explicit option (`labcli gui --listen`), off by
-  default.
-- GUI logins and actions are logged to `~/.formslab/.run/gui.log` with the user name
-  (the host owns its own log, so the GUI cannot write there; per-command names inside
-  the host would need a change to the CAST request format).
-- Note: the password chosen is also the PowerSwitch fallback password. Fine for a
-  locked lab, but worth separating later.
-- Writes are limited to the plans folder; the server cannot save elsewhere.
-
-## Layout in the repo (proposed)
-
-```
-src/formslab/gui/
-    server.py        routes, login, static files
-    api.py           wrappers over existing functions (testable without a server)
-    static/          index.html, app.js, style.css, (uplot.min.js)
-test/test_gui_api.py        api functions called directly
-test/test_gui_server.py     one real server on a free port, driven with http.client
-```
-
-`static/` must ship as package data (the Pico firmware already does this).
+- A session cookie (`SameSite=Strict`) after login; constant-time comparison; about a
+  second's wait after a wrong password; sessions last 8 hours and end when the server
+  restarts.
+- Every state-changing request carries a header another site's page cannot set; bodies
+  are capped; an unexpected Host header is refused.
+- Plans are started by name from the server's own list, never from a path in a request.
+  Writes are limited to the user's plans folder (and `plans/` through *Ship*).
+- Logins and actions are noted with the user name in `~/.formslab/.run/gui.log`. Per-command
+  names inside the host would need a change to the CAST request format.
+- The chosen password is also the PowerSwitch fallback password: fine for a locked lab,
+  worth separating later.
 
 ## Requirements
 
-Functional
+Functional, all met except F5's later stages:
+
 - F1 Edit, check and save a plan with line-numbered errors, from dropdowns.
 - F2 Start, end, pause and resume a run; send any cast command.
 - F3 Live valves, pumps, pressure and temperatures with the age of each value.
-- F4 Plot any recorded run's variables, overlaid, with zoom.
-- F5 Orbit, eclipse, view factor and environment temperature view (when the extra is installed).
+- F4 Plot any recorded run's variables, with zoom.
+- F5 Orbit, eclipse, view factor and environment temperature views. *Orbit and eclipse
+  done; the rest is section 4.*
 - F6 Log in and out; unauthenticated requests get nothing.
 
-Non-functional
-- N1 Runs on Windows, Linux (Pi included) and, ideally, Mac; any current browser.
-- N2 No build step, no internet, no new base dependency beyond numpy (added 2026-10-05 for the
-  orbit models; scipy and matplotlib stay in the optional `orbit` extra).
-- N3 Does not open any instrument, ever.
-- N4 Usable with no host running (plans, plots, orbit view still work).
-- N5 A page reload loses nothing: state lives in files.
-- N6 Small enough to read in an afternoon: roughly 150 lines of server, a few hundred of page per screen.
+Non-functional:
 
-## Build order (each stage useful alone)
-
-1. Server skeleton, login, status, run and end, Control screen.
-2. Plans editor (plus `line_options` and the round-trip test). Done.
-3. TVAC viewer.
-4. Plot viewer.
-5. Space environment viewer (after deciding the 3D and replay questions).
+- N1 Runs on Windows, Linux (Pi included) and Mac; any current browser.
+- N2 No build step, no internet; numpy is the only base dependency the orbit work added
+  (scipy and matplotlib stay in the `orbit` extra).
+- N3 Never opens an instrument.
+- N4 Usable with no host running.
+- N5 A page reload loses nothing.
+- N6 Small enough to read in a day: about 1,300 lines of Python and 2,400 of page today.
+  `editor.js` (about 800) is the one file growing fastest; split it before it doubles.
 
 ## Open questions
 
-1. ~~Chamber schematic~~ -- settled 2026-10-03: follow the HMI Manual screen (section 3).
-2. Orbit view: 2D only at first, or is 3D needed from the start?
-3. Should a plan be able to *replay* an orbit profile against the chamber (a new plan
-   step), and should the orbit screen then show the run's position in it?
-4. Two people editing the same plan: warn on conflicting saves, or last save wins?
-5. Celsius or Kelvin as the default display? (Values are published in K internally.)
-6. Do students need to *start* runs from the GUI, or only edit plans and watch?
-7. Heater output %, turbo speed % and foreline pressure are on the HMI but not read by our
-   software: worth finding where the controller exposes them?
+Settled:
+
+- ~~Chamber schematic~~: follow the HMI Manual screen (2026-10-03).
+- ~~Two people saving the same plan~~: a save is refused if the file changed on disk
+  since it was opened.
+- ~~Replay an orbit in a plan~~: rOrbit's `orbit follow` / `orbit replay` (2026-10-05).
+  Replaying a whole *thermal profile* is still stage 4 above.
+
+Open:
+
+1. 3D view: needed from the start of the space-environment work, or after the profile
+   and its plots?
+2. How the spacecraft model is written (stage 1).
+3. Should students start runs from the GUI, or only write plans and watch? Today anyone
+   with the one login can start one.
+4. Celsius or Kelvin as the default display? Values are published in K; the Chamber and
+   Plots tabs offer both and start in Celsius.
+5. Heater output %, turbo speed % and foreline pressure: worth finding where the
+   controller exposes them?
+6. rOrbit and Pause: pausing a run holds the plan's steps, but the orbit goes on
+   (`follow` is the wall clock; `replay` is the wall clock from its step). Should a
+   paused `replay` hold the satellite too?
