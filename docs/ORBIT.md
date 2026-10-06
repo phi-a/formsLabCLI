@@ -117,7 +117,7 @@ before either is refused when it is read: that wait could only time out.
 
 | value | means |
 |---|---|
-| `InUmbra` | 1 in the umbra, 0 in sunlight |
+| `InUmbra` | on or off: true in the umbra, false in sunlight (`until InUmbra = true within 2 h`) |
 | `UmbraDuration` | s: in the umbra, its whole length; in sunlight, the next one's; 0 if there is none |
 | `UmbraTimeRemaining` | s left in this umbra; 0 in sunlight |
 | `NextUmbra` | s until the next umbra begins |
