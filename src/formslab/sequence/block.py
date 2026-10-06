@@ -215,7 +215,13 @@ def review(text: str) -> tuple[list, list]:
         return [(e.line, str(e))], []
     if b.name in cast.owners()[0]:
         return [(0, f"{b.name} is an instrument's name; choose another name for the block")], []
-    return review_plan(as_plan(text))
+    from formslab.sequence.rules import ADD_START, NOT_STARTED
+
+    errors, warnings = review_plan(as_plan(text))
+    # A wait on a value the calling plan starts (the orbit it chooses) is the caller's to settle.
+    callers = [(n, m.replace(ADD_START, "The plan that calls this block must do it first."))
+               for n, m in errors if NOT_STARTED in m]
+    return [e for e in errors if NOT_STARTED not in e[1]], sorted(warnings + callers)
 
 
 def tokens(text: str) -> list[list[dict]]:

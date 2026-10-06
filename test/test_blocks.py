@@ -213,3 +213,16 @@ def test_a_plan_of_blocks_pumps_down_soaks_and_vents(chamber, monkeypatch):
     s = chamber.state
     assert s.pressure >= 700 and s.devices["OV"] is True             # vented, valve left open
     assert not s.devices["OR"] and not s.devices["OP"]                # pumpdown sealed it
+
+
+@pytest.mark.parametrize("name", ["eclipse", "sunrise"])
+def test_a_block_that_waits_on_an_orbit_leaves_choosing_it_to_its_caller(name):
+    """Inside a block, a wait on InUmbra before any `orbit follow` is the calling plan's
+    to settle: a warning on the block, not an error that lists it as unusable."""
+    from pathlib import Path
+    from formslab.gui import api
+    from formslab.sequence.block import review as review_block
+    text = (Path(__file__).resolve().parents[1] / "plans" / f"{name}.block").read_text(encoding="utf-8")
+    errors, warnings = review_block(text)
+    assert errors == [] and "The plan that calls this block must do it first" in warnings[0][1]
+    assert {p["name"]: p for p in api.list_plans()}[name].get("error") is None

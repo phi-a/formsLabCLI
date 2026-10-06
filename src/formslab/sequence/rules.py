@@ -162,6 +162,10 @@ def _worse(first, second):
     return out
 
 
+NOT_STARTED = "has no value yet"
+ADD_START = "Add one before this step, or the wait can only time out."
+
+
 def _waits_before_start(steps, scripts) -> list[tuple[int, str]]:
     """(line, message) for each wait on a value that its rScript publishes only
     once a request has started it (STARTED_BY: rOrbit's `orbit follow`, `orbit
@@ -188,8 +192,8 @@ def _waits_before_start(steps, scripts) -> list[tuple[int, str]]:
             label, script, words = hit
             how = " or ".join(f"`{label} {w}`" for w in words)
             within = f"In {origin_text(seg.origin)}: " if seg.origin else ""
-            out.append((n, f"{within}{variable} has no value yet: {script} publishes it only after {how}. "
-                           f"Add one before this step, or the wait can only time out."))
+            out.append((n, f"{within}{variable} {NOT_STARTED}: {script} publishes it only after {how}. "
+                           f"{ADD_START}"))
 
     def run(items, started):
         for item in items:
