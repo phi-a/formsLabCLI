@@ -263,7 +263,8 @@ def parse_plan(source: str, *, path: Path | None = None, steps_out: list | None 
                 if own != "bool" and cond[2] in ("=", "!="):
                     fail(n, f"{cond[1]} is a number, compared with <, <=, > or >=; two readings are "
                             "almost never exactly equal")
-            if "within" not in lowered:
+            # Once the condition is whole and only its time is missing (not while it is still being written).
+            if "within" not in lowered and any(o.kind == "word" and o.text == "within" for o in grammar.complete(words)):
                 fail(n, f"{what} needs `within <time> s|min|h`: a wait on hardware always has a limit")
         return replace(_parse(fail, n, grammar, words), label=" ".join(words))
 

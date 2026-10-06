@@ -407,14 +407,15 @@
         const chosen = current === undefined ? null : wordOpts.find((o) => o.text.toLowerCase() === current.toLowerCase());
         const part = chosen && chosen.part;
         const sel = el("select", { "aria-label": part ? partName(part) : "Choice " + (k + 1),
-          class: "tok " + (k === 0 ? "verb" : "kw") + (k === 0 && current === undefined ? " empty" : "") + (k > 0 && current === undefined ? " more" : ""),
+          class: "tok " + (k === 0 ? "verb" : "kw") + (k === 0 && current === undefined ? " empty" : "")
+                 + (k > 0 && current === undefined && r.complete ? " more" : ""),   // optional: the step is whole without it
           "data-fam": famFor(k === 0 ? current : words[0]) });
         if (part) { sel.dataset.part = part; sel.title = partName(part); }
         if ((current || "").toLowerCase() === "within") sel.title = WITHIN;
         if (part && k === (isOrbit() ? 0 : 1)) chain.append(partIcon(part, famFor(words[0])));   // before the word naming it
         if (k === 0 && current !== undefined && famOf(current) === "block") chain.append(blockIcon());
         if (k === 0 && isLoopWord(current)) chain.append(loopIcon());
-        if (current === undefined) sel.append(el("option", { value: "" }, k > 0 ? "2026" : isOrbit() ? "add an element..." : "add a step..."));
+        if (current === undefined) sel.append(el("option", { value: "" }, k > 0 ? "…" : isOrbit() ? "add an element..." : "add a step..."));
         const addable = k === 0 && current === undefined && !isOrbit()
           ? missingHeaders(S.lines).filter((h) => !(isBlock() && h === "record")) : [];   // load / record, if deleted
         for (const kind of addable) {
@@ -530,7 +531,11 @@
       const holder = r.row.querySelector(".rowerr");
       const msgs = new Set(S.errors.filter((e) => e.line === idx + 1).map((e) => e.message));
       if (holder.dataset.stepError) msgs.add(holder.dataset.stepError);
-      holder.textContent = [...msgs].join("  ");
+      // A step still being written is not a mistake: say so plainly; the full list is in the tooltip.
+      const unfinished = S.editable && msgs.size > 0 && [...msgs].every((m) => m.startsWith("incomplete:"));
+      holder.classList.toggle("unfinished", unfinished);
+      holder.title = unfinished ? [...msgs].join("  ") : "";
+      holder.textContent = unfinished ? "Unfinished: choose what comes next in the last box." : [...msgs].join("  ");
       // A warning: a rule this plan does not establish. It can still run; the step is checked live.
       const warn = msgs.size ? [] : S.warnings.filter((w) => w.line === idx + 1).map((w) => w.message);
       r.row.querySelector(".rowwarn").textContent = warn.length ? `\u26a0 ${warn.join("  ")}` : "";

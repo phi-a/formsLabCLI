@@ -122,6 +122,7 @@ select.tok.more { padding-left: 6px; padding-right: 18px; background-position: c
                             font-size: 13px; white-space: nowrap; }
 .prow .tools .menu button:hover { background: var(--panel); }
 .prow .rowerr { grid-column: 2 / 4; color: var(--bad); font-size: 12px; }
+.prow .rowerr.unfinished { color: var(--muted); font-style: italic; }
 .prow .rowwarn { grid-column: 2 / 4; color: var(--warn); font-size: 12px; }
 .prow .rowwarn:empty, .prow .rowerr:empty { display: none; }
 .prow.blank .body { color: var(--muted); font-size: 12px; padding-top: 6px; }
