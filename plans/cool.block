@@ -1,0 +1,15 @@
+# Cool the platen and shroud to a temperature
+# Sets both zones to the temperature, turns their thermal control on and waits for
+# each to reach it, for at most the minutes given. A zone already at or below it
+# ends its wait at once. Cooling uses liquid nitrogen: its supply must be on and its
+# exhaust vented outside the building. Both zones stay on, holding the temperature,
+# until a step turns them off.
+block cool to <temperature:number -150..30 C> within <minutes:number 1..600 min>
+load rLACO
+
+hvc platen {temperature}
+hvc shroud {temperature}
+hvc platen on
+hvc shroud on
+until platenT <= {temperature} C within {minutes} min
+until shroudT <= {temperature} C within {minutes} min

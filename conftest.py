@@ -8,7 +8,11 @@ by naming the file:
     pytest test/test_DP832A.py
 """
 
+from pathlib import Path
+
 import pytest
+
+FIXTURE_PLANS = Path(__file__).resolve().parent / "test" / "fixtures" / "plans"
 
 collect_ignore = [
     # hardware -- needs instruments on the bench
@@ -35,3 +39,17 @@ def _isolated_config_and_output(tmp_path_factory, monkeypatch):
                        str(tmp_path_factory.mktemp("formslab-config")))
     monkeypatch.setenv("FORMSLAB_OUTPUT_DIR",
                        str(tmp_path_factory.mktemp("formslab-output")))
+
+
+@pytest.fixture(autouse=True)
+def _fixture_plans(tmp_path_factory, monkeypatch):
+    """Stand the test plans in for the shipped ones.
+
+    The checkout's `plans/` is the bench's catalog of tests and changes with it.
+    The suite reads a frozen set instead, `test/fixtures/plans/`, as if it were
+    shipped. The working directory moves to an empty folder, so its `plans/`
+    (the checkout's, when pytest runs from the root) is not searched either.
+    """
+    from formslab.sequence import plan
+    monkeypatch.setattr(plan, "shipped_dir", lambda: FIXTURE_PLANS)
+    monkeypatch.chdir(tmp_path_factory.mktemp("cwd"))

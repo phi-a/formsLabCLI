@@ -15,7 +15,9 @@ A block is a `.block` file beside the plans (the same folders, docs/SEQUENCE.md)
 - The leading comments describe it: the first is the summary, the rest the
   details (docs/WRITING.md).
 - The `block` line names it and is the pattern a plan writes to call it, each
-  input a number slot in the grammar's own syntax.
+  input a number slot in the grammar's own syntax, or `<name:temperature>`, a
+  thermocouple. A call writes each number with its unit (`pumpdown to 3 Torr`)
+  and names the thermocouple (`chill to -40 C at TC01`).
 - `load` names the rScripts it needs; a plan that calls it must load them too.
 - Each step is a plan step; `{input}` is replaced by the value given.
 
@@ -29,14 +31,24 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from formslab.rscripts.grammar import Grammar, GrammarError, _Slot, _Word, _compile
+from formslab.rscripts.grammar import Grammar, GrammarError, _Choice, _Slot, _Word, _compile
 
 SUFFIX = ".block"
 MAX_DEPTH = 8
 # Words a block may not be named: the plan's own steps, and FORMS' verbs.
-RESERVED = ("hold", "until", "log", "load", "record", "block", "repeat", "end", "propagate", "call", "observe")
+RESERVED = ("hold", "until", "log", "load", "record", "block", "repeat", "end", "when",
+            "propagate", "call", "observe")
 _NAME = re.compile(r"^[a-z][a-z0-9_]*$")
 _INPUT = re.compile(r"^\{(\w+)\}$")
+_TOKEN = re.compile(r"<\s*\w[^>]*>|\S+")                   # as grammar._compile splits a pattern
+# A number input, as grammar._compile reads one; its unit is the group, if it has one.
+_UNIT = re.compile(r"^<\s*\w+\s*:\s*(?:number|integer)(?:\s+[-+\d.eE]*\.\.[-+\d.eE]*)?(?:\s+(\S+))?\s*>$")
+_SENSOR = re.compile(r"^<\s*(\w+)\s*:\s*temperature\s*>$")   # a thermocouple input
+
+
+def _word(value) -> str:
+    """An input's value as a plan word: a number as written, a thermocouple by name."""
+    return value if isinstance(value, str) else f"{value:g}"
 
 
 class BlockError(ValueError):
@@ -58,6 +70,24 @@ class Block:
     inputs: tuple[str, ...]                       # input names, in the order the call gives them
     captures: tuple[str | None, ...]              # per captured word of the call: its input, or None
     path: Path | None = None
+    sensors: tuple[str, ...] = ()                 # the inputs that name a thermocouple
+
+    @property
+    def call(self) -> str:
+        """The words a plan writes to call it: each number followed by its unit
+        (`vent within 60 min`), each thermocouple input a choice of every
+        temperature reading the routines publish (`at TC01`)."""
+        from formslab.rscripts import cast
+
+        out = []
+        for tok in _TOKEN.findall(self.pattern):
+            if (m := _SENSOR.match(tok)) and (names := cast.sensors()):
+                out.append(f"<{m.group(1)}:{'|'.join(names)}>")
+            elif (m := _UNIT.match(tok)) and m.group(1):
+                out += [tok, m.group(1)]
+            else:
+                out.append(tok)
+        return " ".join(out)
 
     @property
     def help(self) -> str:
@@ -70,7 +100,7 @@ class Block:
 
     def body(self, values: dict) -> list[tuple[int, list[str]]]:
         """Its steps with the inputs replaced by `values`."""
-        return [(n, [f"{values[m.group(1)]:g}" if (m := _INPUT.match(w)) else w for w in words])
+        return [(n, [_word(values[m.group(1)]) if (m := _INPUT.match(w)) else w for w in words])
                 for n, words in self.steps]
 
     def sample_values(self) -> dict[str, float]:
@@ -116,6 +146,8 @@ def parse_block(text: str, path: Path | None = None) -> Block:
             if [w.lower() for w in words] in (["hold", "until", "end"], ["repeat", "until", "end"]):
                 raise BlockError(f"a block cannot `{' '.join(words[:3]).lower()}`: the steps after its call "
                                  "would never run", n)
+            if head == "when":
+                raise BlockError("a block cannot hold a `when` yet: put the rule in the plan", n)
             if head != "log" and "#" in t:
                 raise BlockError("comments go on their own line", n)
             steps.append((n, tuple(words)))
@@ -135,11 +167,18 @@ def parse_block(text: str, path: Path | None = None) -> Block:
         Grammar([(pattern, "", None)])
     except GrammarError as e:
         raise BlockError(str(e), hn) from None
-    inputs, captures = [], []
+    inputs, captures, sensors = [], [], []
     for e in elements[1:]:
-        if isinstance(e, _Slot):
+        if isinstance(e, _Choice) and e.members == ("temperature",) and e.name:
+            if e.name in inputs:
+                raise BlockError(f"input {e.name!r} appears twice", hn)
+            inputs.append(e.name)
+            captures.append(e.name)
+            sensors.append(e.name)
+        elif isinstance(e, _Slot):
             if e.kind not in ("number", "integer"):
-                raise BlockError(f"input {e.name!r} is a {e.kind}; a block's inputs are numbers", hn)
+                raise BlockError(f"input {e.name!r} is a {e.kind}; a block's inputs are numbers, "
+                                 "or a thermocouple: <name:temperature>", hn)
             if e.name in inputs:
                 raise BlockError(f"input {e.name!r} appears twice", hn)
             inputs.append(e.name)
@@ -165,7 +204,8 @@ def parse_block(text: str, path: Path | None = None) -> Block:
     summary = about[0] if about else ""
     details = " ".join(about[1:])
     return Block(name=name, pattern=pattern, summary=summary, details=details, scripts=scripts,
-                 steps=tuple(steps), inputs=tuple(inputs), captures=tuple(captures), path=path)
+                 steps=tuple(steps), inputs=tuple(inputs), captures=tuple(captures), path=path,
+                 sensors=tuple(sensors))
 
 
 # --- a block file in the editor ------------------------------------------------------
@@ -177,29 +217,57 @@ def parse_block(text: str, path: Path | None = None) -> Block:
 _SLOT = re.compile(r"<\s*(\w+)\s*:\s*(?:number|integer)(?:\s+([-+\d.eE]*)\.\.([-+\d.eE]*))?[^>]*>")
 
 
-def _samples(text: str) -> dict[str, float]:
+def _samples(text: str) -> dict[str, str]:
     """A value for each input the `block` line declares, read leniently (the file
-    may be half written)."""
-    header = next((ln for ln in text.splitlines() if ln.strip().lower().startswith("block")), "")
+    may be half written): a number in its range, or a thermocouple its `load`
+    line's routines publish."""
+    lines = text.splitlines()
+    header = next((ln for ln in lines if ln.strip().lower().startswith("block")), "")
     out = {}
     for name, lo, hi in _SLOT.findall(header):
         try:
-            out[name] = float(lo) if lo else float(hi) if hi else 1.0
+            out[name] = _word(float(lo) if lo else float(hi) if hi else 1.0)
         except ValueError:
-            out[name] = 1.0
+            out[name] = "1"
+    names = [m.group(1) for tok in _TOKEN.findall(header) if (m := _SENSOR.match(tok))]
+    if names:
+        sample = _sensor_sample(_load(lines))[0]
+        out.update({n: sample for n in names})
     return out
+
+
+def _load(lines) -> list[str]:
+    return next((ln.split()[1:] for ln in lines if ln.split()[:1] and ln.split()[0].lower() == "load"), [])
+
+
+def _sensor_sample(scripts) -> tuple[str, str | None]:
+    """A thermocouple to read a block on its own, and the routine that publishes it
+    when `scripts` do not: which one is the calling plan's to choose and load."""
+    from formslab.rscripts import cast
+
+    labels, _ = cast.owners()
+    owner = {v: cast.script_name(m) for m in labels.values() for v, _ in cast.variables(m)}
+    names = cast.sensors() or ["TC01"]
+    mine = next((s for s in names if owner.get(s) in scripts), None)
+    return (mine, None) if mine else (names[0], owner.get(names[0]))
 
 
 def as_plan(text: str) -> str:
     """The block in `text` as a plan, line for line."""
     samples = _samples(text)
+    lines = text.splitlines()
+    header = next((ln for ln in lines if ln.strip().lower().startswith("block")), "")
+    extra = (_sensor_sample(_load(lines))[1]
+             if any(_SENSOR.match(tok) for tok in _TOKEN.findall(header)) else None)
     out = []
-    for line in text.splitlines():
+    for line in lines:
         words = line.split()
         if words and words[0].lower() == "block":
             out.append("# " + line.strip())
+        elif extra and words[:1] and words[0].lower() == "load" and extra not in words:
+            out.append(line.rstrip() + " " + extra)           # the sample thermocouple's routine
         else:
-            out.append(" ".join(f"{samples.get(m.group(1), 1):g}" if (m := _INPUT.match(w)) else w
+            out.append(" ".join(samples.get(m.group(1), "1") if (m := _INPUT.match(w)) else w
                                 for w in words) if words else line)
     return "\n".join(out) + "\n"
 
@@ -250,19 +318,31 @@ def tokens(text: str) -> list[list[dict]]:
     return out
 
 
-def line_options(scripts, words) -> dict:
+def lines_options(scripts, lines) -> list[dict]:
+    """`line_options` for many lines at once, the grammar built once."""
+    from formslab.sequence.plan import _grammar
+
+    built = _grammar(tuple(scripts))
+    return [line_options(scripts, words, built) for words in lines]
+
+
+def line_options(scripts, words, built=None) -> dict:
     """plan.line_options for a block's step: each {input} read as a value that fits
     where it stands."""
     from formslab.sequence.plan import _grammar, line_options as plan_line_options
 
-    grammar = _grammar(tuple(scripts))[0]
+    built = built or _grammar(tuple(scripts))
+    grammar = built[0]
     filled = []
     for w in words:
         if _INPUT.match(w):
-            slot = next((o for o in grammar.complete(filled) if o.kind in ("number", "integer")), None)
-            w = f"{slot.lo if slot and slot.lo is not None else slot.hi if slot and slot.hi is not None else 1:g}"
+            options = grammar.complete(filled)
+            slot = next((o for o in options if o.kind in ("number", "integer")), None)
+            word = next((o for o in options if o.kind == "word"), None)
+            w = (f"{slot.lo if slot.lo is not None else slot.hi if slot.hi is not None else 1:g}" if slot
+                 else word.text if word else "1")           # a number, or a thermocouple's name
         filled.append(w)
-    return plan_line_options(scripts, filled)
+    return plan_line_options(scripts, filled, built)
 
 
 def describe(text: str, line: int) -> dict:
@@ -277,7 +357,7 @@ def describe(text: str, line: int) -> dict:
             b = parse_block(text)
         except BlockError:
             return {"cards": [], "rules": []}
-        card = _card(Grammar([(b.pattern, b.help, None)])._commands[0], True)
+        card = _card(Grammar([(b.call, b.help, None)])._commands[0], True)
         return {"cards": [{**card, "part": None, "steps": [" ".join(w) for _, w in b.steps]}], "rules": []}
     return describe_step(as_plan(text), line)
 
@@ -333,4 +413,6 @@ def available(labels=()) -> tuple[dict[str, Block], dict[str, str]]:
             broken[b.name] = f"block {b.name} has an instrument's name; rename the block"
         else:
             blocks[b.name] = b
-    return blocks, broken
+    # A misnamed draft (block1.block holding `block darkness ...`) does not take the
+    # name from the block that is rightly called it.
+    return blocks, {n: why for n, why in broken.items() if n not in blocks}

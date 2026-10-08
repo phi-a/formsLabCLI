@@ -96,13 +96,13 @@ def test_a_call_expands_into_the_blocks_steps_with_its_inputs():
 
 def test_an_input_out_of_range_is_refused_at_the_call():
     with pytest.raises(PlanError, match="900 is outside 0.01..760 Torr"):
-        parse_plan(plan("pumpdown to 900"))
+        parse_plan(plan("pumpdown to 900 Torr"))
 
 
 def test_a_step_the_input_breaks_is_reported_at_the_call_with_the_block_and_line(blocks_dir):
     blocks_dir("hot", "# Heat the platen\nblock hot to <t:number 0..1000 C>\nload rLACO\n\nhvc platen {t}\n")
     with pytest.raises(PlanError) as e:
-        parse_plan(plan("hvc stop", "hot to 900"))
+        parse_plan(plan("hvc stop", "hot to 900 C"))
     assert e.value.errors == [(3, "In hot (line 5): hvc platen: 900 is outside -180..200 C")]
 
 
@@ -134,7 +134,7 @@ def test_blocks_nest_eight_deep_and_no_deeper(blocks_dir):
 
 def test_the_plan_must_load_what_the_block_needs():
     with pytest.raises(PlanError, match="pumpdown needs rLACO; add it to `load`"):
-        parse_plan(plan("pumpdown to 5", load="rSMTC08"))
+        parse_plan(plan("pumpdown to 5 Torr", load="rSMTC08"))
 
 
 def test_a_broken_or_clashing_block_is_refused_at_its_call(blocks_dir):
@@ -151,19 +151,19 @@ def test_a_broken_or_clashing_block_is_refused_at_its_call(blocks_dir):
 # --- rules, help and needs see through a call -------------------------------------------------
 
 def test_what_a_block_establishes_holds_after_it():
-    p = parse_plan(plan("pumpdown to 5", "hvc vent open"))
+    p = parse_plan(plan("pumpdown to 5 Torr", "hvc vent open"))
     vent = [m for n, m in p.warnings if n == 3]
     assert vent and "Vacuum valve closed" not in vent[0] and "Gate valve closed" not in vent[0]
     assert "Platen at least 10" in vent[0]
 
 
 def test_a_finding_inside_a_block_names_where():
-    _, warnings = review(plan("pumpdown to 5"))
+    _, warnings = review(plan("pumpdown to 5 Torr"))
     assert warnings and all(m.startswith("In pumpdown line 16: ") for _, m in warnings)
 
 
 def test_the_vent_block_establishes_its_own_prerequisites():
-    assert review(plan("vent within 30"))[1] == []
+    assert review(plan("vent within 30 min"))[1] == []
 
 
 def test_a_change_inside_a_block_is_named_where_it_breaks_a_rule(blocks_dir):
@@ -174,11 +174,11 @@ def test_a_change_inside_a_block_is_named_where_it_breaks_a_rule(blocks_dir):
 
 
 def test_needed_rscripts_follow_calls():
-    assert needed_rscripts("pumpdown to 5\nvent within 30\n") == ["rLACO"]
+    assert needed_rscripts("pumpdown to 5 Torr\nvent within 30 min\n") == ["rLACO"]
 
 
 def test_the_help_card_for_a_call_lists_its_steps_and_every_prerequisite():
-    info = describe_step(plan("pumpdown to 5"), 2)
+    info = describe_step(plan("pumpdown to 5 Torr"), 2)
     [card] = info["cards"]
     assert card["help"] == "Rough the chamber down to a pressure, then seal it"
     assert card["steps"][0] == "hvc vent close" and "until chamberP < {pressure} within 20 min" in card["steps"]
@@ -222,7 +222,40 @@ def test_a_block_that_waits_on_an_orbit_leaves_choosing_it_to_its_caller(name):
     from pathlib import Path
     from formslab.gui import api
     from formslab.sequence.block import review as review_block
-    text = (Path(__file__).resolve().parents[1] / "plans" / f"{name}.block").read_text(encoding="utf-8")
+    text = (Path(__file__).resolve().parent / "fixtures" / "plans" / f"{name}.block").read_text(encoding="utf-8")
     errors, warnings = review_block(text)
     assert errors == [] and "The plan that calls this block must do it first" in warnings[0][1]
     assert {p["name"]: p for p in api.list_plans()}[name].get("error") is None
+
+
+# --- units and thermocouples in a call -------------------------------------------------------
+
+CHILL = ("# Cool to a temperature\nblock chill to <temperature:number -200..30 C> at <sensor:temperature>\n"
+         "load rPSU\n\nuntil {sensor} <= {temperature} C\n")
+
+
+def test_a_call_writes_each_number_with_its_unit():
+    with pytest.raises(PlanError, match="expected Torr after 'pumpdown to 5'"):
+        parse_plan(plan("pumpdown to 5"))
+    assert parse_plan(plan("pumpdown to 5 Torr")).sequence.segments
+
+
+def test_a_block_takes_a_thermocouple_and_the_plan_loads_its_routine(blocks_dir):
+    blocks_dir("chill", CHILL)
+    seg = parse_plan(plan("chill to -40 C at TC01", load="rPSU rSMTC08")).sequence.segments[0]
+    assert seg.label == "chill > until TC01 <= -40 C" and seg.params["timeout_s"] is None
+    errors, _ = review(plan("chill to -40 C at TC01", load="rPSU"))
+    assert errors == [(2, "In chill (line 5): TC01 is published by rSMTC08; add it to `load`")]
+    with pytest.raises(PlanError, match="did you mean 'TC09'"):
+        parse_plan(plan("chill to -40 C at TC99", load="rPSU rSMTC08"))
+
+
+def test_a_block_with_a_thermocouple_reads_on_its_own():
+    from formslab.sequence.block import review as review_block
+    assert review_block(CHILL) == ([], [])          # the caller chooses, and loads, the thermocouple
+
+
+def test_a_misnamed_draft_does_not_hide_the_block_rightly_named(blocks_dir):
+    blocks_dir("chill", CHILL)
+    blocks_dir("draft1", CHILL.replace("block chill", "block chill"))     # holds `block chill`, named draft1
+    assert parse_plan(plan("chill to -40 C at TC01", load="rPSU rSMTC08")).sequence.segments

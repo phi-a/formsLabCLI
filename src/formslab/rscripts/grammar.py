@@ -240,17 +240,25 @@ class Grammar:
     def complete(self, words: Sequence[str]) -> list[Option]:
         """Everything that can come after `words` (each a whole typed word).
         A caller filters by the prefix of a word still being typed."""
-        found: dict[tuple, tuple[Option, set]] = {}
+        found: dict[tuple, tuple[Option, set, set]] = {}
         for cmd in self._commands:
             kind, i, el = self._walk(cmd, words)
             if kind != "short" or i != len(words):
                 continue
             for opt in el.options():
                 key = (opt.kind, opt.text.lower(), opt.lo, opt.hi, opt.unit)
-                found.setdefault(key, (opt, set()))[1].add(cmd.help)
-        # An option that leads to one command carries that command's help.
-        return [replace(opt, help=next(iter(helps))) if len(helps) == 1 else opt
-                for opt, helps in found.values()]
+                _, helps, ends = found.setdefault(key, (opt, set(), set()))
+                helps.add(cmd.help)
+                if i == len(cmd.elements) - 1:
+                    ends.add(cmd.help)
+        # An option that leads to one command carries that command's help; one that
+        # leads to several carries the help of the one it ends (`hvc platen 40`,
+        # before `at TC01` makes it a hold).
+        def helped(opt, helps, ends):
+            if len(helps) == 1 or len(ends) == 1:
+                return replace(opt, help=next(iter(helps if len(helps) == 1 else ends)))
+            return opt
+        return [helped(*v) for v in found.values()]
 
     def parse(self, words: Sequence[str]):
         """What `words` mean: the matching command's builder result."""

@@ -132,6 +132,8 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/me":
             return self._json(200, {"user": user, "demo": self.server.demo})
+        if path == "/api/end/steps":
+            return self._json(200, {"steps": api.end_steps()})
         if path == "/api/status":
             return self._json(200, api.status(int(arg("log", 40))))
         if path == "/api/plans":
@@ -231,6 +233,13 @@ class Handler(BaseHTTPRequestHandler):
             if not all(isinstance(w, str) for w in [*scripts, *words]):
                 return self._error(HTTPStatus.BAD_REQUEST, "scripts and words are lists of strings")
             return self._json(200, api.plan_line(scripts, words, kind))
+        elif path == "/api/plan/lines":                  # every row the editor draws, in one request
+            scripts, lines = body.get("scripts", []), body.get("lines", [])
+            if not (isinstance(scripts, list) and isinstance(lines, list)
+                    and all(isinstance(w, str) for w in scripts)
+                    and all(isinstance(ws, list) and all(isinstance(w, str) for w in ws) for ws in lines)):
+                return self._error(HTTPStatus.BAD_REQUEST, "scripts is a list of strings, lines a list of them")
+            return self._json(200, {"lines": api.plan_lines(scripts, lines, kind)})
         elif path == "/api/plan/needs":
             return self._json(200, {"rscripts": api.plan_needs(str(body.get("text", "")))})
         elif path == "/api/plan/tokens":

@@ -81,10 +81,11 @@ mistake.
 Under them, the panel says how to use the orbit in a plan, and *Use in a plan*
 makes one: it follows the orbit and waits for its umbra.
 
-Shipped: `leo_dawn_dusk` (the plane faces the Sun, no eclipse but for a short
-season around the June solstice: the hot case) and
-`leo_noon` (the Sun in the plane, 35 minutes of umbra every orbit: the cold case).
-Names are shared with plans: an orbit cannot take a plan's name.
+No orbit ships yet: they return with the bench's first test that runs one. The
+test suite's own are in `test/fixtures/plans/`: `leo_dawn_dusk` (the plane faces
+the Sun, no eclipse but for a short season around the June solstice: the hot case)
+and `leo_noon` (the Sun in the plane, 35 minutes of umbra every orbit: the cold
+case). Names are shared with plans: an orbit cannot take a plan's name.
 
 ## In a run
 
@@ -98,17 +99,15 @@ record every 10 s
 
 orbit follow leo_noon
 slta run on
-eclipse within 120
+until InUmbra = true within 2 h
 log umbra began
-sunrise within 60
+until InUmbra = false within 1 h
 ```
 
 | step | does |
 |---|---|
 | `orbit follow <orbit>` | puts the satellite where the wall clock does, as the live panel shows it |
 | `orbit replay <orbit>` | starts the satellite at the file's epoch at this step, so a test sees the same orbit every time |
-| `eclipse within <minutes>` | a block: waits for the satellite to enter the umbra |
-| `sunrise within <minutes>` | a block: waits for it to leave the umbra |
 
 The orbit names offered are the orbit files on the plan path. A file that does not
 read is refused when the step runs, and the run stops there. Nothing is published
@@ -136,7 +135,7 @@ from formslab.orbit.file import load
 from formslab.orbit.geometry import LVLHFixed
 from formslab.orbit.thermal.pipeline import CubeSat, catalog, view
 
-orbit = load("plans/leo_noon.orbit")
+orbit = load("test/fixtures/plans/leo_noon.orbit")
 sat = CubeSat(catalog("6u_double_deployable"))
 vl = view(sat.geometry, orbit, LVLHFixed(), facets=["bus_-Z"])
 ```

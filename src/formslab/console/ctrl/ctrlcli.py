@@ -118,7 +118,7 @@ def plans_command() -> CLIResult:
         from formslab.rscripts.grammar import Grammar
 
         for b in usable.values():
-            usage = Grammar([(b.pattern, "", None)]).rows()[0][0]
+            usage = Grammar([(b.call, "", None)]).rows()[0][0]
             result.append("  ■   ", INFO)
             result.append(usage.ljust(30), INFO)
             result.append(b.summary + "\n", DIM)
@@ -259,7 +259,7 @@ def help_panel() -> CLIResult:
     result.append("RUNS\n", HEADER)
     for cmd, desc in (("plans", "List lab plans"),
                       ("run tvac", "Manual chamber operation until `end` (cast tab)"),
-                      ("run <plan>", "Run a lab plan, e.g. run laco_pumpdown")):
+                      ("run <plan>", "Run a lab plan, e.g. run rest_from_ambient")):
         result.append(f"  {cmd:<16}", LABEL)
         result.append(desc + "\n", TEXT)
 

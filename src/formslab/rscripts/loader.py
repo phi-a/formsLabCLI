@@ -22,6 +22,10 @@ and one optional hook:
     def rShutdown(run):     called once when the host stops, however it stops
                               (end of plan, `end`, a crash), last loaded first.
                               Where a script leaves its hardware safe.
+    SHUTDOWN_BEFORE = ("rPSU",)
+                            the scripts this one's rShutdown must run before,
+                              whatever the load order: a script that asks another
+                              for its supply shuts down first.
 """
 from __future__ import annotations
 
@@ -115,6 +119,24 @@ def load(run, names) -> list[str]:
     return [n for n, _ in _loaded]
 
 
+def _ordered(hooks):
+    """`hooks` with each script moved before the ones its SHUTDOWN_BEFORE names."""
+    names = [n for n, _ in hooks]
+    for _ in range(len(hooks)):                      # settles in at most one pass per script
+        moved = False
+        for name, hook in list(hooks):
+            module = sys.modules.get(f"rScripts.{name}")
+            for other in getattr(module, "SHUTDOWN_BEFORE", ()):
+                if other in names and names.index(other) < names.index(name):
+                    hooks.remove((name, hook))
+                    hooks.insert(names.index(other), (name, hook))
+                    names = [n for n, _ in hooks]
+                    moved = True
+        if not moved:
+            break
+    return hooks
+
+
 def loaded() -> list[str]:
     return [n for n, _ in _loaded]
 
@@ -159,9 +181,10 @@ def tick(run) -> None:
 
 
 def shutdown(run) -> None:
-    """Run every loaded script's ``rShutdown(run)``, last loaded first, once.
-    A failing hook is logged and the rest still run."""
-    hooks = list(reversed(_shutdown))
+    """Run every loaded script's ``rShutdown(run)``, last loaded first, once; a
+    script that names others in SHUTDOWN_BEFORE runs before them, whatever the
+    load order. A failing hook is logged and the rest still run."""
+    hooks = _ordered(list(reversed(_shutdown)))
     _shutdown.clear()
     for name, hook in hooks:
         try:

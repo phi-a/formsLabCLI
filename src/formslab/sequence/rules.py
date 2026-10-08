@@ -8,6 +8,10 @@ The steps are walked in order, keeping what the plan itself has made true:
 - a value an `until` waited for (`until platenT < 60 C`), until the next
   `hold` or command, after which it may have drifted.
 
+A `when` rule may send its command at any moment after its line, so what that
+command sets is not known from there on; its own prerequisites are checked
+when it fires (a supply channel another routine drives is still an error here).
+
 A loop is walked as its second pass would find things (see `walk`), so a step
 that a later step in the same loop undoes is caught.
 
@@ -65,6 +69,14 @@ def walk(steps, scripts, published: dict):
     labels, _ = cast.owners()
     units = {k.lower(): u for k, u in published.items()}
     out: list = []
+    volatile: dict = {}            # device -> the states `when` rules may set it to, at any time
+    anything = []                  # a `when` that may change every device (a cycle operation)
+
+    def forget(devices):
+        """What is still known, given the rules armed so far: a state no rule may change."""
+        if anything:
+            return {}
+        return {k: v for k, v in devices.items() if not volatile.get(k, set()) - {v[0]}}
 
     def guard(p):
         """What a wait proves after it: a number past its limit. Not an on/off
@@ -98,6 +110,7 @@ def walk(steps, scripts, published: dict):
                     devices, guards = end, []
                 continue
             devices, guards = step(item, devices, guards, sink)
+            devices = forget(devices)
         return devices, guards
 
     def step(item, devices, guards, sink):
@@ -106,9 +119,13 @@ def walk(steps, scripts, published: dict):
             return devices, guards + guard(seg.params)
         if seg.verb == "hold":
             return devices, []
-        if seg.verb != "command":
+        rule = seg.verb == "when"
+        if rule and seg.params["do"]["verb"] == "command":
+            label, request = seg.params["do"]["label"], seg.params["do"]["request"]
+        elif seg.verb == "command":
+            label, request = seg.params["label"], seg.params["request"]
+        else:
             return devices, guards
-        label, request = seg.params["label"], seg.params["request"]
         module = labels.get(label)
         findings = []
 
@@ -120,10 +137,10 @@ def walk(steps, scripts, published: dict):
                              "conditions": [{"text": f"{info['owner']} not loaded",
                                              "status": BROKEN if loaded else OK}]})
 
-        for rule in R.covering(module, label, request):
+        for covering in R.covering(module, label, request):
             conditions = []
-            for c in rule.requires:
-                if c.live:
+            for c in covering.requires:
+                if c.live or rule:                          # a rule's: checked when it fires
                     status = LIVE
                 elif c.kind == "device":
                     known = devices.get(c.name)
@@ -134,7 +151,7 @@ def walk(steps, scripts, published: dict):
                 else:
                     status = OK if _guarded(c, guards, units) else UNKNOWN
                 conditions.append({"text": c.text, "status": status, **({"proof": c.proof} if c.proof else {})})
-            findings.append({"why": rule.why, "conditions": conditions})
+            findings.append({"why": covering.why, "conditions": conditions})
 
         if seg.origin:                                   # a step from a block
             for f in findings:
@@ -142,6 +159,13 @@ def walk(steps, scripts, published: dict):
         if sink is not None:
             sink.append((n, findings))
         left = R.effects(module, request)
+        if rule:                                            # it may act at any time from here
+            if left is None:
+                anything.append(n)
+            else:
+                for k, v in left.items():
+                    volatile.setdefault(k, set()).add(v)
+            return devices, guards
         where = f"{origin_text(seg.origin)} at line {n}" if seg.origin else f"line {n}"
         if left is None:
             return {}, []

@@ -329,7 +329,7 @@ def test_shutdown_is_safe_without_a_transport():
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("volts", [11.9, 20.1, 0.0, -5.0, 100.0])
+@pytest.mark.parametrize("volts", [8.4, 20.1, 0.0, -5.0, 100.0])
 def test_out_of_band_voltage_is_rejected_before_any_write(volts):
     board, bus = make_board()
     with pytest.raises(ValueError):

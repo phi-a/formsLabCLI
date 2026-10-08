@@ -1,0 +1,21 @@
+# ============================================================
+# plan: tvac -- manual chamber operation
+# ============================================================
+# Loads the routines that own the chamber and the bench instruments, records
+# every variable, and runs until ctrl `end`. Operate from the console's cast
+# tab: `help` lists every command (hvc ..., psu1 ..., status tc, ...).
+#
+#   ctrl> run tvac      ...   cast> hvc platen 25   ...   ctrl> end
+#
+# On `end` each routine's rShutdown runs: rPSU turns off channels this run
+# switched on, rLACO ends pumping this run started, ports are released.
+#
+# Another computer, or this one with the chamber unreachable: put a copy with
+# a different `load` line in a folder named by $FORMSLAB_PLANS_DIR (searched
+# before this checkout), e.g. without rLACO.
+
+load rLACO rSMTC08 rPSU
+record every 30 s
+
+log manual operation: use the cast tab; ctrl `end` to stop
+hold until end

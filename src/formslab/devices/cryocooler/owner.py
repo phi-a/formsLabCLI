@@ -4,29 +4,35 @@ import traceback
 from formslab.devices.cryocooler.config import (
     CRYO_DEFAULT_OUTPUT_VOLTAGE_V,
     CRYO_DEFAULT_RESISTANCE_OHMS,
-    CRYO_SUPPLY_CURRENT_A,
-    CRYO_SUPPLY_OCP_A,
-    CRYO_SUPPLY_OVP_V,
-    CRYO_SUPPLY_VOLTAGE_V,
     cryo_supply,
+    supply_settings,
 )
 from formslab.devices.dp832a.commands import (
     build_psu_channel_request,
     psu_channel_state,
     queue_psu_request,
+    read_psu_channel_status,
 )
 
 
 def _init_psu2(run, r_global):
+    """Bring the board's supply to its settings (supply_settings): ready once rPSU
+    reports the channel on at them. `_supply_changed` (cryo supply) sends them
+    again even when the channel already matches, for the protection limits."""
     CRYO_PSU_LABEL, CRYO_PSU_CHANNEL = cryo_supply(r_global)
     CRYO_PSU_COMPONENT = CRYO_PSU_LABEL.upper()
+    supply = supply_settings(r_global)
     readiness = psu_channel_state(
         CRYO_PSU_LABEL,
         CRYO_PSU_CHANNEL,
         on=True,
-        voltage=CRYO_SUPPLY_VOLTAGE_V,
-        current=CRYO_SUPPLY_CURRENT_A,
+        voltage=supply["volts"],
+        current=supply["amps"],
     )
+    if getattr(r_global, "_supply_changed", False):
+        readiness = "mismatch"
+        r_global._supply_changed = False
+        r_global._psu2_request_pending = False
 
     if readiness == "match":
         if not getattr(r_global, "_psu2_ready", False):
@@ -60,11 +66,11 @@ def _init_psu2(run, r_global):
         CRYO_PSU_LABEL,
         build_psu_channel_request(
             CRYO_PSU_CHANNEL,
-            ovp=CRYO_SUPPLY_OVP_V,
-            ocp=CRYO_SUPPLY_OCP_A,
+            ovp=supply["ovp"],
+            ocp=supply["ocp"],
             protect=True,
-            voltage=CRYO_SUPPLY_VOLTAGE_V,
-            current=CRYO_SUPPLY_CURRENT_A,
+            voltage=supply["volts"],
+            current=supply["amps"],
             on=True,
         ),
         update=True,
@@ -118,28 +124,37 @@ def _shutdown_cryo_subsystem(run, r_global, *, close_transport=True, release_han
     This is used by `rCryoBoard` during routine shutdown so the USB-I2C bridge
     is not left busy across simulation runs.
     """
+    CRYO_PSU_LABEL, CRYO_PSU_CHANNEL = cryo_supply(r_global)
+    CRYO_PSU_COMPONENT = CRYO_PSU_LABEL.upper()
+    # A board whose supply is already off (the end script cut it) cannot answer:
+    # only the link is released, and no request goes to a supply already off.
+    powered = read_psu_channel_status(CRYO_PSU_LABEL, CRYO_PSU_CHANNEL).get("on") is not False
     if r_global.cryo is not None:
         try:
-            r_global.cryo.shutdown(close_transport=close_transport)
-            run.log("CryoBoard output disabled", level="INFO", component="CRYO")
+            if powered:
+                r_global.cryo.shutdown(close_transport=close_transport)
+                run.log("CryoBoard output disabled", level="INFO", component="CRYO")
+            else:
+                if close_transport:
+                    r_global.cryo.close()
+                run.log("CryoBoard already unpowered: link released", level="INFO", component="CRYO")
         except Exception as exc:
             tb = traceback.format_exc()
             run.log(f"CryoBoard shutdown failed: {exc}\n{tb}", level="WARNING", component="CRYO")
 
-    CRYO_PSU_LABEL, CRYO_PSU_CHANNEL = cryo_supply(r_global)
-    CRYO_PSU_COMPONENT = CRYO_PSU_LABEL.upper()
-    queue_psu_request(
-        CRYO_PSU_LABEL,
-        build_psu_channel_request(CRYO_PSU_CHANNEL, on=False),
-        update=True,
-    )
+    if powered:
+        queue_psu_request(
+            CRYO_PSU_LABEL,
+            build_psu_channel_request(CRYO_PSU_CHANNEL, on=False),
+            update=True,
+        )
+        run.log(
+            f"Queued {CRYO_PSU_COMPONENT} CH{CRYO_PSU_CHANNEL} disable for cryocooler board",
+            level="INFO",
+            component=CRYO_PSU_COMPONENT,
+        )
     r_global._psu2_ready = False
     r_global._psu2_request_pending = False
-    run.log(
-        f"Queued {CRYO_PSU_COMPONENT} CH{CRYO_PSU_CHANNEL} disable for cryocooler board",
-        level="INFO",
-        component=CRYO_PSU_COMPONENT,
-    )
 
     if release_handles:
         r_global.cryo = None

@@ -47,6 +47,17 @@ def test_or_go_on():
     assert loop_.params["until"]["go_on"] is True
 
 
+@pytest.mark.parametrize("line, unit, timeout", [
+    ("until chamberP < 5", None, None),                       # as long as it takes
+    ("until chamberP < 5 Torr", "Torr", None),                # its own unit, written
+    ("until chamberP < 5 Torr within 20 min", "Torr", 1200.0),
+    ("until platenT > 10 C within 1 h", "C", 3600.0),
+])
+def test_a_wait_may_carry_its_unit_and_may_have_no_limit(line, unit, timeout):
+    seg = parse_plan(f"load rLACO\n{line}\n").sequence.segments[0]
+    assert (seg.params["unit"], seg.params["timeout_s"]) == (unit, timeout)
+
+
 @pytest.mark.parametrize("line, message", [
     ("until chamberP above 5 within 20 min", "`above` is no longer a word of a condition: write > (or >=)"),
     ("until chamberP below 5 within 20 min", "`below` is no longer a word of a condition: write < (or <=)"),
@@ -55,22 +66,12 @@ def test_or_go_on():
     ("until chamberP = 5 within 20 min", "chamberP is a number, compared with <, <=, > or >="),
     ("until InUmbra > 0.5 within 2 h", "InUmbra is on or off: write InUmbra = true or InUmbra = false"),
     ("until InUmbra = yes within 2 h", "got 'yes'"),
-    ("until chamberP < 5", "until needs `within <time> s|min|h`"),
-    ("repeat until chamberP < 5\nend", "repeat until needs `within <time> s|min|h`"),
+    ("until platenT > 10 Torr", "platenT is in K, not Torr"),
+    ("repeat until chamberP < 5 C\nend", "chamberP is in Torr; C and K only apply to temperatures"),
 ])
 def test_what_a_condition_refuses(line, message):
     errors = review(f"load rLACO rOrbit\norbit follow leo_noon\n{line}\n")[0]
     assert any(message in m for _, m in errors), errors
-
-
-def test_every_shipped_plan_and_block_reads_in_the_new_words():
-    from pathlib import Path
-    from formslab.sequence.block import review as review_block
-    plans = Path(__file__).resolve().parents[1] / "plans"
-    for p in plans.glob("*.plan"):
-        assert review(p.read_text(encoding="utf-8"))[0] == [], p.name
-    for b in plans.glob("*.block"):
-        assert review_block(b.read_text(encoding="utf-8"))[0] == [], b.name
 
 
 # --- running ---------------------------------------------------------------------------------

@@ -5,7 +5,7 @@ Thin convenience facade over ``geometry``, ``viewfactor``, and ``thermal``:
     from formslab.orbit.file import load
     from formslab.orbit.thermal.pipeline import catalog, CubeSat, view, flux, transient, env
 
-    orbit = load("plans/leo_noon.orbit")
+    orbit = load("test/fixtures/plans/leo_noon.orbit")
     sat = CubeSat(catalog("6u_double_deployable"))
     vl = view(sat.geometry, orbit, law)
 

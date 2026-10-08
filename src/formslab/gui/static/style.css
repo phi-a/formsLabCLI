@@ -224,6 +224,9 @@ select.tok { padding-right: 18px;
 .tok.value input { border: 0; background: transparent; color: inherit; font: inherit; padding: 0; width: 7ch; min-width: 3ch; outline: none; }
 @supports (field-sizing: content) { .tok.value input { field-sizing: content; width: auto; max-width: 14ch; } }
 .tok.value .unit { color: var(--muted); font-size: 11px; }
+/* A choice of unit (C or K) inside a value's box: drawn like the unit text, still a list. */
+.tok.value select.unit { border: none; background: transparent; padding: 0 0 0 2px; font: inherit;
+                         font-size: 11px; color: var(--muted); cursor: pointer; }
 /* a block's name, on its own `block` line: a box in the block's colour */
 .tok.name { background: var(--bg); color: var(--fam); border: 1.5px solid var(--fam); font-weight: 600; }
 .tok.name input { border: 0; background: transparent; color: inherit; font: inherit; padding: 0; width: 12ch; outline: none; }

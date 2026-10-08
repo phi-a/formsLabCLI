@@ -47,10 +47,66 @@ The board's input is fed from **psu1 (Rigol DP832A) CH1**, confirmed on the
 bench 2026-08-29 and set in `cryocooler/config.py`. `CRYO_PSU_COMPONENT` is derived
 from the label so log lines cannot drift from it.
 
-> **One owner for psu1 CH1.** rCryoBoard configures this channel (24 V / 2.0 A,
-> `OVP 24.5 V`) and asks rPSU, the owner of psu1, to apply it. Do not command
+> **One owner for psu1 CH1.** rCryoBoard configures this channel (24 V / 1.0 A,
+> `OVP 24.5 V`, `OCP 1.25 A`, set 2026-10-07) and asks rPSU, the owner of psu1, to
+> apply it. Do not command
 > psu1 CH1 from a plan or the console while rCryoBoard runs: whichever writes
-> last wins, and a stray setpoint would brown out or over-volt the board.
+> last wins, and a stray setpoint would brown out or over-volt the board. A plan
+> that loads rCryoBoard, as the `k508n` block does, is refused if any step or rule
+> commands that channel; the command box refuses it during the run.
+
+**The supply step**, the first line of the `k508n` block, names the channel and what
+it is set to: `cryo supply psu1 ch1 at 24 V 1.0 A protect 24.5 V 1.25 A`. The channel
+must be the one the hardware map says the board is wired to (`usbmap.json`, psu1
+`"channels"`: owner rCryoBoard); another is refused when the plan is read ("the
+hardware map says the cryocooler board is wired to psu1 ch1"), and again when the
+step runs, so a block cannot power the wrong channel. When the wiring changes,
+change the map, and every block that names the old channel is refused until it is
+changed too. The step refuses a voltage outside 20 to 24.5 V (the cooler cannot run from less; the
+board takes no more), a current above 2.0 A, and protection below the setting. It
+is sent at once unless the board is shut down, and again at each `cryo startup`;
+without it, rCryoBoard uses the values above (`cryocooler/config.py`). The channel's
+voltage and current are read back; its protection limits are not.
+
+## The K508N cryocooler, from a plan
+
+The board drives a **K508N** cryocooler: the converter's output is the cooler's
+input, 8.5 to 20 V (`cryo ccv`), and the variable resistor sets the cooler's
+fixed-point temperature control (`cryo ccvres`, `cryo code`). The block
+`k508n at <volts> V with <resistance> ohm` (plans/k508n.block) starts the board,
+waits for its supply, sets both, turns the output on and waits for it to be in
+regulation. Then the plan waits on a thermocouple for the cold, as long as it takes:
+
+```
+load rCryoBoard rPSU rSMTC08
+record every 10 s
+
+k508n at 17 V with 266 ohm
+until TC01 <= -40 C
+```
+
+rCryoBoard answers each `cryo` request: done once the board has applied it, or
+refused with why (its supply not at 24 V, the board not answering through the Pico,
+the board shut down), so a plan step stops the run on a refusal. A request waits up
+to 30 s for the supply and the link. It publishes, for plans to wait on and for the
+run's CSV:
+
+| value | is |
+|---|---|
+| `CRYO_LINK` | the board answers through the Pico (on/off) |
+| `CRYO_ON` | the output is enabled (on/off) |
+| `CRYO_PGOOD` | the converter reports its output in regulation (on/off) |
+| `CRYO_CCV` | the cooler voltage commanded (V) |
+| `CRYO_RES` | the variable resistor as set (ohm) |
+| `CRYO_SUPPLY_V` | the board's supply as measured (V) |
+
+**Which resistance gives which temperature is not known.** No script in the
+project's history maps it: rEX_CryoRamp (removed) only nudged the resistor one
+step at a time to hold a thermocouple, assuming that a higher resistance cools
+more (`ccvres_up_cools_more`, never checked), and rChilldown set it directly (240
+or 270 ohm). It has to be measured: hold each resistance until the cold side
+settles and read the temperature it settles at; `CRYO_RES` and the thermocouple in
+the same CSV give the curve.
 
 ## Power thresholds
 

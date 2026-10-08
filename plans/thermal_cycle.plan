@@ -1,0 +1,34 @@
+# ============================================================
+# plan: thermal_cycle -- three cycles between 60 and -20 °C
+# ============================================================
+# Cycles the platen and shroud between hot and cold under rough vacuum, a quarter
+# hour at each end, then returns the chamber to air. Cooling uses liquid nitrogen:
+# its supply must be on and its exhaust vented outside the building.
+#
+# Start: ambient. The chamber at atmosphere with its door closed, the platen and
+#   shroud between 10 and 60 °C, liquid nitrogen supplied.
+# End:   at atmosphere, the vent valve open. Both zones off, both pumps off.
+# Fails: the chamber is not at atmosphere at the start, does not reach 5 Torr
+#   within 20 minutes, a zone does not reach its temperature within the time
+#   given for each step, or the chamber does not return to air.
+#
+# Takes at least 2 hours 30 minutes; longer if the zones are slow. Cooling has not
+# yet been run on this chamber through formsLabCLI.
+
+load rLACO
+record every 30 s
+
+begin at ambient
+pumpdown to 5 Torr
+repeat 3 times
+  warm to 60 C within 90 min
+  hold 15 min
+  cool to -20 C within 120 min
+  hold 15 min
+end
+
+warm to 20 C within 90 min
+hvc platen off
+hvc shroud off
+vent within 60 min
+log three cycles done and back at atmosphere

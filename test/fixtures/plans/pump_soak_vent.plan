@@ -7,7 +7,7 @@
 load rLACO
 record every 10 s
 
-pumpdown to 5
+pumpdown to 5 Torr
 hold 30 min
-vent within 60
+vent within 60 min
 log pumped down, soaked and vented

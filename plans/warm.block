@@ -1,0 +1,14 @@
+# Warm the platen and shroud to a temperature
+# Sets both zones to the temperature, turns their thermal control on and waits for
+# each to reach it, for at most the minutes given. A zone already at or above it
+# ends its wait at once. Both zones stay on, holding the temperature, until a step
+# turns them off. The shroud stops at 120 °C and the platen at 200 °C.
+block warm to <temperature:number 0..100 C> within <minutes:number 1..600 min>
+load rLACO
+
+hvc platen {temperature}
+hvc shroud {temperature}
+hvc platen on
+hvc shroud on
+until platenT >= {temperature} C within {minutes} min
+until shroudT >= {temperature} C within {minutes} min

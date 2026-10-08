@@ -13,11 +13,27 @@ Knobs for exercising client robustness:
 """
 from __future__ import annotations
 
+import math
 import re
 import socket
 import socketserver
 import threading
 import time
+
+
+# The thermocouple each zone controls to, as the bench profile maps them (platen T2,
+# shroud T3, per tvac_bench.json). Other zones have no sensor of their own here.
+CONTROL_SENSOR = {1: 2, 2: 3}
+
+
+def control_sensor(zone: int) -> int:
+    return CONTROL_SENSOR.get(zone, zone - 1)
+
+
+# T5 stands in for a test article on the platen: it follows the platen's sensor
+# and loses heat to a 22 °C room, so it settles short of the platen
+# (0.8 x platen + 4.4 °C), within seconds. A hold at HVC_T5 has an offset to remove.
+ARTICLE, ROOM_C, TO_PLATEN_S, TO_ROOM_S = 5, 22.0, 2.0, 8.0
 
 
 class ControllerState:
@@ -73,9 +89,12 @@ class ControllerState:
         for z, active in self.zone_active.items():
             if active:
                 sp = self.zone_setpoint[z]
-                idx = z - 1
+                idx = control_sensor(z)
                 step = min(abs(sp - self.temps[idx]), self.zone_rate[z] * 20.0 * dt)
                 self.temps[idx] += step if sp > self.temps[idx] else -step
+        k_platen, k_room = 1 / TO_PLATEN_S, 1 / TO_ROOM_S
+        settles = (k_platen * self.temps[control_sensor(1)] + k_room * ROOM_C) / (k_platen + k_room)
+        self.temps[ARTICLE] = settles + (self.temps[ARTICLE] - settles) * math.exp(-(k_platen + k_room) * dt)
         if self.cycle_running:
             self.test_time += dt
 
@@ -187,7 +206,7 @@ class Simulator:
         if m:
             kind, z = m.group(1), int(m.group(2))
             if kind == "Z":
-                effective = s.zone_setpoint[z] if s.zone_active[z] else s.temps[z - 1]
+                effective = s.zone_setpoint[z] if s.zone_active[z] else s.temps[control_sensor(z)]
                 return f"Z {z}: {_tenths(effective)}"        # padded key, as installed
             table = {"ZR": s.zone_rate, "RT": s.zone_range}
             if kind in table:

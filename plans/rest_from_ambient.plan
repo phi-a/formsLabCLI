@@ -1,0 +1,22 @@
+# ============================================================
+# plan: rest_from_ambient -- pump down from ambient, then seal and rest
+# ============================================================
+# Leaves the chamber sealed under rough vacuum with nothing running, so it can
+# rest there. No orbit and no thermal control.
+#
+# Start: ambient. The chamber at atmosphere with its door closed. The turbo
+#   pump is not running (its path has never been run).
+# End:   sealed below 3 Torr. Every valve closed, both pumps and both zones off.
+#   The controller may then be turned off; the chamber holds its vacuum.
+# Fails: the chamber is not at atmosphere at the start, or does not reach 3 Torr
+#   within 20 minutes. Either way, rLACO ends any pumping it started.
+#
+# Typical: 743 to 3.4 Torr took 6 minutes (2026-10-01).
+
+load rLACO
+record every 5 s
+
+begin at ambient
+pumpdown to 3 Torr
+log sealed below 4 Torr; the chamber may rest
+

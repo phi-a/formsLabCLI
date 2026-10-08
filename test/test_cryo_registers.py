@@ -304,7 +304,7 @@ def test_cryo_config_reexports_a_single_fit():
 
 
 def test_operating_band_is_inside_the_supply_thresholds():
-    assert cryo_config.CCV_MIN_V == 12.0
+    assert cryo_config.CCV_MIN_V == 8.5                      # the K508N's input range
     assert cryo_config.CCV_MAX_V == 20.0
     assert (
         cryo_config.CRYO_SUPPLY_VOLTAGE_V > cryo_config.CRYO_OUTPUT_SUPPLY_THRESHOLD_V

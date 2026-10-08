@@ -45,10 +45,15 @@ goes), one card per instrument, and the end of the host log. From here:
 
 - *Start run* starts a plan from the list (the plans `labcli plans` shows).
   *Pause* and *Resume* hold and continue the plan's steps.
-- *End run* is in the header on every tab while a run is going. It asks the
-  host to stop, so each instrument's shutdown runs (supplies off, pumping the
-  run started stopped), and it is sent again every few seconds until the host
-  is gone. The GUI never kills the host.
+- *End run* is in the header on every tab while a run is going. The dialog lists
+  what will happen, in order: the end script's steps for the routines this plan
+  loaded (docs/SEQUENCE.md, Ending: the cooler's and the camera's supplies off,
+  the chamber's zones off, its valves closed and confirmed, its pumps stopped),
+  then each instrument's shutdown. The request is sent again every few seconds
+  until the host is gone; the GUI never kills the host. Afterwards a banner says
+  how the run ended and how the chamber was left (`Chamber left: sealed, 3.2 Torr,
+  pump off, turbo off, zones off`), red with what the end script could not do when
+  there was anything; *Dismiss* hides it in this browser.
 - The command box takes the cast tab's words (`hvc platen 20`, `psu1 ch1 on`).
   The buttons under it are what the instruments' own grammar allows next, with
   limits and units; click one or type. A bad command is refused with what would
@@ -101,6 +106,10 @@ Pick a plan on the left (a green page before its name); a plan you open is shown
   and unit (`<C -180..200 C>`), and a value that does not fit is flagged under
   the row with what would. The choices come from the same declarations the cast
   tab and `labcli check` use, so they cannot disagree;
+- a unit the plan writes after a number (`12 V`, `270 ohm`, `5 Torr`) is drawn inside the
+  number's box and written for you: a fixed unit as text, a choice (C or K for a
+  temperature, Celsius first) as a small list in the box. A time's s, min or h stays a
+  choice of its own, after the box;
 - comments and blank lines are kept. Each row's ⋯ menu moves it, inserts a step or a
   comment below it, or deletes it. *Edit as text* shows the plain file for pasting or
   fine changes;
@@ -111,6 +120,9 @@ Pick a plan on the left (a green page before its name); a plan you open is shown
   `end` is offered only inside an open loop; deleting either deletes both and keeps
   the steps between them. The rows inside are set in, with a bar for each loop around
   them, and the file is saved with those steps two spaces in;
+- a rule (`when … then …`, docs/SEQUENCE.md, Rules) is drawn as two steps on one row:
+  the condition in the step colour, then the command after `then` in its own
+  instrument's colour, with its part's symbol;
 - a wait's `within` says, when you point at it, what happens when its time runs out;
 - beside the rows, a help card follows the row you are on: what the step does,
   its inputs, and what it needs first, as the plan leaves things at that line

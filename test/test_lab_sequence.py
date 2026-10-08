@@ -62,7 +62,7 @@ def test_record_and_durations_take_s_min_h():
     (PLAN + "orbit.a = 7000\n", ":3: `orbit.a` is FORMS mission configuration"),
     (PLAN + "@variables\ndef declare():\n    pass\n", "FORMS mission code"),
     (plan("propagate 60 s"), "`propagate` is a FORMS mission operation"),
-    (plan("until TC01 > 30 C"), "a wait on hardware always has a limit"),
+    (plan("until TC01 > 30 V"), "TC01 is in K, not V"),
     (plan("psu9 ch1 on"), "got 'psu9'"),
     (plan("psu1 ch4 on"), "expected ch1, ch2, ch3 or update after 'psu1', got 'ch4'; did you mean 'ch3'?"),
     (plan("hold -1 s"), "-1 must be >= 0"),
