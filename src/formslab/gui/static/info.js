@@ -5,7 +5,7 @@
 // on the page as text only.
 (function () {
   "use strict";
-  const { el, unitText, famOf, partIcon } = window.App;
+  const { el, unitText, famOf, thenAt, headAt, partIcon } = window.App;
   const h = (tag, attrs, ...kids) => { const e = el(tag, attrs); for (const k of kids) e.append(k); return e; };
 
   // What each status means, in a plan (static) and in the command box (live).
@@ -33,11 +33,16 @@
   // a choice as its members, a value to type as a value box with its unit.
   function usageLine(c) {
     const words = c.words || [];
-    const fam = famOf(words.length ? words[0].text : "");
+    const texts = words.map((w) => w.text);
+    const then = thenAt(texts);                         // a `when` rule: its command is drawn as one
+    const first = famOf(words.length ? words[0].text : "");
     const line = el("div", { class: "tokline usage" });
     words.forEach((w, i) => {
-      if (c.part && i === (fam === "orbit" ? 0 : 1)) line.append(partIcon(c.part, fam));   // before what names the part
-      if (i === 0) line.append(el("span", { class: "tok verb", "data-fam": fam }, w.text));
+      const fam = famOf(headAt(texts, i));
+      const before = words[i - 1];
+      if (before && before.role === "slot" && before.unit && w.text === before.unit) return;   // its unit, shown with it
+      if (c.part && i === (first === "orbit" ? 0 : then >= 0 ? then + 2 : 1)) line.append(partIcon(c.part, fam));   // before what names the part
+      if (i === 0 || (then >= 0 && i === then + 1)) line.append(el("span", { class: "tok verb", "data-fam": fam }, w.text));
       else if (w.role === "slot") {
         line.append(el("span", { class: "tok value" }, w.text.replace(/_/g, " ") + (w.unit ? " " + unitText(w.unit) : "")));
       } else if (w.role === "choice") {

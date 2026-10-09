@@ -78,7 +78,7 @@ calls to blocks and loops. Three kinds of file share one name space on the plan 
 | | |
 |---|---|
 | Code | `src/formslab/`; the routines in `rScripts/` |
-| Shipped plans, blocks, orbits | `plans/` (read-only in the GUI; *Edit* takes one out to change it) |
+| The bench's tests (shipped plans) | `plans/` (read-only in the GUI; *Edit* takes one out to change it); the test suite's own in `test/fixtures/plans/` |
 | A computer's own files | `~/.formslab/`: `usbmap.json` (the hardware map), `plans/`, `gui.json`, `.run/` (the host's lock, events and log) |
 | Recorded runs | `outputs/` (ignored by git) |
 | Docs (what exists) | `docs/` and the READMEs |

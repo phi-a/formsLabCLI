@@ -1,0 +1,14 @@
+# Arm the camera to image each umbra
+# Turns on the camera's supply, psu2 CH1, sets each exposure from the umbra's length
+# and turns umbra captures on. From here the camera images each time the orbit the
+# run follows enters the Earth's shadow, and stops when it leaves. Choose the orbit
+# first, with orbit follow or orbit replay. Each image is tagged with TC01, so load
+# rSMTC08 too. psu2 is disabled in the shipped hardware map: enable it in the live
+# usbmap.json before a run.
+block detector imaging
+load rSLTA rOrbit rPSU
+
+slta startup
+slta nsamp 10
+slta exposure 600
+slta run on

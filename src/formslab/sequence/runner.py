@@ -12,6 +12,11 @@ inside ``poll`` does not use up a hold or run down a timeout. With worker
 threads, pausing pauses the plan only; the rScripts keep reading their
 instruments and taking cast commands.
 
+A `when` rule is watched every loop, and while paused, from its line to the end
+of the run (``watch``): when its condition comes to hold it sends its command,
+without waiting in the plan's steps, and follows the request until the owner
+has carried it out; a refusal stops the run as a failed step does.
+
 The runner commands hardware only through CAST, the channel the console's tabs
 already use. A ``command`` segment writes a request and waits until the rScript
 that owns the label has taken it, so each operation starts after the previous
@@ -26,7 +31,9 @@ from dataclasses import dataclass, field
 from typing import Callable, Optional
 
 from formslab import rscripts
-from formslab.console.cast.castutils import RESULT_S, send_request
+from formslab.console.cast.castutils import (
+    RESULT_S, CommandPending, CommandState, WriteCommand, send_request,
+)
 from formslab.sequence.events import (
     NullSink, Progress, SegmentFinished, SegmentStarted, SequenceFinished, SequenceStarted,
 )
@@ -77,10 +84,15 @@ class LabSequenceRunner:
         self._passes: dict[int, int] = {}
         self._entered: dict[int, float] = {}
         self._pass_began: dict[int, int] = {}
+        # The `when` rules armed so far, by their line: condition, action, whether
+        # the condition held at the last look, a firing not yet sent (`due`: since
+        # when), and the request in flight (`sent`: id, when).
+        self._rules: dict[str, dict] = {}
 
     def step(self, verb: str, segment_step: int, fraction: float | None = None) -> None:
         """One loop. Only the part after `poll` returns counts as active time."""
         self._poll()
+        self.watch()
         t0 = self._clock()
         self._tick(self.run)
         self._write(self.run)
@@ -119,6 +131,8 @@ class LabSequenceRunner:
                 result.segment_steps.append(steps)
                 self.sink.emit(SegmentFinished(index=i, verb=segment.verb, steps=steps))
                 i += 1
+            while self._in_flight():                     # a rule's command: see what became of it
+                self.step("when", 0)
         except SystemExit:
             ended = "operator"        # ctrl `end` or a signal: how an open-ended plan stops
             raise
@@ -130,6 +144,97 @@ class LabSequenceRunner:
             self.sink.emit(SequenceFinished(name=seq.name, steps=self.total_steps, error=error,
                                             ended=ended))
         return result
+
+    def attempt_each(self, segments, cap_s: float) -> list[str]:
+        """Run `segments` one after another, each on its own: one that fails (refused,
+        not taken, a state not confirmed in time) is logged and the next still runs.
+        After `cap_s` of wall clock the rest are logged as not run. Returns what went
+        wrong, one line each: the end script, where every step is tried."""
+        warnings: list[str] = []
+        start = self._clock()
+        self._ending = True
+        for i, seg in enumerate(segments):
+            label = seg.label or seg.verb
+            if self._clock() - start >= cap_s:
+                warnings.append(f"{label}: not run, the {cap_s:g} s for ending ran out")
+                continue
+            self.index = i
+            self.run.log(f"[end {i + 1}/{len(segments)}] {label}", component=COMPONENT)
+            if seg.verb == "until" and self.run.variable(seg.params["variable"]) is None:
+                # Never published (the instrument was never reached): waiting cannot confirm it.
+                why = f"{seg.params['variable']} was never read, so it cannot be confirmed"
+                warnings.append(f"{label}: {why}")
+                self.run.log(f"end: {label}: {why}", level="WARNING", component=COMPONENT)
+                continue
+            try:
+                _EXECUTORS[seg.verb](self, self.run, seg)
+            except SequenceError as e:
+                warnings.append(f"{label}: {e}")
+                self.run.log(f"end: {label}: {e}", level="WARNING", component=COMPONENT)
+        return warnings
+
+    # --- `when` rules ------------------------------------------------------------
+
+    def watch(self) -> None:
+        """Each rule once: on its condition coming to hold (or holding when it was
+        armed), send its command; follow a command in flight. Called every loop,
+        and by the host while the plan is paused."""
+        for text, r in self._rules.items():
+            met, value = _met(self.run, r["cond"])
+            if met and not r["last"] and r["sent"] is None and r["due"] is None:
+                r["due"] = self._clock()
+                self.run.log(f"{text} ({_reading(r['cond'], value)})", component=COMPONENT)
+            r["last"] = met
+            if r["due"] is not None:
+                self._fire(text, r)
+            elif r["sent"] is not None:
+                self._follow(text, r)
+
+    def _fire(self, text: str, r: dict) -> None:
+        """Send a rule's command once its owner's rules allow it and no other
+        request to that owner is waiting (CAST would merge the two)."""
+        do = r["do"]
+        if do["verb"] == "log":
+            self.run.log(do["message"], component=COMPONENT)
+            r["due"] = None
+            return
+        from formslab.rscripts.rules import assess
+
+        label, request, timeout = do["label"], do["request"], do["timeout_s"]
+        problems = assess(label, request)
+        if any(definite for _, definite in problems):
+            raise SequenceError(f"{text}: {request} not sent. " + " ".join(w for w, _ in problems))
+        if problems or CommandPending(label):
+            if self._clock() - r["due"] >= timeout:
+                why = " ".join(w for w, _ in problems) or f"another request to {label} was not taken"
+                raise SequenceError(f"{text}: {request} not sent within {timeout:g} s. {why}")
+            return                                       # look again next loop
+        r["sent"], r["due"] = (WriteCommand(request, label), self._clock()), None
+
+    def _follow(self, text: str, r: dict) -> None:
+        """What became of a rule's request: done, or the run stops with why."""
+        (rid, at), do = r["sent"], r["do"]
+        label, request, timeout = do["label"], do["request"], do["timeout_s"]
+        wait = rscripts.reports_results(label)
+        out = CommandState(label, rid)
+        waited = self._clock() - at
+        if out["state"] in ("pending", "unknown") and waited < timeout:
+            return
+        if out["state"] == "taken" and wait and waited < timeout + RESULT_S:
+            return
+        if out["state"] in ("pending", "unknown"):
+            out = {"state": "not_taken"}
+        r["sent"] = None
+        try:
+            _outcome(label, request, out, wait, timeout)
+        except SequenceError as e:
+            raise SequenceError(f"{text}: {e}") from None
+        self.run.log(f"{text}: done", component=COMPONENT)
+
+    def _in_flight(self, label: str | None = None) -> bool:
+        """A rule's command not yet sent or not yet answered (to `label`, if given)."""
+        return any((r["due"] is not None or r["sent"] is not None)
+                   and (label is None or r["do"].get("label") == label) for r in self._rules.values())
 
     def _repeat(self, i: int, segment) -> int:
         """At a `repeat`: the index to go to next, the first step of another pass or
@@ -144,7 +249,7 @@ class LabSequenceRunner:
             u = p["until"]
             met, value = _met(self.run, u)
             finished = met
-            if not met and self.elapsed - self._entered[i] >= u["timeout_s"]:
+            if not met and u["timeout_s"] is not None and self.elapsed - self._entered[i] >= u["timeout_s"]:
                 why = _not_met(u, value, f", after {done} pass(es)")
                 if not u.get("go_on"):
                     raise SequenceError(f"{segment.label}: {why}")
@@ -193,9 +298,12 @@ def _command(runner, run, segment) -> int:
     # here; one it cannot tell yet (the owner has not reported since the start) is
     # waited for, within the step's limit.
     start = runner.elapsed
-    while problems := assess(label, request):
+    while problems := assess(label, request, ending=getattr(runner, "_ending", False)):
         if any(definite for _, definite in problems) or runner.elapsed - start >= timeout:
             raise SequenceError(f"{label}: {request} not sent. " + " ".join(w for w, _ in problems))
+        tick()
+    # A rule's command to the same owner goes first: CAST would merge the two.
+    while runner._in_flight(label):
         tick()
     # The step ends when the request is taken, or, for an owner that reports
     # results (rLACO), when it has been carried out: a refusal stops the plan.
@@ -203,6 +311,13 @@ def _command(runner, run, segment) -> int:
 
     out = send_request(request, label, wait_result=wait, take_s=timeout,
                        clock=lambda: runner.elapsed, tick=tick)
+    _outcome(label, request, out, wait, timeout)
+    return n
+
+
+def _outcome(label, request, out, wait, timeout) -> None:
+    """Raise why a request to `label` failed, from what became of it (send_request,
+    CommandState): not taken, cleared, no result, or refused."""
     state = out["state"]
     if state == "not_taken":
         loaded = ", ".join(rscripts.loaded()) or "none"
@@ -216,7 +331,6 @@ def _command(runner, run, segment) -> int:
     if state == "done" and not out.get("ok"):
         why = "; ".join(out.get("messages") or ()) or "no reason given"
         raise SequenceError(f"{label}: {request} refused: {why}")
-    return n
 
 
 def _convert(value: float, have: str | None, want: str | None) -> float:
@@ -272,7 +386,7 @@ def _until(runner, run, segment) -> int:
         if met:
             run.log(f"{p['variable']} = {value:.4g}{shown}: {_shown(p)}", component=COMPONENT)
             return n
-        if runner.elapsed - start >= p["timeout_s"]:
+        if p["timeout_s"] is not None and runner.elapsed - start >= p["timeout_s"]:
             if p.get("go_on"):
                 run.log(_not_met(p, value) + "; going on", level="WARNING", component=COMPONENT)
                 return n
@@ -286,4 +400,24 @@ def _log(runner, run, segment) -> int:
     return 0
 
 
-_EXECUTORS = {"hold": _hold, "command": _command, "until": _until, "log": _log}
+def _reading(p, value) -> str:
+    """A condition's value as read: `platenT 91.2 C`, `InUmbra true`."""
+    if value is None or (isinstance(value, float) and math.isnan(value)):
+        return f"{p['variable']} not read"
+    if isinstance(p["value"], bool):
+        return f"{p['variable']} {str(value != 0).lower()}"
+    return f"{p['variable']} {value:.4g}" + (f" {p['unit']}" if p["unit"] else "")
+
+
+def _when(runner, run, segment) -> int:
+    """Arm a rule (once: a loop's later pass or the same line again does not
+    re-arm it), and look at it now, so one that already holds acts at once."""
+    text = segment.label or "when"
+    if text not in runner._rules:
+        runner._rules[text] = {"cond": segment.params["cond"], "do": segment.params["do"],
+                               "last": False, "due": None, "sent": None}
+    runner.watch()
+    return 0
+
+
+_EXECUTORS = {"hold": _hold, "command": _command, "until": _until, "log": _log, "when": _when}

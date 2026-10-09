@@ -29,9 +29,10 @@ def _usbmap():
 class FakeI2C:
     """A PicoI2C-shaped bus that records traffic and answers from a register file."""
 
-    def __init__(self, present=(0x18, 0x74), status=0b00000011):
+    def __init__(self, present=(0x18, 0x74), status=0b00000001):
         self.present = list(present)
-        self.status = status
+        self.status = status                    # 01: buck mode, no fault, as 24 V in to 12 V out
+        self.registers = {}                     # (address, register) -> last byte written
         self.writes = []
         self.scans = 0
         self.opened = False
@@ -56,11 +57,13 @@ class FakeI2C:
     def read_register(self, address, register, nbytes=1):
         if address == regs.VCONV_ADDR and register == regs.STATUS:
             return bytes([self.status])
-        return bytes(nbytes)
+        return bytes([self.registers.get((address, register), 0)] * nbytes)
 
     def write_register(self, address, register, data):
         payload = [data] if isinstance(data, int) else list(data)
         self.writes.append((address, register, payload))
+        for k, byte in enumerate(payload):
+            self.registers[(address, register + k)] = byte
         return len(payload)
 
     # helpers for assertions
@@ -118,7 +121,7 @@ def test_stuck_bus_is_reported_and_status_is_not_read():
     board, bus = make_board(present=tuple(range(0x08, 0x78)))
     state = board.status()
     assert state["bus"] == "sda_stuck_low"
-    assert state["pgood"] is None
+    assert state["output_on"] is None and state["conversion"] is None
     assert state["output_healthy"] is False
 
 
@@ -153,27 +156,28 @@ def test_present_reports_a_missing_converter():
 
 
 def test_status_separates_link_health_from_output_health():
-    """Bus alive, converter answering, but no PGOOD: the ~15-20 V case."""
+    """Bus alive and the converter answering, its output off: not yet ok."""
     board, _ = make_board(status=0b00000001)
     state = board.status()
     assert state["connected"] is True
     assert state["i2c_devices"] == ["0x18", "0x74"]
     assert state["converter_present"] and state["digipot_present"]
-    assert state["intvref"] is True
-    assert state["pgood"] is False
+    assert state["output_on"] is False and state["conversion"] == "buck"
     assert state["output_healthy"] is False
     assert state["faults"] == []
 
 
-def test_status_reports_a_healthy_output():
-    board, _ = make_board(status=0b00000011)
+def test_status_reports_the_output_on_from_the_converters_own_enable_bit():
+    board, _ = make_board(status=0b00000001)
+    board.enable_output()
     state = board.status()
-    assert state["output_healthy"] is True
-    assert state["faulted"] is False
+    assert state["output_on"] is True and state["conversion"] == "buck"
+    assert state["output_healthy"] is True and state["faulted"] is False
 
 
 def test_status_reports_latched_faults():
-    board, _ = make_board(status=0b01000011)
+    board, _ = make_board(status=0b01000001)
+    board.enable_output()
     state = board.status()
     assert state["faults"] == ["OCP"]
     assert state["faulted"] is True
@@ -184,7 +188,7 @@ def test_status_without_a_converter_does_not_invent_flags():
     board, _ = make_board(present=(0x18,))
     state = board.status()
     assert state["converter_present"] is False
-    assert state["pgood"] is None
+    assert state["output_on"] is None
     assert state["output_healthy"] is False
 
 
@@ -329,7 +333,7 @@ def test_shutdown_is_safe_without_a_transport():
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("volts", [11.9, 20.1, 0.0, -5.0, 100.0])
+@pytest.mark.parametrize("volts", [8.4, 20.1, 0.0, -5.0, 100.0])
 def test_out_of_band_voltage_is_rejected_before_any_write(volts):
     board, bus = make_board()
     with pytest.raises(ValueError):
@@ -369,3 +373,99 @@ def test_raw_setters_bypass_the_calibration_but_still_clamp():
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))
+
+
+# --------------------------------------------------------------------------
+# The Pico's own pull-ups, for a board whose resistors were removed
+# --------------------------------------------------------------------------
+
+FIRMWARE = Path(__file__).resolve().parents[1] / "src" / "formslab" / "devices" / "cryocooler" / "pico_board_control.py"
+
+
+def _firmware(made):
+    import types
+
+    class Pin:
+        OPEN_DRAIN, PULL_UP = "open_drain", "pull_up"
+
+        def __init__(self, n, mode=None, pull=None):
+            made.append((n, mode, pull))
+
+    class SoftI2C:
+        def __init__(self, scl, sda, freq):
+            made.append(("bus", freq))
+
+    namespace = {}
+    sys.modules["machine"] = types.SimpleNamespace(Pin=Pin, SoftI2C=SoftI2C)
+    try:
+        exec(compile(FIRMWARE.read_text(encoding="utf-8"), "main.py", "exec"), namespace)
+    finally:
+        sys.modules.pop("machine", None)
+    return namespace
+
+
+def test_the_firmware_turns_on_the_picos_pull_ups_only_when_asked():
+    made = []
+    fw = _firmware(made)
+    fw["configure"](scl=17, sda=16, freq=20000, pull=True)
+    assert made == [(17, "open_drain", "pull_up"), (16, "open_drain", "pull_up"), ("bus", 20000)]
+    made.clear()
+    fw["configure"](scl=17, sda=16, freq=100000)
+    assert made == [(17, None, None), (16, None, None), ("bus", 100000)]
+
+
+def test_pullup_internal_in_the_map_reaches_the_pico(monkeypatch, tmp_path):
+    import json
+    from formslab.devices.cryocooler import pico_i2c
+    live = json.loads(config.usbmap_path().read_text(encoding="utf-8"))
+    live["cryo_board"]["i2c"].update(pullup="internal", freq=20000)
+    path = tmp_path / "usbmap.json"
+    path.write_text(json.dumps(live), encoding="utf-8")
+    board = CryoBoard("cryo_board", config_path=path)
+    assert board.i2c_pull is True and board.i2c_freq == 20000
+    calls = []
+    bridge = pico_i2c.PicoI2C("COM9", scl_pin=17, sda_pin=16, freq=20000, pull=True)
+    monkeypatch.setattr(bridge, "_call", lambda expression: calls.append(expression))
+    bridge._configure()
+    assert calls == ["main.configure(scl=17, sda=16, freq=20000, pull=True)"]
+    assert CryoBoard("cryo_board", config_path=_usbmap()).i2c_pull is False   # the board's own, by default
+
+
+# --------------------------------------------------------------------------
+# An output the converter turned off by itself
+# --------------------------------------------------------------------------
+
+def _drop(bus):
+    """What the converter holds after a trip or a reset: its output off."""
+    bus.registers[(regs.VCONV_ADDR, regs.MODE)] = 0b00100000
+
+
+def test_on_after_the_converter_dropped_the_output_turns_it_on_again():
+    board, bus = make_board()
+    board.initialize(voltage=12.0, resistance=270.0)
+    board.enable_output()
+    _drop(bus)
+    assert board.status()["output_on"] is False
+    bus.writes.clear()
+    board.update(enabled=True)                          # the cache said "on": it must not be trusted
+    assert board.status()["output_on"] is True
+    written = [reg for _, reg, _ in bus.writes]
+    assert regs.IOUT_LIMIT in written and regs.REF_L in written   # its settings back first, a reset loses them
+    assert written.index(regs.REF_L) < written.index(regs.MODE)
+
+
+def test_on_when_already_on_writes_the_enable_and_nothing_else():
+    board, bus = make_board()
+    board.initialize(voltage=12.0, resistance=270.0)
+    board.enable_output()
+    bus.writes.clear()
+    board.update(enabled=True)
+    assert regs.REF_L not in [reg for _, reg, _ in bus.writes]
+
+
+def test_off_always_reaches_the_converter():
+    board, bus = make_board()
+    board.initialize(voltage=12.0, resistance=270.0)
+    bus.registers[(regs.VCONV_ADDR, regs.MODE)] = 0b10100000      # on, though never commanded here
+    board.update(enabled=False)
+    assert board.status()["output_on"] is False

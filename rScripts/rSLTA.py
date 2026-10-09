@@ -73,6 +73,15 @@ COMMANDS = [
      lambda w: {w: True}),
 ]
 VARIABLES = []
+SHUTDOWN_BEFORE = ("rPSU",)    # its supply is rPSU's to turn off, after this script lets go
+
+
+def rShutdown(run):
+    """Stop a capture in progress. The camera's supply is rPSU's to turn off."""
+    rg.SLTARUN = False
+    if rTaskRunning("slta"):
+        rTaskStop("slta", timeout=5.0)
+        run.log("capture stopped at shutdown", component="rSLTA")
 
 # --- Encapsulated State ---
 class rGlobal:

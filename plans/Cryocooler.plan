@@ -1,0 +1,20 @@
+# ============================================================
+# plan: Cryocooler -- run the K508N until it is ended
+# ============================================================
+# Starts the K508N cryocooler through its block (board supply 24 V on psu1 CH1,
+# cooler 12 V, resistor 270 ohm) and keeps it running until the run is ended.
+# Thermocouples are recorded every 10 s, so the cooldown shows in Plots.
+#
+# Start: the cryocooler board connected to psu1 CH1 and its Pico plugged in.
+# End:   ended by hand; the end script then cuts psu1 CH1 at once.
+# Fails: the board's supply or link does not come up (the reason is in the run
+#   log and on the board's status card), a cryo command is refused, or the
+#   converter does not report its output on, with no fault, 30 s after turning on.
+
+load rCryoBoard rPSU rSMTC08
+record every 10 s
+
+log start
+k508n at 12 V with 270 ohm
+when CRYO_OK = false then log cooler output off or faulted
+hold until end

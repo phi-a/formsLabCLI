@@ -1,0 +1,48 @@
+# ============================================================
+# plan: end -- what End does, before each routine lets go
+# ============================================================
+# Run by the host however a run ends (End, labcli end, ctrl end, Ctrl+C, a failed
+# step), with every routine still live. Every step is tried: a refused or
+# unanswered step, or a state not confirmed, is logged and the next step runs; a
+# step for a routine the plan did not load is skipped. Then each routine's own
+# shutdown releases its instrument. The whole script has 120 s; a normal end takes
+# about 10. It is never started as a plan of its own.
+load rPSU rLACO
+record every 5 s
+
+# The cooler and the camera: power off, at once
+psu1 ch1 off
+psu2 ch1 off
+
+# 1. The chamber stops heating and cooling: no power to the heaters, no nitrogen
+#    to the shroud. Confirmed from the controller's own flag. The setpoints go to
+#    20 C, so a zone turned on later by hand goes to room temperature, not to the
+#    last test's -150 or 150 C.
+hvc platen off
+hvc shroud off
+until HoldingTemperature = false within 15 s
+hvc platen 20
+hvc shroud 20
+
+# 2. The chamber is sealed before anything is done to the pumps: every valve into
+#    it closed, each confirmed. Closing a valve is allowed even during a fault. No
+#    air is let in: a cold platen would condense moisture, and venting is the
+#    operator's deliberate step afterwards.
+hvc vent close
+hvc fill close
+hvc gate close
+hvc rough close
+until VentValve = false within 15 s
+until FillValve = false within 15 s
+until GateValve = false within 15 s
+until RoughValve = false within 15 s
+
+# 3. The pumps, with the chamber already sealed. The turbo spins down behind the
+#    closed gate valve. Its backing, the foreline valve and the roughing pump,
+#    stays until it has stopped, which the controller cannot report: hvc stop is
+#    refused while the turbo runs, the roughing pump keeps backing it, and the log
+#    says to finish at the HMI once the turbo has stopped.
+hvc turbo off
+hvc stop
+until TurboPump = false within 15 s
+until VacuumPump = false within 30 s

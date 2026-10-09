@@ -41,17 +41,20 @@ def _utc_now() -> str:
 
 class Scalar:
     """A named number with a fixed unit. Setting it in another unit is an
-    error rather than a silent conversion."""
+    error rather than a silent conversion. `updated` is when it was last set
+    (time.monotonic), so a reader can tell an old value from a current one."""
 
     def __init__(self, name: str, value=0, unit: str | None = None) -> None:
         self.name = name
         self.value = value
         self.unit = unit
+        self.updated = time.monotonic()     # when it was last set
 
     def set(self, value, unit: str | None = None) -> None:
         if unit is not None and self.unit is not None and unit != self.unit:
             raise ValueError(f"{self.name} is in {self.unit}, got a value in {unit}")
         self.value = value
+        self.updated = time.monotonic()
 
     def get(self):
         return self.value

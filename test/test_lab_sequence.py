@@ -62,7 +62,7 @@ def test_record_and_durations_take_s_min_h():
     (PLAN + "orbit.a = 7000\n", ":3: `orbit.a` is FORMS mission configuration"),
     (PLAN + "@variables\ndef declare():\n    pass\n", "FORMS mission code"),
     (plan("propagate 60 s"), "`propagate` is a FORMS mission operation"),
-    (plan("until TC01 > 30 C"), "a wait on hardware always has a limit"),
+    (plan("until TC01 > 30 V"), "TC01 is in K, not V"),
     (plan("psu9 ch1 on"), "got 'psu9'"),
     (plan("psu1 ch4 on"), "expected ch1, ch2, ch3 or update after 'psu1', got 'ch4'; did you mean 'ch3'?"),
     (plan("hold -1 s"), "-1 must be >= 0"),
@@ -356,6 +356,17 @@ def test_rpsu_applies_requests_publishes_scalars_and_turns_off_at_shutdown(run, 
 
     rscripts.shutdown(run)
     assert psu.ch[1]["on"] is False and psu.disconnected
+
+
+def test_rpsu_switches_nothing_on_while_the_run_is_ending(run, bench):
+    """The end script cuts the cooler's and the camera's supplies; nothing may turn them
+    back on before the routines let go."""
+    rscripts.load(run, ["rPSU"])
+    run.ending = True
+    WriteCommand({"1": {"voltage": 24.0, "current": 1.0, "on": True}}, "psu1")
+    rscripts.tick(run)
+    assert bench["psu1"].ch[1]["on"] is False and bench["psu1"].ch[1]["vset"] == 24.0   # set, not switched on
+    rscripts.shutdown(run)
 
 
 def test_rpsu_leaves_channels_it_did_not_switch_on(run, bench):

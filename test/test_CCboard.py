@@ -3,7 +3,8 @@
 Hardware bring-up script for the cryocooler control board.
 
 NOT a pytest test -- ``conftest.py`` excludes it from collection. It needs
-PSU2, the USB-I2C bridge and the board itself. The hardware-independent
+the board's supply (psu1 CH1), the Pico USB-I2C bridge and the board itself, and
+no run going: it drives the supply and the Pico directly. The hardware-independent
 coverage lives in ``test_cryo_registers.py`` and ``test_cryoboard.py``.
 
 Importing this module does nothing. Every hardware action is behind
@@ -21,6 +22,10 @@ Expected on a healthy board with 24 V in::
 Remember the two thresholds are different: above roughly 15 V in, the devices
 answer the scan; the converter cannot be commanded to produce an output until
 roughly 20 V. A good scan and a dead output is a power symptom, not a bus one.
+
+It prints what the supply delivers and the scan's verdict first, and stops there
+when the bus is silent; a failure prints what it means (docs/CRYOCOOLER.md, When
+the board does not start).
 """
 
 import argparse
@@ -41,6 +46,7 @@ from formslab.devices.cryocooler.config import (
     CRYO_SUPPLY_OVP_V,
     CRYO_SUPPLY_VOLTAGE_V,
 )
+from formslab.devices.cryocooler.owner import diagnose
 from formslab.devices.dp832a.driver import PSU
 
 
@@ -54,15 +60,16 @@ def report(board):
         state.get("digipot_present"),
     )
     print(
-        "output: enabled=%s pgood=%s intvref=%s faults=%s healthy=%s"
+        "output: commanded=%s converter_on=%s mode=%s faults=%s ok=%s"
         % (
-            state.get("enabled"),
-            state.get("pgood"),
-            state.get("intvref"),
+            "on" if state.get("enabled") else "off",
+            state.get("output_on"),
+            state.get("conversion"),
             state.get("faults"),
             state.get("output_healthy"),
         )
     )
+    print("        (the converter reports no power-good: measure Vout with a meter)")
     print(
         "programmed: %s V / %s ohm (code %s)"
         % (
@@ -87,6 +94,12 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     psu = PSU(CRYO_PSU_LABEL)
+    try:
+        psu.connect()
+    except Exception as exc:
+        print(f"STOP: {CRYO_PSU_LABEL} could not be opened ({type(exc).__name__}). Is a run going? "
+              "A run's rPSU holds the supply: end it first. Otherwise check the supply is on and on USB.")
+        return 1
     board = CryoBoard("cryo_board")
     try:
         psu.setOVCP(CRYO_PSU_CHANNEL, CRYO_SUPPLY_OVP_V, CRYO_SUPPLY_OCP_A, True)
@@ -94,11 +107,25 @@ def main(argv=None):
         psu.on(CRYO_PSU_CHANNEL)
         time.sleep(1.5)
 
+        volts, amps = psu.measure(CRYO_PSU_CHANNEL)
+        supply = {"vmeas": volts, "cmeas": amps}
+        print("--- supply ---")
+        print(f"{CRYO_PSU_LABEL} CH{CRYO_PSU_CHANNEL}: {volts} V, {None if amps is None else round(amps * 1000, 1)} mA")
+
         print("--- scan ---")
-        print(board.scan())
+        found = board.present()
+        print(found)
+        if not (found.get("converter") and found.get("digipot")):
+            print("STOP: the board's chips do not both answer, so nothing is written to them.")
+            print("      A powered board answers ['0x18', '0x74']; check its power and the I2C wires.")
+            return 1
 
         print("--- initialize (output off) ---")
-        board.initialize(voltage=args.volts, resistance=args.ohms, enabled=False)
+        try:
+            board.initialize(voltage=args.volts, resistance=args.ohms, enabled=False)
+        except Exception as exc:
+            print("FAILED:", diagnose(exc, supply))
+            return 1
         report(board)
 
         print("--- registers ---")
@@ -113,9 +140,15 @@ def main(argv=None):
     finally:
         try:
             board.shutdown()
+        except Exception as exc:                 # the cause was printed above; one line here
+            print("board shutdown did not reach the board:", type(exc).__name__)
         finally:
-            psu.off(CRYO_PSU_CHANNEL)
-            psu.close()
+            try:
+                psu.off(CRYO_PSU_CHANNEL)
+                psu.close()
+            except Exception as exc:
+                print(f"{CRYO_PSU_LABEL} CH{CRYO_PSU_CHANNEL} OFF did not reach the supply "
+                      f"({type(exc).__name__}): turn it off at the front panel")
     print("done; output disabled and supply off")
     return 0
 

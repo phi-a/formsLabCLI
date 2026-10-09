@@ -35,7 +35,7 @@ def rorbit(monkeypatch):
 
 
 def elements(name):
-    return orbitfile.parse((ROOT / "plans" / f"{name}.orbit").read_text(encoding="utf-8"))
+    return orbitfile.parse((ROOT / "test" / "fixtures" / "plans" / f"{name}.orbit").read_text(encoding="utf-8"))
 
 
 def test_it_publishes_what_rslta_reads_and_offers_the_orbit_files(rorbit):
@@ -107,9 +107,9 @@ record every 10 s
 
 orbit follow leo_noon
 slta run on
-eclipse within 120
+eclipse within 120 min
 log umbra began
-sunrise within 60
+sunrise within 60 min
 """
 
 
@@ -133,14 +133,14 @@ def test_a_run_replays_an_orbit_and_the_eclipse_block_ends_at_the_umbra(tmp_path
     entry = next(a for a, _ in kepler.umbra_spans(el, el.epoch, el.epoch + timedelta(seconds=el.period * 2)))
     epoch = entry - timedelta(seconds=8)
     nu = math.degrees(kepler.true_anomaly(el, epoch))
-    text = (ROOT / "plans" / "leo_noon.orbit").read_text(encoding="utf-8").splitlines()
+    text = (ROOT / "test" / "fixtures" / "plans" / "leo_noon.orbit").read_text(encoding="utf-8").splitlines()
     text = [f"epoch {epoch:%Y-%m-%dT%H:%M:%S.%f}Z" if l.startswith("epoch") else f"nu {nu:.6f} deg"
             if l.startswith("nu") else l for l in text]
     folder = tmp_path / "bench"
     folder.mkdir()
     (folder / "near_umbra.orbit").write_text("\n".join(text) + "\n", encoding="utf-8")
     (folder / "umbra_run.plan").write_text("load rOrbit\nrecord every 1 s\n\norbit replay near_umbra\n"
-                                           "eclipse within 1\nlog umbra began\n", encoding="utf-8")
+                                           "eclipse within 1 min\nlog umbra began\n", encoding="utf-8")
     monkeypatch.setenv(ENV, str(folder))
     monkeypatch.delenv(rscripts.ENV, raising=False)
     rscripts.disabled.clear()
@@ -154,7 +154,7 @@ def test_a_run_replays_an_orbit_and_the_eclipse_block_ends_at_the_umbra(tmp_path
 
 
 def test_the_blocks_need_rorbit_loaded_and_the_orbit_must_exist():
-    assert check_text("load rSLTA\neclipse within 5\n") == [(2, "eclipse needs rOrbit; add it to `load`")]
+    assert check_text("load rSLTA\neclipse within 5 min\n") == [(2, "eclipse needs rOrbit; add it to `load`")]
     assert "expected leo_dawn_dusk or leo_noon" in check_text("load rOrbit\norbit follow nowhere\n")[0][1]
 
 
@@ -165,10 +165,10 @@ NOT_YET = "InUmbra has no value yet: rOrbit publishes it only after `orbit follo
 
 
 @pytest.mark.parametrize("steps, line", [
-    ("eclipse within 120\norbit follow leo_noon\n", 3),                               # through a block
+    ("eclipse within 120 min\norbit follow leo_noon\n", 3),                               # through a block
     ("until InUmbra = true within 10 min\norbit replay leo_noon\n", 3),
     ("repeat until InUmbra = true within 2 h\nhold 10 s\nend\n", 3),               # never chosen
-    ("repeat 2 times\neclipse within 10\norbit follow leo_noon\nend\n", 4),            # the first pass waits first
+    ("repeat 2 times\neclipse within 10 min\norbit follow leo_noon\nend\n", 4),            # the first pass waits first
 ])
 def test_a_wait_before_the_orbit_is_chosen_is_an_error(steps, line):
     errors = dict(check_text(HEAD + steps))
@@ -176,9 +176,9 @@ def test_a_wait_before_the_orbit_is_chosen_is_an_error(steps, line):
 
 
 @pytest.mark.parametrize("steps", [
-    "orbit follow leo_noon\neclipse within 120\nsunrise within 60\n",
+    "orbit follow leo_noon\neclipse within 120 min\nsunrise within 60 min\n",
     "repeat until InUmbra = true within 2 h\norbit follow leo_noon\nhold 10 s\nend\n",   # read again after a pass
-    "repeat 3 times\norbit follow leo_noon\nend\neclipse within 120\n",
+    "repeat 3 times\norbit follow leo_noon\nend\neclipse within 120 min\n",
 ])
 def test_a_wait_after_the_orbit_is_chosen_is_fine(steps):
     assert check_text(HEAD + steps) == []

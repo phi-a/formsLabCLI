@@ -288,6 +288,24 @@ def WriteCommand(request: dict, label: str, path: Path = None) -> str:
         AtomicJsonWrite(data, path)
     return rid
 
+def ClearPending(path: Path = None) -> dict:
+    """Drop every request still waiting for its owner, so a step's last command
+    is not applied after the run has ended. Each dropped id reads `cleared`.
+    Returns {label: ids dropped}."""
+    if path is None or not path.exists():
+        path = cast_state_path()
+    out = {}
+    with _locked(path):
+        data = _safe_read_json(path)
+        for label, block in data.items():
+            if isinstance(block, dict) and block.get("request") and not block.get("processed", True):
+                out[label] = list(block.get("request_ids") or [])
+                block["request"], block["request_ids"], block["processed"] = {}, [], True
+        if out:
+            AtomicJsonWrite(data, path)
+    return out
+
+
 def CommandPending(label: str, path: Path = None) -> bool:
     """True while a request written to ``label`` has not been taken by its
     reader. Looks without consuming, unlike `ReadCommand`."""

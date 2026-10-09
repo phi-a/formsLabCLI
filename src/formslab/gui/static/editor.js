@@ -11,7 +11,7 @@
 // orbit to the wall clock once a second.
 (function () {
   "use strict";
-  const { api, el, $, famOf, unitText, PART_NAMES, ORBIT_PARTS, partName, partIcon } = window.App;
+  const { api, el, $, famOf, thenAt, headAt, unitText, PART_NAMES, ORBIT_PARTS, partName, partIcon } = window.App;
   // el(tag, attrs, "text") makes a text element; h(tag, attrs, ...children) one with children.
   const h = (tag, attrs, ...kids) => { const e = el(tag, attrs); for (const k of kids) e.append(k); return e; };
 
@@ -156,6 +156,7 @@
     S.rows = [];
     if (!S.name) { box.append(el("p", { class: "note" }, "Pick a plan on the left, or make a new one.")); return; }
     const depth = depths(S.lines);
+    prefetchOptions();
     S.lines.forEach((line, i) => {
       const row = el("div", { class: "prow " + kindOf(line) });
       if (depth[i]) { row.dataset.depth = depth[i]; row.style.setProperty("--depth", depth[i]); }   // inside a loop
@@ -240,15 +241,22 @@
   function tokenLine(toks) {
     const line = el("div", { class: "tokline" });
     if (!toks.length) { line.append(el("span", { class: "note" }, " ")); return line; }
-    const fam = toks[0].text.toLowerCase() === "block" ? "block" : famFor(toks[0].text);
+    const texts = toks.map((t) => t.text);
+    const lineFam = toks[0].text.toLowerCase() === "block" ? "block" : famFor(toks[0].text);
     let text = null;
     toks.forEach((t, idx) => {
+      const fam = idx === 0 ? lineFam : famFor(headAt(texts, idx));
       if (t.role === "text") {                         // a run of free text is one underlined phrase
         if (!text) { text = el("span", { class: "tok text" }, t.text); line.append(text); }
         else text.textContent += " " + t.text;
         return;
       }
       text = null;
+      const prev = line.lastElementChild;
+      if (t.role === "unit" && prev && prev.classList.contains("value")) {   // a value's unit, in its box
+        prev.append(el("span", { class: "unit" }, unitText(t.text)));
+        return;
+      }
       const tok = el("span", { class: "tok " + t.role, "data-fam": t.role === "script" ? "flow" : fam }, t.text);
       if (t.part) {                                    // what the line is about: its symbol, once, before the word naming it
         tok.dataset.part = t.part;
@@ -320,6 +328,7 @@
         if (cb.checked) chosen.add(n); else chosen.delete(n);
         S.lines[i] = ["load", ...names.filter((x) => chosen.has(x))].join(" ");
         scheduleCheck(); updateButtons();
+        prefetchOptions();
         S.lines.forEach((l, k) => { if (kindOf(l) === "step") renderLine(k); });   // their choices depend on it
       });
       label.append(cb, el("span", {}, n + (S.available.includes(n) ? "" : " (not found)")));
@@ -347,10 +356,40 @@
     return `<${o.text}${lim}${o.unit ? " " + o.unit : ""}>`;
   };
 
+  const optionsKey = (words) => S.kind + "|" + scriptsOf().join(",") + "|" + words.join(" ");
+
+  // A line's choices, asked once and kept; a request that fails is not kept.
+  function remember(key, promise) {
+    S.cache.set(key, promise);
+    promise.catch(() => { if (S.cache.get(key) === promise) S.cache.delete(key); });
+    return promise;
+  }
+
   async function lineOptions(words) {
-    const key = S.kind + "|" + scriptsOf().join(",") + "|" + words.join(" ");
-    if (!S.cache.has(key)) S.cache.set(key, api("/api/plan/line", { scripts: scriptsOf(), words, kind: S.kind }));
+    const key = optionsKey(words);
+    if (!S.cache.has(key)) remember(key, api("/api/plan/line", { scripts: scriptsOf(), words, kind: S.kind }));
     return S.cache.get(key);
+  }
+
+  // Every step row's choices in one request, before the rows ask one by one: what
+  // drawing the whole plan, or changing its load line, would otherwise send per row.
+  function prefetchOptions() {
+    if (!S.editable) return;
+    const want = new Map();
+    for (const line of S.lines) {
+      if (kindOf(line) !== "step") continue;
+      const words = splitWords(line), key = optionsKey(words);
+      if (!S.cache.has(key)) want.set(key, words);
+    }
+    if (want.size < 2) return;
+    const batch = api("/api/plan/lines", { scripts: scriptsOf(), lines: [...want.values()], kind: S.kind });
+    [...want.keys()].forEach((key, k) => remember(key, batch.then((r) => r.lines[k])));
+  }
+
+  // The rows' errors and warnings, drawn once for however many rows changed this frame.
+  function showErrorsSoon() {
+    if (S.errorsFrame) return;
+    S.errorsFrame = requestAnimationFrame(() => { S.errorsFrame = 0; showErrors(); });
   }
 
   async function renderStep(i, body, forceRaw) {
@@ -363,8 +402,13 @@
     const chain = el("div", { class: "chain" });
     const apply = (next) => { if (!next.length) S.fresh = i; setLine(i, next.join(" "), true); };
 
+    let boxUnits = [];                                         // the units the box before holds
     for (let k = 0; k <= words.length; k++) {
-      const opts = r.positions[k] || [];
+      const held = boxUnits;
+      boxUnits = [];
+      // A unit the number box before draws inside itself is not offered again here.
+      const opts = (r.positions[k] || []).filter((o) => !(o.kind === "word" && held.includes(o.text)));
+      if (!opts.length && held.length && k === words.length) continue;
       if (!opts.length) {
         if (k < words.length) {                              // a word that fits nothing: show it, flagged
           const bad = el("input", { value: words[k], "aria-label": "Word " + (k + 1) });
@@ -378,7 +422,7 @@
       const phrase = PHRASES.find((p) => opts.length === 1 && opts[0].kind === "word" && opts[0].text.toLowerCase() === p[0]);
       if (phrase) {
         const has = words.slice(k, k + phrase.length).join(" ").toLowerCase() === phrase.join(" ");
-        const sel = el("select", { class: "tok kw" + (has ? "" : " more"), "data-fam": famFor(words[0]),
+        const sel = el("select", { class: "tok kw" + (has ? "" : " more"), "data-fam": famFor(headAt(words, k)),
                                    "aria-label": "More", title: WITHIN });
         sel.append(el("option", { value: "" }, has ? "(remove)" : "…"), el("option", { value: phrase.join(" ") }, phrase.join(" ")));
         sel.value = has ? phrase.join(" ") : "";
@@ -403,16 +447,18 @@
       if (!isOrbit() && k === 0 && (current || "").toLowerCase() !== "end" && !depths(S.lines)[i]) {
         wordOpts = wordOpts.filter((o) => o.text.toLowerCase() !== "end");   // only inside an open loop
       }
+      const then = thenAt(words);
+      const head = k === 0 || (then >= 0 && k === then + 1);   // the step's word, or a rule's command's
       if (!slot) {                                            // only fixed words: a dropdown
         const chosen = current === undefined ? null : wordOpts.find((o) => o.text.toLowerCase() === current.toLowerCase());
         const part = chosen && chosen.part;
         const sel = el("select", { "aria-label": part ? partName(part) : "Choice " + (k + 1),
-          class: "tok " + (k === 0 ? "verb" : "kw") + (k === 0 && current === undefined ? " empty" : "")
+          class: "tok " + (head ? "verb" : "kw") + (k === 0 && current === undefined ? " empty" : "")
                  + (k > 0 && current === undefined && r.complete ? " more" : ""),   // optional: the step is whole without it
-          "data-fam": famFor(k === 0 ? current : words[0]) });
+          "data-fam": famFor(head ? current : headAt(words, k)) });
         if (part) { sel.dataset.part = part; sel.title = partName(part); }
         if ((current || "").toLowerCase() === "within") sel.title = WITHIN;
-        if (part && k === (isOrbit() ? 0 : 1)) chain.append(partIcon(part, famFor(words[0])));   // before the word naming it
+        if (part && k === (isOrbit() ? 0 : then >= 0 ? then + 2 : 1)) chain.append(partIcon(part, famFor(headAt(words, k))));   // before the word naming it
         if (k === 0 && current !== undefined && famOf(current) === "block") chain.append(blockIcon());
         if (k === 0 && isLoopWord(current)) chain.append(loopIcon());
         if (current === undefined) sel.append(el("option", { value: "" }, k > 0 ? "…" : isOrbit() ? "add an element..." : "add a step..."));
@@ -450,8 +496,28 @@
           + (wordOpts.length && wordOpts.length <= 2 ? " or " + wordOpts.map((o) => o.text).join(" or ") : "");
         const input = el("input", { value: current ?? "", placeholder: lim, size: Math.max(4, lim.length), class: slot.kind === "text" ? "wide" : "",
                                     "aria-label": limitsOf(slot), title: (slot.help || "") + (wordOpts.length ? " -- or pick a word from the list" : "") });
-        const box = h("span", { class: "tok " + (isWord ? "kw" : "value"), "data-fam": famFor(words[0]) }, input);
-        if (!isWord && slot.unit) box.append(el("span", { class: "unit" }, unitText(slot.unit)));
+        const box = h("span", { class: "tok " + (isWord ? "kw" : "value"), "data-fam": famFor(headAt(words, k)) }, input);
+        // The number's unit, inside its box: written after it in the plan (`12 V`), one
+        // fixed unit as text, a choice (C or K) as a small list. Time's s, min, h stay
+        // their own choice, after the box.
+        const units = isWord ? [] : slot.units || [];
+        const hasUnit = units.length > 0 && words[k + 1] !== undefined && units.includes(words[k + 1]);
+        const unitNow = hasUnit ? words[k + 1] : current !== undefined && slot.unit_implied ? slot.unit_implied : slot.unit_default;
+        const withUnit = (number, unit) => {                   // the words with this number and unit
+          const next = words.slice(0, k).concat([number]);
+          return next.concat(units.length ? [unit] : [], words.slice(k + (current === undefined ? 0 : 1) + (hasUnit ? 1 : 0)));
+        };
+        if (units.length > 1) {
+          const pick = el("select", { class: "unit", "aria-label": "Unit", title: "Unit" });
+          for (const u of units) pick.append(el("option", { value: u }, unitText(u)));
+          pick.value = unitNow;
+          pick.addEventListener("change", () => { if (current !== undefined) apply(withUnit(current, pick.value)); });
+          box.append(pick);
+        } else if (units.length === 1) {
+          box.append(el("span", { class: "unit" }, unitText(units[0])));
+        } else if (!isWord && slot.unit) {
+          box.append(el("span", { class: "unit" }, unitText(slot.unit)));
+        }
         if (wordOpts.length) {
           input.setAttribute("list", listId);
           const dl = el("datalist", { id: listId });
@@ -463,16 +529,19 @@
           const word = wordOpts.find((o) => o.text.toLowerCase() === v.toLowerCase());
           if (word) apply(words.slice(0, k).concat([word.text]));          // a fixed word: later choices restart
           else if (v === "") apply(words.slice(0, k));
+          else if (units.length) apply(withUnit(v, unitNow));               // a value and its unit: the rest stays
           else { const next = words.slice(); next[k] = v; apply(next); }   // a value: the words after it stay
         });
         chain.append(box);
+        if (hasUnit) k += 1;                                    // the unit word is drawn in the box
+        else boxUnits = units;
       }
     }
     if (r.error) [...chain.querySelectorAll(".tok")].pop()?.classList.add("bad");   // errors sit at the farthest point
     if (forceRaw) chain.prepend(el("span", { class: "tok verb", "data-fam": "flow" }, "record"));
     body.append(chain);
     body.parentElement.querySelector(".rowerr").dataset.stepError = r.error || "";
-    showErrors();
+    showErrorsSoon();
   }
 
   // --- structure -------------------------------------------------------------------------------
@@ -543,14 +612,15 @@
   }
 
   function updateButtons() {
-    $("#plan-save").disabled = !S.name || !S.editable || !dirty() || S.busy;
-    $("#plan-revert").disabled = !S.name || !dirty();
+    const changed = dirty();                    // the whole text, joined once
+    $("#plan-save").disabled = !S.name || !S.editable || !changed || S.busy;
+    $("#plan-revert").disabled = !S.name || !changed;
     $("#plan-saveas").disabled = !S.name;
     $("#plan-register").hidden = S.kind !== "plan";
     $("#plan-register").disabled = !S.name || S.busy;
     $("#orbit-use").hidden = !isOrbit() || !S.name;
-    $("#orbit-use").disabled = dirty() || S.busy;
-    $("#orbit-use").title = dirty() ? "Save the orbit first: a plan follows the saved file"
+    $("#orbit-use").disabled = changed || S.busy;
+    $("#orbit-use").title = changed ? "Save the orbit first: a plan follows the saved file"
       : "Make a plan that follows this orbit and waits for its umbra";
     $("#plan-raw").disabled = !S.name;
     $("#plan-delete").disabled = !S.name || !S.editable || S.busy;
@@ -560,11 +630,11 @@
     $("#plan-edit").hidden = !S.name || S.editable;
     $("#plan-edit").disabled = S.busy;
     $("#plan-ship").hidden = !S.name || !S.editable;
-    $("#plan-ship").disabled = dirty() || S.errors.length > 0 || S.busy;
-    $("#plan-ship").title = dirty() ? "Save it first"
+    $("#plan-ship").disabled = changed || S.errors.length > 0 || S.busy;
+    $("#plan-ship").title = changed ? "Save it first"
       : S.errors.length ? "Fix the problems below first: a shipped file must be whole"
       : "Put it in formsLabCLI's own plans folder, read-only again";
-    const d = dirty() ? " (unsaved changes)" : "";
+    const d = changed ? " (unsaved changes)" : "";
     $("#plan-title").textContent = (S.name || "No plan open") + d;
   }
 
@@ -700,13 +770,13 @@
     save(true, name.trim(), ["# " + name.trim(), "epoch " + now, "a 6928 km", "e 0.001", "i 97.6 deg",
                              "raan 0 deg", "argp 0 deg", "nu 0 deg", ""].join("\n"), "orbit");
   });
-  // A plan that follows the open orbit (rOrbit) and waits for its umbra (the eclipse block).
+  // A plan that follows the open orbit (rOrbit) and waits for its umbra.
   $("#orbit-use").addEventListener("click", () => {
     const orbit = S.name;
     const name = prompt("Name for the new plan (letters, digits, - and _):", `${orbit}_umbra`);
     if (!name) return;
     save(true, name.trim(), [`# Follow the orbit ${orbit} and wait for its umbra`, "load rOrbit", "record every 10 s", "",
-                             `orbit follow ${orbit}`, "eclipse within 120", "log umbra began", ""].join("\n"), "plan");
+                             `orbit follow ${orbit}`, "until InUmbra = true within 120 min", "log umbra began", ""].join("\n"), "plan");
   });
   $("#plan-revert").addEventListener("click", () => { if (confirm("Discard your unsaved changes?")) openPlanFresh(); });
   $("#plan-raw").addEventListener("click", () => {
@@ -749,10 +819,11 @@
   async function refreshLive() {
     const box = $("#orbit-live");
     box.hidden = !(isOrbit() && S.name);
-    if (box.hidden || $("#view-plans").hidden || document.hidden) return;
+    if (box.hidden || $("#view-plans").hidden || document.hidden || S.liveBusy) return;
     const seq = ++S.liveSeq;
     let r;
-    try { r = await api("/api/orbit/live", { text: text() }); } catch (e) { return; }
+    S.liveBusy = true;                          // the next second's request waits for this one
+    try { r = await api("/api/orbit/live", { text: text() }); } catch (e) { return; } finally { S.liveBusy = false; }
     if (seq === S.liveSeq && isOrbit()) renderLive(box, r);
   }
 

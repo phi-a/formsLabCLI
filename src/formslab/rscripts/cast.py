@@ -31,7 +31,7 @@ __all__ = ["Grammar", "GrammarError", "Option", "commands", "complete", "grammar
            "help_rows", "owners", "reports_results", "request", "send", "variables"]
 
 # Plan keywords: a CAST label may not be one of these.
-RESERVED = ("hold", "until", "log", "load", "record", "repeat", "end")
+RESERVED = ("hold", "until", "log", "load", "record", "repeat", "end", "when")
 
 
 def _declared(module, attr: str) -> list:
@@ -47,6 +47,21 @@ def commands(module) -> list[tuple]:
 def variables(module) -> list[tuple[str, str | None]]:
     """A script's (name, unit) list of the values it publishes."""
     return [(n, u or None) for n, u in _declared(module, "VARIABLES")]
+
+
+def sensors() -> list[str]:
+    """Every temperature reading a routine on the path publishes, by name (TC01,
+    HVC_T5): what a zone can be held at, and what a block's thermocouple input
+    offers. A routine's SENSORS if it declares them (a list, or a function
+    returning one), else its values in K."""
+    labels, _ = owners()
+    out: list[str] = []
+    for module in {id(m): m for m in labels.values()}.values():
+        declared = getattr(module, "SENSORS", None)
+        names = (list(declared() if callable(declared) else declared) if declared is not None
+                 else [v for v, unit in variables(module) if unit == "K"])
+        out += [n for n in names if n not in out]
+    return out
 
 
 def script_name(module) -> str:
@@ -223,9 +238,14 @@ def option_parts(words, options) -> list:
     return [part_of(words[0], words)] * len(options)
 
 
-def card_part(card: dict) -> str | None:
-    """The part a help card's command is about, from its structured usage."""
+def card_part(card: dict, then: int | None = None) -> str | None:
+    """The part a help card's command is about, from its structured usage; for a
+    `when` rule (`then`: where its then is), the part of the command after it."""
     w = card.get("words") or []
+    if then is not None:
+        w = w[then + 1:]
+    elif w and w[0].get("text", "").lower() == "when":
+        return None
     if len(w) < 2:
         return None
     second = w[1]

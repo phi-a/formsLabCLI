@@ -42,7 +42,9 @@
     "max_vent_temp_c": 60.0,
     "min_vent_temp_c": 10.0,
     "max_heater_pressure_torr": 700.0,
-    "high_vac_crossover_torr": 0.01
+    "high_vac_crossover_torr": 0.01,
+    "hold_at_gain_per_min": 0.05,
+    "hold_at_band_c": 15.0
   },
   "hmi": {
     "enable_ascii_in_recipe": false,

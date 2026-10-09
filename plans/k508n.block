@@ -1,0 +1,24 @@
+# Run the K508N cryocooler from its control board
+# Sets the board's supply on psu1 CH1, 24 V and 1.0 A, protected at 24.5 V and 1.25 A;
+# edit that line here to change them. The channel must be the one the hardware map
+# says the board is wired to, or the plan is refused before it runs.
+# Starts the board, its supply and its link through the Pico; the start is refused,
+# and the run stops, if either is not up within 30 s. Waits up to a minute for the
+# board's supply to reach 20 V, the least its converter can drive the cooler from.
+# Sets the variable resistor, which sets the K508N's fixed-point temperature control
+# (which resistance gives which temperature has not been measured), then the cooler
+# voltage, 8.5 to 20 V, and turns the output on. Then waits up to 30 s for the
+# converter to report its output on with no fault (it reports no power-good: the
+# voltage itself takes a meter). The cooler runs until cryo off, cryo shutdown or the end of
+# the run. While rCryoBoard runs, psu1 CH1 is its own: a plan that calls this block
+# may not command it.
+block k508n at <volts:number 8.5..20 V> with <resistance:number 62..1120 ohm>
+load rCryoBoard rPSU
+
+cryo supply psu1 ch1 at 24 V 1.0 A protect 24.5 V 1.25 A
+cryo startup
+until CRYO_SUPPLY_V >= 20 V within 1 min
+cryo ccvres {resistance}
+cryo ccv {volts}
+cryo on
+until CRYO_OK = true within 30 s

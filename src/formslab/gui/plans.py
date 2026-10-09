@@ -32,7 +32,8 @@ from pathlib import Path
 from formslab.console.safefile import atomic_write_text
 from formslab.orbit import file as orbitfile
 from formslab.sequence import block as blockfile
-from formslab.sequence.plan import ENV, PACKAGE_ROOT, SUFFIX, discover, review, user_plans_dir
+from formslab.sequence import plan as planfile
+from formslab.sequence.plan import ENV, SUFFIX, discover, review, user_plans_dir
 
 NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 SUFFIXES = {"plan": SUFFIX, "block": blockfile.SUFFIX, "orbit": orbitfile.SUFFIX}
@@ -63,11 +64,6 @@ def editable_dirs() -> set[Path]:
 
 def is_editable(path: Path) -> bool:
     return path.resolve().parent in editable_dirs()
-
-
-def shipped_dir() -> Path:
-    """The checkout's own ``plans/``, where *Ship* puts a file."""
-    return PACKAGE_ROOT.parents[1] / "plans"
 
 
 def find(name: str) -> Path | None:
@@ -170,7 +166,7 @@ def _move(name: str, base_hash: str | None, shipped: bool) -> tuple[Path, Path]:
                             else f"{name!r} is already shipped")
     if base_hash != content_hash(path.read_bytes()):
         raise PlanFileError(409, f"{name!r} changed on disk since you opened it; reload it first")
-    target = (user_plans_dir() if shipped else shipped_dir()) / path.name
+    target = (user_plans_dir() if shipped else planfile.shipped_dir()) / path.name
     if target.exists():
         raise PlanFileError(409, f"{target} already exists; move or delete it first")
     return path, target

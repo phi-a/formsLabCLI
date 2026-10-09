@@ -198,7 +198,7 @@ editor with a live panel beside it: sunlit or in umbra and when that changes, be
 angle, altitude, speed, and the coming orbit as a strip. Motion is Kepler with J2
 drift, so a sun-synchronous orbit keeps its local time. During a run, the rScript
 rOrbit follows an orbit (`orbit follow`, `orbit replay`) and publishes `InUmbra` and
-the umbra timings, which plans wait on (`eclipse within`, `sunrise within`) and rSLTA
+the umbra timings, which plans wait on (`until InUmbra = true ...`) and rSLTA
 follows. The same file builds the `Orbit` the environment models in `formslab.orbit`
 sweep, so one orbit feeds both the bench and the models.
 
@@ -228,6 +228,19 @@ shown as Celsius on request; follow a run live; save PNG or CSV. Live plots lag 
 record cadence (30 s for `tvac`); faster would need the host to keep recent values in
 memory, which is deferred. Older CSV layouts in `outputs/` are not listed rather than
 guessed.
+
+## Speed
+
+Measured 2026-10-07 (thermal_cycle.plan): a plan check 42 ms, one row's choices 10 ms,
+the plans list 270 ms, a status poll 4 ms. What keeps it so: the bench profile is
+parsed once per change of the file; the editor asks for every row's choices in one
+request (`/api/plan/lines`); one status poll serves every tab (every second on Status
+and Chamber, every two elsewhere) and a tab switch retires the old loop; follow-live
+and the orbit panel wait for each reply before the next. `test/test_gui_speed.py`
+guards the first two. Left as they are, cheap enough today: the Status cards and the
+Chamber drawing are rebuilt each second; follow-live re-reads the whole CSV every 5 s
+(an incremental read when runs grow long); the plans list checks every file each time
+it is asked for (on opening a view or after a save).
 
 ## Login and safety
 

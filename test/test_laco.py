@@ -83,7 +83,7 @@ def test_status_is_one_structured_snapshot(laco, sim):
     assert s.mode == "AUTO" and s.pressure_unit == "Torr"
     assert s.pressure == pytest.approx(760.0)
     assert s.zones["platen"].temperature_c == pytest.approx(22.2)
-    assert s.zones["shroud"].effective_setpoint_c == pytest.approx(22.1)   # idle: tracks T1
+    assert s.zones["shroud"].effective_setpoint_c == pytest.approx(22.3)   # idle: tracks T3, its control sensor
     assert s.sensors["T14"] == pytest.approx(23.4)
     assert s.devices == {"rough": False, "vent": False, "fill": False, "foreline": False,
                          "gate": False, "pump": False, "turbo": False}

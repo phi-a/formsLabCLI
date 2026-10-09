@@ -51,10 +51,10 @@ record every 10 s
 orbit replay leo_noon
 psu1 ch1 set 5.0 0.5
 repeat 10 times
-  eclipse within 120
+  eclipse within 120 min
   psu1 ch1 on
   slta image
-  sunrise within 60
+  sunrise within 60 min
   psu1 ch1 off
 end
 repeat until platenT < 60 C within 2 h
@@ -81,7 +81,7 @@ def test_each_form_reads_and_pairs_with_its_end():
     ("load rPSU\nrepeat 3 times\nhold 1 s\n", 2, "`repeat` with no `end` below it"),
     ("load rPSU\nrepeat 0 times\nhold 1 s\nend\n", 2, "outside 1..10000"),
     ("load rPSU\nrepeat until TC01 > 3 within 1 min\nend\n", 2, "published by rSMTC08; add it to `load`"),
-    ("load rLACO\nrepeat until platenT > 3\nend\n", 2, "repeat until needs `within"),
+    ("load rLACO\nrepeat until platenT > 3 Torr\nend\n", 2, "platenT is in K, not Torr"),
     ("load rPSU\n" + "repeat 2 times\n" * 9 + "end\n" * 9, 10, "loops nest more than 8 deep"),
 ])
 def test_what_a_loop_must_have(text, line, message):
@@ -255,13 +255,13 @@ def test_a_run_loops_until_the_umbra(bench):
     from formslab.orbit import file as orbitfile
     from formslab.orbit.propagate import kepler
 
-    el = orbitfile.parse((ROOT / "plans" / "leo_noon.orbit").read_text(encoding="utf-8"))
+    el = orbitfile.parse((ROOT / "test" / "fixtures" / "plans" / "leo_noon.orbit").read_text(encoding="utf-8"))
     entry = next(a for a, _ in kepler.umbra_spans(el, el.epoch, el.epoch + timedelta(seconds=el.period * 2)))
     epoch = entry - timedelta(seconds=6)
     nu = math.degrees(kepler.true_anomaly(el, epoch))
     lines = [f"epoch {epoch:%Y-%m-%dT%H:%M:%S.%f}Z" if l.startswith("epoch") else f"nu {nu:.6f} deg"
              if l.startswith("nu") else l
-             for l in (ROOT / "plans" / "leo_noon.orbit").read_text(encoding="utf-8").splitlines()]
+             for l in (ROOT / "test" / "fixtures" / "plans" / "leo_noon.orbit").read_text(encoding="utf-8").splitlines()]
     (bench / "near_umbra.orbit").write_text("\n".join(lines) + "\n", encoding="utf-8")
     (bench / "until_umbra.plan").write_text(
         "load rOrbit\n\norbit replay near_umbra\nrepeat until InUmbra = true within 1 min\n"

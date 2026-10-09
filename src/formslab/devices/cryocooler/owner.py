@@ -4,29 +4,35 @@ import traceback
 from formslab.devices.cryocooler.config import (
     CRYO_DEFAULT_OUTPUT_VOLTAGE_V,
     CRYO_DEFAULT_RESISTANCE_OHMS,
-    CRYO_SUPPLY_CURRENT_A,
-    CRYO_SUPPLY_OCP_A,
-    CRYO_SUPPLY_OVP_V,
-    CRYO_SUPPLY_VOLTAGE_V,
     cryo_supply,
+    supply_settings,
 )
 from formslab.devices.dp832a.commands import (
     build_psu_channel_request,
     psu_channel_state,
     queue_psu_request,
+    read_psu_channel_status,
 )
 
 
 def _init_psu2(run, r_global):
+    """Bring the board's supply to its settings (supply_settings): ready once rPSU
+    reports the channel on at them. `_supply_changed` (cryo supply) sends them
+    again even when the channel already matches, for the protection limits."""
     CRYO_PSU_LABEL, CRYO_PSU_CHANNEL = cryo_supply(r_global)
     CRYO_PSU_COMPONENT = CRYO_PSU_LABEL.upper()
+    supply = supply_settings(r_global)
     readiness = psu_channel_state(
         CRYO_PSU_LABEL,
         CRYO_PSU_CHANNEL,
         on=True,
-        voltage=CRYO_SUPPLY_VOLTAGE_V,
-        current=CRYO_SUPPLY_CURRENT_A,
+        voltage=supply["volts"],
+        current=supply["amps"],
     )
+    if getattr(r_global, "_supply_changed", False):
+        readiness = "mismatch"
+        r_global._supply_changed = False
+        r_global._psu2_request_pending = False
 
     if readiness == "match":
         if not getattr(r_global, "_psu2_ready", False):
@@ -60,11 +66,11 @@ def _init_psu2(run, r_global):
         CRYO_PSU_LABEL,
         build_psu_channel_request(
             CRYO_PSU_CHANNEL,
-            ovp=CRYO_SUPPLY_OVP_V,
-            ocp=CRYO_SUPPLY_OCP_A,
+            ovp=supply["ovp"],
+            ocp=supply["ocp"],
             protect=True,
-            voltage=CRYO_SUPPLY_VOLTAGE_V,
-            current=CRYO_SUPPLY_CURRENT_A,
+            voltage=supply["volts"],
+            current=supply["amps"],
             on=True,
         ),
         update=True,
@@ -74,8 +80,35 @@ def _init_psu2(run, r_global):
     return r_global
 
 
+INIT_RETRY_S = 10.0     # seconds between attempts to bring up a board that failed
+
+
+def diagnose(exc, supply: dict) -> str:
+    """Why the board did not come up, in words, with what its supply reads."""
+    text = str(exc)
+    if "ETIMEDOUT" in text or "Errno 110" in text:
+        why = ("the I2C clock line stayed low (ETIMEDOUT): the board side has no power, "
+               "or its pull-ups are not reaching the Pico")
+    elif "ENODEV" in text or "Errno 19" in text or "EIO" in text or "Errno 5" in text:
+        why = "nothing answered on the I2C bus (ENODEV): the board's chips are unpowered or not connected"
+    elif "could not open port" in text or "FileNotFoundError" in text or "PermissionError" in text:
+        why = "the Pico's serial port did not open: is it plugged in, and its port right in usbmap.json?"
+    else:
+        last = next((ln for ln in reversed(text.strip().splitlines()) if ln.strip()), type(exc).__name__)
+        why = f"{type(exc).__name__}: {last.strip()}"
+    volts, amps = supply.get("vmeas"), supply.get("cmeas")
+    if volts is not None and amps is not None:
+        why += f"; its supply reads {float(volts):.1f} V, {float(amps) * 1000:.0f} mA"
+        if float(volts) > 15 and float(amps) < 0.010:
+            why += (", too little current for a powered board: check the cable from the "
+                    "supply to the board, and the board's input")
+    return why
+
+
 def _init_cryo_board(run, r_global):
     if r_global.cryo is not None:
+        return r_global
+    if time.monotonic() < getattr(r_global, "_init_retry_at", 0.0):
         return r_global
     try:
         try:
@@ -104,10 +137,24 @@ def _init_cryo_board(run, r_global):
             level="INFO",
             component="CRYO",
         )
+        r_global._init_error, r_global._init_failures = None, 0
     except Exception as exc:
-        tb = traceback.format_exc()
-        run.log(f"Cryocooler board initialization failed: {exc}\n{tb}", level="ERROR", component="CRYO")
+        label, channel = cryo_supply(r_global)
+        why = diagnose(exc, read_psu_channel_status(label, channel))
+        failures = getattr(r_global, "_init_failures", 0) + 1
+        if failures == 1:                        # the whole story once; then one line each time
+            run.log(f"Cryocooler board did not start: {why}\n{traceback.format_exc()}",
+                    level="ERROR", component="CRYO")
+        else:
+            run.log(f"Cryocooler board did not start (try {failures}): {why}", level="ERROR", component="CRYO")
+        if r_global.cryo is not None:            # release the Pico, so the next try can open it
+            try:
+                r_global.cryo.close()
+            except Exception:
+                pass
         r_global.cryo = None
+        r_global._init_error, r_global._init_failures = why, failures
+        r_global._init_retry_at = time.monotonic() + INIT_RETRY_S
     return r_global
 
 
@@ -118,28 +165,37 @@ def _shutdown_cryo_subsystem(run, r_global, *, close_transport=True, release_han
     This is used by `rCryoBoard` during routine shutdown so the USB-I2C bridge
     is not left busy across simulation runs.
     """
+    CRYO_PSU_LABEL, CRYO_PSU_CHANNEL = cryo_supply(r_global)
+    CRYO_PSU_COMPONENT = CRYO_PSU_LABEL.upper()
+    # A board whose supply is already off (the end script cut it) cannot answer:
+    # only the link is released, and no request goes to a supply already off.
+    powered = read_psu_channel_status(CRYO_PSU_LABEL, CRYO_PSU_CHANNEL).get("on") is not False
     if r_global.cryo is not None:
         try:
-            r_global.cryo.shutdown(close_transport=close_transport)
-            run.log("CryoBoard output disabled", level="INFO", component="CRYO")
+            if powered:
+                r_global.cryo.shutdown(close_transport=close_transport)
+                run.log("CryoBoard output disabled", level="INFO", component="CRYO")
+            else:
+                if close_transport:
+                    r_global.cryo.close()
+                run.log("CryoBoard already unpowered: link released", level="INFO", component="CRYO")
         except Exception as exc:
             tb = traceback.format_exc()
             run.log(f"CryoBoard shutdown failed: {exc}\n{tb}", level="WARNING", component="CRYO")
 
-    CRYO_PSU_LABEL, CRYO_PSU_CHANNEL = cryo_supply(r_global)
-    CRYO_PSU_COMPONENT = CRYO_PSU_LABEL.upper()
-    queue_psu_request(
-        CRYO_PSU_LABEL,
-        build_psu_channel_request(CRYO_PSU_CHANNEL, on=False),
-        update=True,
-    )
+    if powered:
+        queue_psu_request(
+            CRYO_PSU_LABEL,
+            build_psu_channel_request(CRYO_PSU_CHANNEL, on=False),
+            update=True,
+        )
+        run.log(
+            f"Queued {CRYO_PSU_COMPONENT} CH{CRYO_PSU_CHANNEL} disable for cryocooler board",
+            level="INFO",
+            component=CRYO_PSU_COMPONENT,
+        )
     r_global._psu2_ready = False
     r_global._psu2_request_pending = False
-    run.log(
-        f"Queued {CRYO_PSU_COMPONENT} CH{CRYO_PSU_CHANNEL} disable for cryocooler board",
-        level="INFO",
-        component=CRYO_PSU_COMPONENT,
-    )
 
     if release_handles:
         r_global.cryo = None

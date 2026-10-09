@@ -54,17 +54,32 @@ def cryo_supply(r_global=None) -> tuple[str, int]:
 # normal bench condition under which both work. These are current engineering
 # figures from bring-up, not electrical specifications.
 CRYO_SUPPLY_VOLTAGE_V = 24.0
-CRYO_SUPPLY_CURRENT_A = 2.0
+CRYO_SUPPLY_CURRENT_A = 1.0       # the board's supply: 24 V, 1.0 A, protected at 1.25 A (2026-10-07)
 CRYO_SUPPLY_OVP_V = 24.5
-CRYO_SUPPLY_OCP_A = 2.2
+CRYO_SUPPLY_OCP_A = 1.25
 
 CRYO_I2C_SUPPLY_THRESHOLD_V = 15.0
 CRYO_OUTPUT_SUPPLY_THRESHOLD_V = 20.0
 
+# The most the board's input may be given (2026-10-07): `cryo supply` refuses more.
+CRYO_SUPPLY_MAX_V = 24.5
+CRYO_SUPPLY_MAX_A = 2.0
+
+
+def supply_settings(r_global=None) -> dict:
+    """The board's supply as the run has set it (`cryo supply`), or the defaults above:
+    {volts, amps, ovp, ocp}."""
+    chosen = getattr(r_global, "supply_set", None)
+    return dict(chosen) if chosen else {"volts": CRYO_SUPPLY_VOLTAGE_V, "amps": CRYO_SUPPLY_CURRENT_A,
+                                        "ovp": CRYO_SUPPLY_OVP_V, "ocp": CRYO_SUPPLY_OCP_A}
+
 CRYO_DEFAULT_OUTPUT_VOLTAGE_V = 17.0
 CRYO_DEFAULT_RESISTANCE_OHMS = 266.0
 
-# Band formsLabCLI drives the cryocooler in. Narrower than what the converter can be
-# programmed for; this is the range CAST accepts and rCryoBoard enforces.
-CCV_MIN_V = 12.0
+# Band formsLabCLI drives the cryocooler in: the K508N's input range, 8.5 to 20 V
+# (2026-10-07). Narrower than what the converter can be programmed for; this is the
+# range CAST accepts and rCryoBoard enforces. The converter's calibration
+# (registers.CAL_SLOPE, CAL_OFFSET) was set on the bench; below 12 V it has not been
+# checked against a meter.
+CCV_MIN_V = 8.5
 CCV_MAX_V = 20.0

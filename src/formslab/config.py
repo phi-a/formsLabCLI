@@ -46,8 +46,13 @@ def config_dir() -> Path:
     """
     root = os.environ.get(CONFIG_ENV)
     path = Path(root).expanduser() if root else Path.home() / ".formslab"
-    path.mkdir(parents=True, exist_ok=True)
+    if str(path) not in _made or not path.is_dir():           # once, unless it was removed since
+        path.mkdir(parents=True, exist_ok=True)
+        _made.add(str(path))
     return path
+
+
+_made: set[str] = set()       # config folders this process has made (or found)
 
 
 def output_dir() -> Path:

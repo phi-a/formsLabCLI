@@ -59,6 +59,8 @@ A routine may also say what must be true before a command is sent
     def RULE_STATE(status): ...        # its CAST status block -> the names conditions use
     def RULE_EFFECTS(request): ...     # what a request leaves set (default: its on/off keys)
     RESULT_LABELS = ("hvc",)           # it reports done or refused for each request it takes
+    def READS(request): ...            # the values a request reads (hvc platen 40 at TC01 -> TC01):
+                                       # a plan that sends it must load the routine that publishes them
     STARTED_BY = ("follow", "replay")  # it publishes its VARIABLES only after one of these requests:
                                        # a plan that waits on one before is refused when read
     PARTS = {"rough": "valve", ...}    # which word names a valve, pump, zone or setting
@@ -76,19 +78,21 @@ trailing `?` (`hvc platen ?`) lists what can come next.
 
 | rScript | Owns | CAST label | Publishes |
 |---|---|---|---|
-| `rLACO` | LACO chamber via `devices.laco.LACO` (HVC-3500): every controller command | `hvc` | `chamberP`, `<zone>T`, `target_<zone>`, `<zone>_effSP`, `HVC_<sensor>` (K); `outputs/LACO.jsonl` |
+| `rLACO` | LACO chamber via `devices.laco.LACO` (HVC-3500): every controller command | `hvc` | `chamberP`, `<zone>T`, `target_<zone>`, `<zone>_effSP`, `HVC_<sensor>` (K); the valves, pumps and thermal control as on/off (`VentValve`, `VacuumPump`, `HoldingTemperature`, ...); `outputs/LACO.jsonl`. Holds a zone at a thermocouple: `hvc platen 40 at TC01` (docs/SEQUENCE.md) |
 | `rSMTC08` | SMTC08 thermocouple boards A (TC01-08), B (TC09-16) | `tc` (read-only) | `TC01`..`TC16` (K) |
 | `rPSU` | Rigol DP832A supplies psu1/psu2 (enabled ones only) | `psu1`, `psu2` | `PSU1_CH<n>_V/_I/_ON` |
-| `rCryoBoard` | cryocooler control board (Pico I2C) and its PSU1 CH1 supply | `cryo` | status on CAST |
-| `rSLTA` | sLTA camera, powered from PSU2 CH1 | `slta` | status on CAST |
+| `rCryoBoard` | cryocooler control board (Pico I2C), the K508N's drive, and its PSU1 CH1 supply | `cryo` | `CRYO_LINK`, `CRYO_ON`, `CRYO_OK` (on/off), `CRYO_CCV`, `CRYO_SUPPLY_V` (V), `CRYO_RES` (ohm); answers each request |
+| `rSLTA` | sLTA camera, powered from PSU2 CH1; a capture in progress is stopped at shutdown | `slta` | status on CAST |
 | `rOrbit` | no hardware: an orbit file, followed on the wall clock or from its epoch (docs/ORBIT.md) | `orbit` | `InUmbra`, `UmbraDuration`, `UmbraTimeRemaining`, `NextUmbra` (s), `OrbitBeta` (deg), `OrbitAltitude` (km) |
 
 `run tvac` runs `plans/tvac.plan`, which loads rLACO, rSMTC08 and rPSU and
 runs until ctrl `end`.
 
-rLACO's `rShutdown` ends pumping its run started (rough valve closed, pump off)
-and releases the controller, which takes one client at a time. rPSU turns off
-the channels its run switched on. Do not load two routines that own the same
+A run cut short first runs the end script, `plans/end.plan`, with every routine
+live (docs/SEQUENCE.md, Ending); then each `rShutdown`, by dependency
+(`SHUTDOWN_BEFORE`), is the backstop. rLACO's ends pumping its run started (rough
+valve closed, pump off) and releases the controller, which takes one client at a
+time. rPSU turns off the channels its run switched on. Do not load two routines that own the same
 instrument: rCryoBoard uses PSU1 CH1, so do not also command that channel from
 a plan or the console while it runs.
 

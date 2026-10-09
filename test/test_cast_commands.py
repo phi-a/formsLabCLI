@@ -174,7 +174,9 @@ def test_every_other_script_declares_its_published_names():
     assert psu["PSU1_CH1_V"] == "V" and psu["PSU2_CH3_I"] == "A" and psu["PSU1_CH2_ON"] == "bool"
     tc = _declared("rSMTC08")
     assert list(tc) == [f"TC{i:02d}" for i in range(1, 17)] and set(tc.values()) == {"K"}
-    assert _declared("rCryoBoard") == {} and _declared("rSLTA") == {}
+    assert _declared("rCryoBoard") == {"CRYO_LINK": "bool", "CRYO_ON": "bool", "CRYO_OK": "bool",
+                                        "CRYO_CCV": "V", "CRYO_RES": "ohm", "CRYO_SUPPLY_V": "V"}
+    assert _declared("rSLTA") == {}
 
 
 def test_reading_the_declarations_touches_nothing(tmp_path, monkeypatch):

@@ -8,6 +8,7 @@ written to the ctrl and CAST files for the host to take.
 """
 from __future__ import annotations
 
+import json
 import threading
 import time
 from datetime import datetime, timezone
@@ -19,7 +20,7 @@ from formslab.console.ctrl import ctrlcli, ctrlutils
 from formslab.console.log.logcli import log_path
 from formslab.console.safefile import read_json
 from formslab.gui import plans, runs
-from formslab.host.sequence import is_host, read_lock
+from formslab.host.sequence import END_SCRIPT, ended_path, is_host, read_lock
 from formslab.orbit import file as orbitfile
 from formslab.orbit.propagate.kepler import live
 from formslab.sequence import block as blockfile
@@ -27,7 +28,9 @@ from formslab import rscripts
 from formslab.rscripts import cast
 from formslab.rscripts.grammar import GrammarError
 from formslab.sequence import PlanError, discover, load_plan
-from formslab.sequence.plan import available_rscripts, describe_step, line_options, needed_rscripts, tokens
+from formslab.sequence.plan import (
+    available_rscripts, describe_step, line_options, lines_options, needed_rscripts, tokens,
+)
 from formslab.state import cast_state_path
 
 # How often each block is republished while its owner runs (seconds). A block
@@ -114,7 +117,37 @@ def status(log_lines: int = 40) -> dict:
                          **freshness(label, block, running, now)}
     return {"now": now, "host": running, "last_run": None if running else read_lock(),
             "action": current_action(), "blocks": blocks, "cast_unreadable": data is None,
-            "log": log_tail(log_lines)}
+            "log": log_tail(log_lines), "ended": None if running else last_ended()}
+
+
+def last_ended() -> dict | None:
+    """How the last run ended (the host's ended.json): plan, when, how, the chamber
+    as it was left, and what the end script could not do."""
+    try:
+        return json.loads(ended_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def end_steps() -> list[str]:
+    """What End will do for the running plan: the end script's steps for the
+    routines it loaded, as the End dialog lists them."""
+    running = host()
+    if running is None:
+        raise ApiError(409, "no run is going")
+    path = next((p for p in discover() if p.stem == END_SCRIPT), None)
+    if path is None:
+        return []
+    from formslab.host.sequence import _needs
+    from formslab.rscripts import cast
+
+    with _lock:
+        try:
+            script, plan = load_plan(path), load_plan(next(p for p in discover() if p.stem == running["plan"]))
+        except (PlanError, StopIteration):
+            return []
+        labels, loaded = cast.owners()[0], set(plan.rscripts)
+        return [s.label for s in script.sequence.segments if _needs(s, labels) <= loaded]
 
 
 def log_tail(lines: int = 40) -> list[str]:
@@ -196,7 +229,8 @@ def list_plans() -> list[dict]:
             out.append({"name": path.stem, "kind": "plan", "rscripts": list(plan.rscripts),
                         "steps": len(plan.sequence.segments), "editable": plans.is_editable(path),
                         "warnings": [f"line {n}: {m}" for n, m in plan.warnings],
-                        "open_ended": plan.sequence.open_ended})
+                        "open_ended": plan.sequence.open_ended,
+                        **({"end": True} if path.stem == END_SCRIPT else {})})   # run by End, never started
         taken = {p["name"] for p in out}
         for path in blockfile.discover():
             if path.stem in taken:                      # a plan of the same name is found first
@@ -372,6 +406,14 @@ def plan_line(scripts: list[str], words: list[str], kind: str = "plan") -> dict:
         return orbitfile.line_options(words)
     with _lock:
         return (blockfile.line_options if kind == "block" else line_options)(scripts, words)
+
+
+def plan_lines(scripts: list[str], lines: list[list[str]], kind: str = "plan") -> list[dict]:
+    """`plan_line` for every row the editor draws at once, in one request."""
+    if kind == "orbit":
+        return [orbitfile.line_options(words) for words in lines]
+    with _lock:
+        return (blockfile.lines_options if kind == "block" else lines_options)(scripts, lines)
 
 
 def rscripts_available() -> list[str]:

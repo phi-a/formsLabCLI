@@ -126,8 +126,8 @@ def test_snapshot_reads_everything(sim):
         snap = c.snapshot(temperatures=[0, 3], zones=[1, 2])
     assert "errors" not in snap
     assert snap["T0"] == pytest.approx(22.0) and snap["T3"] == pytest.approx(22.3)
-    # zone idle -> effective setpoint tracks the zone's sensor, not the commanded 20.0
-    assert snap["Z1_setpoint"] == pytest.approx(22.0) and snap["OR"] is False
+    # zone idle -> effective setpoint tracks the zone's control sensor (T2), not the commanded 20.0
+    assert snap["Z1_setpoint"] == pytest.approx(22.2) and snap["OR"] is False
     assert snap["error_status"]["severity"] == "N"
 
 
@@ -174,7 +174,7 @@ def test_zone_setpoint_commanded_vs_effective(sim):
     tracking the sensor until the zone is activated."""
     with client(sim) as c:
         assert c.set_zone_setpoint(1, 40.0) == 40.0          # verified by echo
-        assert c.zone_setpoint(1) == pytest.approx(22.0)     # still tracking T0
+        assert c.zone_setpoint(1) == pytest.approx(22.2)     # still tracking T2
         c.activate_zone(1, confirm=True)
         assert c.zone_setpoint(1) == 40.0                    # now the commanded value
         assert c.thermal_control_active() is True            # ?TC third field

@@ -1,0 +1,19 @@
+# ============================================================
+# plan: vent_to_ambient -- bring a sealed chamber back to air
+# ============================================================
+# Lets air into a chamber that is resting under vacuum, once the platen and shroud
+# are safe to open to air.
+#
+# Start: sealed under vacuum, as rest_from_ambient leaves it: vacuum pump off,
+#   every valve closed.
+# End:   at atmosphere, above 700 Torr, with the vent valve open as the chamber's
+#   own screen leaves it. The door may then be opened.
+# Fails: the platen or shroud is not between 10 and 60 °C within 60 minutes, or the
+#   chamber does not reach 700 Torr within 10 minutes. The zones are left as they
+#   were.
+
+load rLACO
+record every 5 s
+
+vent within 60 min
+log at atmosphere; the vent valve is open

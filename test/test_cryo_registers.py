@@ -18,6 +18,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import pytest
+
 from formslab.devices.cryocooler import registers as regs
 from formslab.devices.cryocooler import config as cryo_config
 
@@ -225,21 +227,17 @@ def test_resistance_code_round_trips():
 # --------------------------------------------------------------------------
 
 
-def test_status_healthy_output():
-    flags = regs.decode_status(0b00000011)
-    assert flags["pgood"] and flags["intvref"]
-    assert not flags["faulted"]
-    assert flags["healthy"]
-    assert regs.status_faults(0b00000011) == []
+@pytest.mark.parametrize("raw, mode", [(0b00, "boost"), (0b01, "buck"), (0b10, "buck-boost")])
+def test_status_bits_1_0_are_the_operating_mode(raw, mode):
+    """TPS55288 datasheet, register 07h: there is no power-good bit."""
+    flags = regs.decode_status(raw)
+    assert flags["mode"] == mode and flags["healthy"] and not flags["faulted"]
+    assert "pgood" not in flags
+    assert regs.status_faults(raw) == []
 
 
-def test_status_bus_alive_but_output_not_good():
-    """What a board between ~15 V and ~20 V in looks like: answers, no PGOOD."""
-    flags = regs.decode_status(0b00000001)
-    assert flags["intvref"]
-    assert not flags["pgood"]
-    assert not flags["faulted"]
-    assert not flags["healthy"]
+def test_status_reserved_mode_is_not_healthy():
+    assert not regs.decode_status(0b11)["healthy"]
 
 
 def test_status_protection_flags():
@@ -304,7 +302,7 @@ def test_cryo_config_reexports_a_single_fit():
 
 
 def test_operating_band_is_inside_the_supply_thresholds():
-    assert cryo_config.CCV_MIN_V == 12.0
+    assert cryo_config.CCV_MIN_V == 8.5                      # the K508N's input range
     assert cryo_config.CCV_MAX_V == 20.0
     assert (
         cryo_config.CRYO_SUPPLY_VOLTAGE_V > cryo_config.CRYO_OUTPUT_SUPPLY_THRESHOLD_V

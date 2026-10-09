@@ -315,7 +315,8 @@ def test_completion_lists_what_can_come_next(server, client):
     assert after[0] == {"kind": "number", "text": "temperature", "help": "Set the platen temperature",
                         "lo": -180.0, "hi": 200.0, "unit": "C", "part": "zone"}
     assert [o["text"] for o in after[1:]] == ["on", "off", "rate", "range"]
-    assert client.json("GET", "/api/complete?words=hvc%20platen%2020")[1]["options"] == []
+    after = client.json("GET", "/api/complete?words=hvc%20platen%2020")[1]["options"]
+    assert [o["text"] for o in after] == ["at"]                                     # a hold at a thermocouple
     assert Client(server).json("GET", "/api/complete?words=")[0] == 401           # not without a login
 
 

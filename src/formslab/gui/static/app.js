@@ -15,13 +15,19 @@
   // orbit file's lines all start with an element, and are all the orbit's colour.
   const FAMILY = { hvc: "hvc", psu1: "psu", psu2: "psu", cryo: "cryo", slta: "slta", tc: "tc", orbit: "orbit",
                    epoch: "orbit", a: "orbit", e: "orbit", i: "orbit", raan: "orbit", argp: "orbit", nu: "orbit" };
-  const STEP_WORDS = ["hold", "until", "log", "load", "record", "repeat", "end"];
+  const STEP_WORDS = ["hold", "until", "log", "load", "record", "repeat", "end", "when"];
   // The names of the blocks the editor lists: a step that calls one has the block colour.
   const BLOCKS = new Set();
   const famOf = (word) => {
     const w = (word || "").toLowerCase();
     return FAMILY[w] || (STEP_WORDS.includes(w) ? "flow" : BLOCKS.has(w) ? "block" : "other");
   };
+  // A `when` rule's command, after its `then`, is drawn as a command: in its own
+  // instrument's colour, with its part. Where the then is (-1: not a rule, or not yet).
+  const thenAt = (words) => ((words[0] || "").toLowerCase() === "when"
+    ? words.findIndex((w) => (w || "").toLowerCase() === "then") : -1);
+  // The word whose colour the word at `k` takes: the step's first, or the command's.
+  const headAt = (words, k) => { const t = thenAt(words); return t >= 0 && k > t ? words[t + 1] : words[0]; };
   const setBlocks = (names) => { BLOCKS.clear(); for (const n of names) BLOCKS.add(n.toLowerCase()); };
   const unitText = (u) => (u || "").replace(/^C(?=\/|$)/, "\u00b0C");
 
@@ -34,7 +40,7 @@
   const partIcon = (part, fam) => el("span", { class: "part-icon", "data-part": part, "data-fam": fam || "other",
                                                title: partName(part), role: "img", "aria-label": partName(part) });
 
-  window.App = { api: (...a) => api(...a), el, $, famOf, setBlocks, unitText, PART_NAMES, ORBIT_PARTS, partName, partIcon };   // for editor.js, loaded next
+  window.App = { api: (...a) => api(...a), el, $, famOf, thenAt, headAt, setBlocks, unitText, PART_NAMES, ORBIT_PARTS, partName, partIcon };   // for editor.js, loaded next
 
   const state = {
     view: "status", timer: null, runs: [], run: null, selected: new Set(), data: null,
@@ -59,20 +65,33 @@
 
   // --- login -------------------------------------------------------------------------
 
-  // The header's End button must be right on every tab, so it has its own slow poll.
-  async function pollHeader() {
-    try {
-      if (!document.hidden) {
-        const s = await api("/api/status?log=1");
-        $("#end").hidden = !s.host;
-        $("#end").disabled = Boolean(s.action);
-      }
-    } catch (e) { /* the login screen takes over on a 401 */ }
-    state.headerTimer = setTimeout(pollHeader, 2000);
+  // One status poll for every tab: it keeps the header's End button right, and draws
+  // the Status or Chamber view when that is open (every second there, every two
+  // elsewhere). Each call starts a new loop and retires the one before it (`gen`),
+  // so a tab switch while a request is out never leaves two loops running.
+  let pollGen = 0;
+  function poll() {
+    const gen = ++pollGen;
+    clearTimeout(state.timer);
+    (async function tick() {
+      const view = state.view;
+      try {
+        if (!document.hidden) {
+          const s = await api("/api/status?log=" + (view === "status" ? 40 : 1));
+          if (gen !== pollGen) return;                     // retired while it was out
+          $("#end").hidden = !s.host;
+          $("#end").disabled = Boolean(s.action);
+          renderEnded(s);
+          if (view === "status") renderStatus(s);
+          if (view === "tvac") renderTvac(s);
+        }
+      } catch (e) { /* the login screen takes over on a 401; otherwise try again */ }
+      if (gen === pollGen) state.timer = setTimeout(tick, view === "status" || view === "tvac" ? 1000 : 2000);
+    })();
   }
 
   function showLogin() {
-    clearTimeout(state.headerTimer);
+    pollGen++;                                             // no poll behind the login screen
     stopTimers();
     state.plansLoaded = false;
     $("#app").hidden = true;
@@ -81,9 +100,7 @@
   }
 
   async function startApp(user) {
-    clearTimeout(state.headerTimer);
     showDemo();
-    pollHeader();
     $("#login").hidden = true;
     $("#app").hidden = false;
     $("#who").textContent = user;
@@ -118,16 +135,16 @@
     $("#view-tvac").hidden = view !== "tvac";
     $("#view-plots").hidden = view !== "plots";
     stopTimers();
-    if (view === "status") { state.plansLoaded = false; pollStatus(); }     // plans may have been saved since
-    if (view === "plots") loadRuns();
+    if (view === "status") state.plansLoaded = false;      // plans may have been saved since
+    if (view === "plots") { loadRuns(); if ($("#live").checked) followLive(); }
     if (view === "plans" && window.App.editor) window.App.editor.open();
-    if (view === "tvac") pollTvac();
+    poll();
   }
   for (const b of document.querySelectorAll("#nav button")) b.addEventListener("click", () => show(b.dataset.view));
 
   function stopTimers() {
     clearTimeout(state.timer);
-    clearInterval(state.plotTimer);
+    clearTimeout(state.plotTimer);
     state.timer = state.plotTimer = null;
   }
 
@@ -203,7 +220,7 @@
     for (const id of ["#start", "#pause", "#resume", "#end"]) $(id).disabled = busy(s);
     const note = $("#action");
     if (s.action === "starting") { note.className = "note"; note.textContent = "Starting the run..."; }
-    else if (s.action === "ending") { note.className = "note"; note.textContent = "Ending: each instrument's shutdown is running..."; }
+    else if (s.action === "ending") { note.className = "note"; note.textContent = "Ending: the end script is running, then each instrument's shutdown..."; }
     else if (note.dataset.sticky !== "1") { note.textContent = ""; }
     if (!running && !state.plansLoaded) loadPlans();
   }
@@ -219,7 +236,7 @@
       const r = await api("/api/plans");
       const sel = $("#plan"), keep = sel.value;
       sel.replaceChildren();
-      for (const p of r.plans.filter((p) => p.kind === "plan")) {          // a block or an orbit is opened, never run
+      for (const p of r.plans.filter((p) => p.kind === "plan" && !p.end)) {   // a block or an orbit is opened, never run; the end script is End's
         const o = el("option", { value: p.name },
           p.error ? `${p.name} (cannot run)`
             : `${p.name} - ${p.rscripts.join(", ")}${p.open_ended ? " - until you end it" : ""}${p.warnings?.length ? " - \u26a0 checks at the start" : ""}`);
@@ -245,9 +262,34 @@
   $("#start").addEventListener("click", () => act("/api/run", { plan: $("#plan").value }, "Start"));
   $("#pause").addEventListener("click", () => act("/api/pause", {}, "Pause"));
   $("#resume").addEventListener("click", () => act("/api/resume", {}, "Resume"));
-  $("#end").addEventListener("click", () => {
-    if (confirm("End the run? Each instrument's shutdown runs (outputs off, pumping it started stopped).")) act("/api/end", {}, "End");
+  // End: the dialog says what the end script will do for this plan's routines.
+  $("#end").addEventListener("click", async () => {
+    let steps = [];
+    try { steps = (await api("/api/end/steps")).steps; } catch (e) { /* the generic question then */ }
+    const what = steps.length ? "End the run? This runs, in order:\n\n" + steps.map((s) => "  " + s).join("\n")
+      + "\n\nthen each instrument's shutdown." : "End the run? Each instrument's shutdown runs.";
+    if (confirm(what)) act("/api/end", {}, "End");
   });
+
+  // How the last run ended, shown until dismissed (the dismissal is this browser's).
+  function renderEnded(s) {
+    const box = $("#ended");
+    const e = s.ended;
+    let seen = null;
+    try { seen = localStorage.getItem("ended-seen"); } catch (err) { /* no storage */ }
+    if (s.host || !e || seen === e.when) { box.hidden = true; return; }
+    const warned = (e.warnings || []).length > 0 || /not reached/.test(e.chamber || "");
+    box.className = "banner " + (warned ? "stopped" : "running");
+    const how = { ended: "ended", complete: "completed", failed: "stopped on a failed step", error: "stopped on an error" }[e.how] || e.how;
+    const lines = [`${e.plan} ${how} at ${new Date(e.when).toLocaleString()}.`];
+    if (e.chamber) lines.push(e.chamber + ".");
+    if (warned) lines.push("Not done: " + (e.warnings || []).join("; ") + ".");
+    box.replaceChildren(el("span", {}, lines.join(" ")));
+    const ok = el("button", { type: "button" }, "Dismiss");
+    ok.addEventListener("click", () => { try { localStorage.setItem("ended-seen", e.when); } catch (err) { /* no storage */ } box.hidden = true; });
+    box.append(ok);
+    box.hidden = false;
+  }
 
   // The command box: the same words as the cast tab. Suggestions come from the
   // server, which asks the instruments' own declared commands what may follow.
@@ -311,14 +353,6 @@
     }
   });
 
-  async function pollStatus() {
-    if (state.view !== "status") return;
-    try {
-      if (!document.hidden) renderStatus(await api("/api/status?log=40"));
-    } catch (e) { /* login screen takes over on a 401; otherwise try again */ }
-    if (state.view === "status") state.timer = setTimeout(pollStatus, 1000);
-  }
-
   // --- the chamber -------------------------------------------------------------------
 
   function renderTvac(s) {
@@ -346,14 +380,7 @@
     }));
   }
 
-  async function pollTvac() {
-    if (state.view !== "tvac") return;
-    try {
-      if (!document.hidden) renderTvac(await api("/api/status?log=1"));
-    } catch (e) { /* the login screen takes over on a 401; otherwise try again */ }
-    if (state.view === "tvac") state.timer = setTimeout(pollTvac, 1000);
-  }
-  $("#tvac-unit").addEventListener("change", () => { clearTimeout(state.timer); pollTvac(); });
+  $("#tvac-unit").addEventListener("change", poll);
 
   // --- plots -------------------------------------------------------------------------
 
@@ -428,13 +455,28 @@
     }
   }
 
+  let seriesSeq = 0;
   async function loadSeries() {
     if (!state.run || !state.selected.size) { state.data = null; drawAll(); return; }
     const names = [...state.selected].map(encodeURIComponent).join(",");
+    const mine = ++seriesSeq;
     try {
-      state.data = await api(`/api/runs/${encodeURIComponent(state.run.id)}?vars=${names}&max=2000`);
+      const data = await api(`/api/runs/${encodeURIComponent(state.run.id)}?vars=${names}&max=2000`);
+      if (mine !== seriesSeq) return;                      // a newer request has been sent since
+      state.data = data;
     } catch (e) { return; }
     drawAll();
+  }
+
+  // Follow the run live: every 5 s, the next request only once the last is back.
+  function followLive() {
+    clearTimeout(state.plotTimer);
+    async function tick() {
+      if (state.view !== "plots" || !$("#live").checked) return;
+      if (!document.hidden) await loadSeries();
+      if (state.view === "plots" && $("#live").checked) state.plotTimer = setTimeout(tick, 5000);
+    }
+    state.plotTimer = setTimeout(tick, 5000);
   }
 
   function groupsOf(data) {
@@ -524,8 +566,8 @@
   $("#tempunit").addEventListener("change", () => { state.tempUnit = $("#tempunit").value; drawAll(); });
   $("#reset").addEventListener("click", () => { state.x0 = state.x1 = null; drawAll(); });
   $("#live").addEventListener("change", () => {
-    clearInterval(state.plotTimer);
-    state.plotTimer = $("#live").checked ? setInterval(() => { if (!document.hidden) loadSeries(); }, 5000) : null;
+    clearTimeout(state.plotTimer);
+    if ($("#live").checked) followLive();
   });
   window.addEventListener("resize", redraw);
 

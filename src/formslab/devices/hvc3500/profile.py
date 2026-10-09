@@ -68,6 +68,16 @@ def profile_path() -> Path:
     return live
 
 
+# The parsed file by (path, modified time): the plan editor asks for the profile on
+# every line it reads, and the file changes only when an operator edits it.
+_read: dict[str, tuple[int, dict]] = {}
+
+
 def load_profile(path: Path | None = None) -> BenchProfile:
-    with open(path or profile_path(), "r", encoding="utf-8") as f:
-        return BenchProfile.from_dict(json.load(f))
+    path = Path(path or profile_path())
+    stamp = path.stat().st_mtime_ns
+    hit = _read.get(str(path))
+    if hit is None or hit[0] != stamp:
+        with open(path, "r", encoding="utf-8") as f:
+            hit = _read[str(path)] = (stamp, json.load(f))
+    return BenchProfile.from_dict(hit[1])

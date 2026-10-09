@@ -242,11 +242,18 @@ def refusal(label: str, request: dict, *, blocks: dict | None = None, now: float
     return " ".join(why for why, _ in assess(label, request, blocks=blocks, now=now)) or None
 
 
+def _only_off(request) -> bool:
+    """A supply request that only turns channels off ({"1": {"on": False}})."""
+    channels = [v for k, v in (request or {}).items() if str(k).isdigit()]
+    return bool(channels) and all(isinstance(v, dict) and v == {"on": False} for v in channels)
+
+
 def assess(label: str, request: dict, *, blocks: dict | None = None,
-           now: float | None = None) -> list[tuple[str, bool]]:
+           now: float | None = None, ending: bool = False) -> list[tuple[str, bool]]:
     """[(why, definite)] for each rule `request` to `label` would break now.
     `definite` is False when the rule fails only on conditions that cannot be
-    told yet (the owner has not reported): a plan step waits for those."""
+    told yet (the owner has not reported): a plan step waits for those.
+    `ending`: the end script's own step, which may turn off a channel a routine owns."""
     from formslab.rscripts import cast
 
     label = label.lower()
@@ -257,6 +264,8 @@ def assess(label: str, request: dict, *, blocks: dict | None = None,
     reasons = []
 
     for ch, info in owned_channels(label, request):
+        if ending and _only_off(request):
+            continue
         owner = next((m for m in labels.values() if cast.script_name(m) == info["owner"]), None)
         if owner is not None and any(_fresh(blocks.get(lb.lower()) or {}, now)
                                      for lb in cast.labels_of(owner)):

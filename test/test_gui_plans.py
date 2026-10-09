@@ -11,7 +11,7 @@ from formslab import config
 from formslab.gui import api, plans
 from formslab.sequence import PlanError, discover, find_plan, parse_plan
 from formslab.sequence.plan import (
-    available_rscripts, check_text, line_options, search_dirs, user_plans_dir,
+    available_rscripts, check_text, line_options, search_dirs, tokens, user_plans_dir,
 )
 
 from gui_helpers import Client, running_server
@@ -22,7 +22,7 @@ load rLACO rNotThere
 record every 0 s
 hvc pump onn
 hold 30s
-until chamberp < 5
+until chamberp < 5 C
 orbit.a = 7
 log fine
 psu1 ch1 on
@@ -37,7 +37,7 @@ def test_a_draft_reports_every_problem_with_its_line():
     assert errors[3] == "record needs a positive duration"
     assert "did you mean 'on'" in errors[4]
     assert "write `30 s`, with a space" in errors[5]
-    assert "until needs `within" in errors[6]
+    assert "chamberP is in Torr; C and K only apply to temperatures" in errors[6]
     assert "FORMS mission configuration" in errors[7]
     assert errors[9] == "psu1 is declared by rPSU; add it to `load`"
     assert 8 not in errors and 1 not in errors                         # the log line and the comment are fine
@@ -73,7 +73,7 @@ def test_every_shipped_plan_checks_clean(name):
 def test_options_at_every_position_of_a_step():
     r = line_options(["rLACO"], ["hvc", "platen"])
     first, second, third = r["positions"]
-    assert [o["text"] for o in first] == ["hold", "log", "repeat", "end", "until", "hvc", "eclipse", "pumpdown", "sunrise", "vent"]   # blocks last
+    assert [o["text"] for o in first] == ["hold", "log", "repeat", "end", "until", "when", "hvc", "eclipse", "pumpdown", "sunrise", "vent"]   # blocks last
     assert [o["text"] for o in second][:3] == ["platen", "shroud", "vacuum"]
     assert third[0] == {"kind": "number", "text": "temperature", "help": "Set the platen temperature",
                         "lo": -180.0, "hi": 200.0, "unit": "C", "part": "zone"}
@@ -99,7 +99,7 @@ def test_a_label_whose_rscript_is_not_loaded_says_to_load_it():
 def test_until_offers_exactly_what_the_loaded_scripts_publish():
     names = [o["text"] for o in line_options(["rSMTC08"], ["until"])["positions"][1]]
     assert names == [f"TC{i:02d}" for i in range(1, 17)]
-    assert "until" not in [o["text"] for o in line_options(["rCryoBoard"], [])["positions"][0]]   # nothing to wait on
+    assert "until" not in [o["text"] for o in line_options(["rSLTA"], [])["positions"][0]]   # nothing to wait on
 
 
 def test_the_rscripts_a_plan_can_load():
@@ -320,7 +320,7 @@ def test_every_word_gets_its_role_in_the_grammar():
         [],
         [("hvc", "verb"), ("pump", "kw"), ("on", "kw")],
         [("hold", "verb"), ("15", "value"), ("s", "kw")],
-        [("until", "verb"), ("platenT", "kw"), (">", "kw"), ("10", "value"), ("C", "kw"),
+        [("until", "verb"), ("platenT", "kw"), (">", "kw"), ("10", "value"), ("C", "unit"),
          ("within", "kw"), ("30", "value"), ("s", "kw")],
         [("log", "verb"), ("pumpdown", "text"), ("done:", "text"), ("closed", "text")],
     ]
@@ -397,7 +397,7 @@ def shipped(tmp_path, monkeypatch):
     folder.mkdir()
     (folder / "ours.plan").write_text("load rSMTC08\nhold 1 s\n", encoding="utf-8")
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(plans, "shipped_dir", lambda: folder)
+    monkeypatch.setattr(plans.planfile, "shipped_dir", lambda: folder)
     return folder
 
 
@@ -470,7 +470,7 @@ def test_renaming_a_block_renames_its_line_and_your_calls_to_it():
 
 
 def test_renaming_an_orbit_renames_the_plans_that_follow_it():
-    orbit = (Path(__file__).resolve().parents[1] / "plans" / "leo_noon.orbit").read_text(encoding="utf-8")
+    orbit = (Path(__file__).resolve().parent / "fixtures" / "plans" / "leo_noon.orbit").read_text(encoding="utf-8")
     saved = plans.save("my_orbit", orbit, None, as_new=True, kind="orbit")
     plans.save("watch", "load rOrbit\n\norbit follow my_orbit\nhold 1 s\n", None, as_new=True)
     out = plans.rename("my_orbit", "noon2", saved["hash"])
@@ -558,3 +558,29 @@ def test_the_load_line_comes_back_as_the_steps_need_it(name, expected):
 def test_needs_over_http(server, client):
     assert client.json("POST", "/api/plan/needs", {"text": "hvc vent open\n"}) == (200, {"rscripts": ["rLACO"]})
     assert Client(server).json("POST", "/api/plan/needs", {"text": ""})[0] == 401
+
+
+# --- units inside their value's box ----------------------------------------------------------
+
+def _box(scripts, line, k):
+    r = line_options(scripts, line.split())
+    o = next(o for o in r["positions"][k] if o["kind"] in ("number", "integer"))
+    return o.get("units"), o.get("unit_default"), o.get("unit_implied")
+
+
+@pytest.mark.parametrize("line, k, units", [
+    ("until chamberP < 5 Torr", 3, (["Torr"], "Torr", "Torr")),          # the value's own unit
+    ("until platenT > 10 C", 3, (["C", "K"], "C", "K")),                 # a temperature: C or K, Celsius first
+    ("vent within 60 min", 2, (["min"], "min", None)),                    # a block input's fixed unit
+    ("hold 5 min", 1, (None, None, None)),                                # a time: s, min, h stay a choice
+    ("until chamberP < 5 Torr within 2 h", 6, (None, None, None)),
+    ("hvc platen 40", 2, (None, None, None)),                             # no unit word follows
+])
+def test_a_number_says_which_units_its_box_holds(line, k, units):
+    assert _box(["rLACO"], line, k) == units
+
+
+def test_a_read_only_line_draws_a_unit_in_its_value():
+    rows = tokens("load rLACO\nvent within 60 min\nuntil chamberP < 5 Torr within 2 h\n")
+    assert [t["role"] for t in rows[1]] == ["verb", "kw", "value", "unit"]
+    assert [t["role"] for t in rows[2]] == ["verb", "kw", "kw", "value", "unit", "kw", "value", "kw"]

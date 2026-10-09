@@ -1,0 +1,27 @@
+# ============================================================
+# plan: warm_soak -- pump down, soak warm, return to air
+# ============================================================
+# The first thermal vacuum test: the platen and shroud held at 40 °C for 30
+# minutes under rough vacuum. No cold, so no liquid nitrogen.
+#
+# Start: ambient. The chamber at atmosphere with its door closed, the platen and
+#   shroud between 10 and 40 °C.
+# End:   at atmosphere, the vent valve open. Both zones off, both pumps off.
+# Fails: the chamber is not at atmosphere at the start, does not reach 5 Torr
+#   within 20 minutes, a zone does not reach 40 °C within 60 minutes, or the
+#   chamber does not return to air as vent_to_ambient requires.
+#
+# Takes about 1 hour 40 minutes: 6 to pump down, up to 60 to warm, 30 to soak.
+
+load rLACO
+record every 10 s
+
+begin at ambient
+pumpdown to 5 Torr
+warm to 40 C within 60 min
+hold 30 min
+
+hvc platen off
+hvc shroud off
+vent within 60 min
+log soaked at 40 C and back at atmosphere

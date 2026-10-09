@@ -1,9 +1,9 @@
 # Rough the chamber down to a pressure, then seal it
 # Closes the vent, fill and gate valves, starts the vacuum pump and waits 15 s as
-# the controller requires, opens the vacuum valve, waits for the pressure, then
-# closes the vacuum valve and stops the pump. It leaves the turbo pump and the
-# foreline valve as they are: the turbo's spin-down cannot be read, so a block
-# cannot know when the foreline may close. If the turbo is running, opening the
+# the controller requires, checks the chamber is still above 0.01 Torr, opens the
+# vacuum valve, waits up to 20 minutes for the pressure, then closes the vacuum
+# valve and stops the pump. It leaves the turbo pump and the foreline valve as they
+# are, so start from begin at ambient: if the turbo pump is running, opening the
 # vacuum valve is refused and the run stops there.
 block pumpdown to <pressure:number 0.01..760 Torr>
 load rLACO
@@ -13,6 +13,7 @@ hvc fill close
 hvc gate close
 hvc pump on
 hold 15 s
+until chamberP >= 0.01 within 30 s
 hvc rough open
 until chamberP < {pressure} within 20 min
 hvc stop
