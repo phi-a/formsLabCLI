@@ -146,6 +146,7 @@ class PicoI2C:
         sda_pin=23,
         freq=200000,
         firmware_path=None,
+        pull=False,
     ):
         self.device_path = device_path
         self.baudrate = int(baudrate)
@@ -153,6 +154,7 @@ class PicoI2C:
         self.scl_pin = int(scl_pin)
         self.sda_pin = int(sda_pin)
         self.freq = int(freq)
+        self.pull = bool(pull)              # the Pico's own pull-ups on SCL and SDA
         self.firmware_path = Path(firmware_path) if firmware_path else DEFAULT_FIRMWARE
         self._transport = None
         self._deployed = False
@@ -198,7 +200,7 @@ class PicoI2C:
     def _configure(self):
         """Bind the bus to the configured pins. Reads and writes nothing."""
         self._call(
-            f"main.configure(scl={self.scl_pin}, sda={self.sda_pin}, freq={self.freq})"
+            f"main.configure(scl={self.scl_pin}, sda={self.sda_pin}, freq={self.freq}, pull={self.pull})"
         )
         self._deployed = True
 

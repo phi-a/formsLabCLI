@@ -5,7 +5,7 @@
 # (cryo ccvres, cryo code), with its supply, psu1 CH1, asked of rPSU. Each request
 # on CAST "cryo" is answered: done once the board has applied it, or refused with
 # why, so a plan step stops the run on a refusal. The board's state is published
-# for plans to wait on, and recorded: CRYO_LINK, CRYO_ON, CRYO_PGOOD, CRYO_CCV, CRYO_RES,
+# for plans to wait on, and recorded: CRYO_LINK, CRYO_ON, CRYO_OK, CRYO_CCV, CRYO_RES,
 # CRYO_SUPPLY_V.
 import os
 import time
@@ -91,14 +91,15 @@ COMMANDS = [
      board now.""",
      lambda w: {w: True}),
 ]
-VARIABLES = [("CRYO_LINK", "bool"), ("CRYO_ON", "bool"), ("CRYO_PGOOD", "bool"),
+VARIABLES = [("CRYO_LINK", "bool"), ("CRYO_ON", "bool"), ("CRYO_OK", "bool"),
              ("CRYO_CCV", "V"), ("CRYO_RES", "ohm"), ("CRYO_SUPPLY_V", "V")]
 
 
 def READINGS(label, status):
     return [
-        ("Board", None, [("LINK", "Board link", ("Up", "Down")), ("ON", "Output", ("On", "Off")),
-                         ("PGOOD", "Output in regulation", ("Yes", "No")),
+        ("Board", None, [("ERR", "Problem"), ("LINK", "Board link", ("Up", "Down")), ("ON", "Output", ("On", "Off")),
+                         ("OK", "Output on, no fault", ("Yes", "No")), ("MODE", "Converter mode"),
+                         ("FAULTS", "Faults"), ("LASTFAULT", "Last fault"),
                          ("CCV", "Cooler voltage (V)"), ("CCVRES", "Variable resistor (ohm)"),
                          ("CCVRES#", "Resistor step")]),
         ("Supply", None, [("PSU", "Supply channel"), ("PSUON", "Supply output", ("On", "Off")),
@@ -133,6 +134,8 @@ class rGlobal:
     _pending_since = None       # when it arrived (time.monotonic)
     _shutdown_latch = False
     _next_status = 0.0          # when the board is next read for the published values
+    _last_fault = None          # the last fault the converter reported, and when (it clears them on read)
+    _was_on = False             # the converter's output was on at the last read
 
 
 rg = rGlobal
@@ -160,7 +163,11 @@ def _refresh_status(run, r_global):
         "CCV": None,
         "CCVRES": None,
         "CCVRES#": None,
-        "PGOOD": None,
+        "OK": None,
+        "MODE": None,
+        "FAULTS": None,
+        "LASTFAULT": getattr(r_global, "_last_fault", None),
+        "ERR": getattr(r_global, "_init_error", None),
     }
 
     try:
@@ -187,7 +194,9 @@ def _refresh_status(run, r_global):
                     "CCV": board.get("output_voltage_v"),
                     "CCVRES": board.get("resistance_ohms"),
                     "CCVRES#": board.get("resistance_code"),
-                    "PGOOD": board.get("pgood"),
+                    "OK": board.get("output_healthy"),
+                    "MODE": board.get("conversion"),
+                    "FAULTS": ", ".join(board.get("faults") or []) or "none",
                 }
             )
         except Exception as exc:
@@ -199,14 +208,30 @@ def _refresh_status(run, r_global):
             status["LINK"] = False
             status["ERR"] = str(exc)
 
+    _watch_output(run, r_global, status)
     UpdateStatus("cryo", status)
     _publish(run, status)
     r_global._next_status = time.monotonic() + STATUS_INTERVAL
 
 
+def _watch_output(run, r_global, status):
+    """Keep the last fault the converter reported, since reading clears it, and
+    say when its output went off without being told to."""
+    faults = status.get("FAULTS")
+    if faults and faults != "none":
+        r_global._last_fault = f"{faults} at {time.strftime('%H:%M:%S')}"
+        status["LASTFAULT"] = r_global._last_fault
+        run.log(f"converter fault: {faults}", level="WARNING", component="CRYO")
+    if r_global._was_on and status.get("ON") and status.get("OK") is False:
+        run.log("the converter's output went off without cryo off "
+                f"({'last fault ' + r_global._last_fault if r_global._last_fault else 'no fault seen'}): "
+                "cryo on turns it on again", level="WARNING", component="CRYO")
+    r_global._was_on = bool(status.get("OK"))
+
+
 def _publish(run, status):
     """The board's state as the run's values, for plans to wait on."""
-    for name, key in (("CRYO_LINK", "LINK"), ("CRYO_ON", "ON"), ("CRYO_PGOOD", "PGOOD")):
+    for name, key in (("CRYO_LINK", "LINK"), ("CRYO_ON", "ON"), ("CRYO_OK", "OK")):
         run.publish(name, 1 if status.get(key) else 0, "bool")
     for name, key, unit in (("CRYO_CCV", "CCV", "V"), ("CRYO_RES", "CCVRES", "ohm"),
                             ("CRYO_SUPPLY_V", "CCVINM", "V")):
@@ -221,7 +246,8 @@ def _not_ready(r_global):
     if not getattr(r_global, "_psu2_ready", False):
         return (f"its supply, {label} CH{channel}, is not at {supply['volts']:g} V "
                 f"{supply['amps']:g} A (is rPSU loaded?)")
-    return "the board did not answer through the Pico (is it connected?)"
+    return "the board did not start: " + (getattr(r_global, "_init_error", None)
+                                         or "it did not answer through the Pico (is it connected?)")
 
 
 def _ensure_initialized(run, r_global):
@@ -330,6 +356,8 @@ def _apply_request(run, r_global, request):
     if needs_init:
         if not _ensure_initialized(run, r_global):
             _refresh_status(run, r_global)
+            if getattr(r_global, "_init_failures", 0) >= 2:      # not a slow start: it failed, twice
+                return True, False, [_not_ready(r_global)]
             return False, False, [_not_ready(r_global)]
         if startup:
             r_global._shutdown_latch = False
@@ -388,7 +416,8 @@ def rScript(run):
 
     if not rg._init_attempted:
         rg._init_attempted = True
-    if not rg._shutdown_latch and (not rg._psu2_ready or rg.cryo is None):
+    ending = getattr(run, "ending", False)       # the run is ending: never bring the board back up
+    if not ending and not rg._shutdown_latch and (not rg._psu2_ready or rg.cryo is None):
         _ensure_initialized(run, rg)
         _refresh_status(run, rg)
 

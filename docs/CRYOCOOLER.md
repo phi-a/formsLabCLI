@@ -95,7 +95,7 @@ run's CSV:
 |---|---|
 | `CRYO_LINK` | the board answers through the Pico (on/off) |
 | `CRYO_ON` | the output is enabled (on/off) |
-| `CRYO_PGOOD` | the converter reports its output in regulation (on/off) |
+| `CRYO_OK` | the converter reports its output on (its own enable bit) with no fault latched (on/off). It does not say the voltage is right: the TPS55288 has no power-good bit, so the output voltage takes a meter |
 | `CRYO_CCV` | the cooler voltage commanded (V) |
 | `CRYO_RES` | the variable resistor as set (ohm) |
 | `CRYO_SUPPLY_V` | the board's supply as measured (V) |
@@ -107,6 +107,42 @@ more (`ccvres_up_cools_more`, never checked), and rChilldown set it directly (24
 or 270 ohm). It has to be measured: hold each resistance until the cold side
 settles and read the temperature it settles at; `CRYO_RES` and the thermocouple in
 the same CSV give the curve.
+
+## When the board does not start
+
+`cryo startup` is refused, and the run stops, after two failed tries (about 10 s),
+with the reason on the board's status card (*Problem*) and in the run log, the
+full traceback once:
+
+| the reason says | means | check |
+|---|---|---|
+| the I2C clock line stayed low (ETIMEDOUT) | the board side has no power, so its pull-ups do not reach the Pico | the cable from psu1 CH1 to the board, the board's input; the supply's current |
+| nothing answered on the I2C bus (ENODEV) | the Pico's bus works but the chips are unpowered or not wired | the board's 3.3 V rail, the I2C harness (GP16/GP17) |
+| the Pico's serial port did not open | the bridge itself | the Pico's USB cable, its port in usbmap.json |
+
+The reason carries the supply's reading. **24 V with a few mA** means the supply is on
+but nothing is drawing from it: the board is not connected to that channel, or its
+input is open. A powered board draws far more.
+
+**What the converter reports.** The TPS55288's STATUS register (07h) holds the
+short-circuit, over-current and over-voltage flags (bits 7-5, cleared when read)
+and its operating mode (bits 1-0: boost, buck, buck-boost). It has no power-good
+bit; until 2026-10-08 formsLabCLI read bits 1 and 0 as "pgood" and "intvref", so a
+working output at 24 V in and 12 V out (buck, 0x01) read as "not good". The output
+is now judged by the converter's own enable bit (MODE bit 7) and the fault flags,
+and its voltage by a meter.
+
+**Pull-ups.** I2C needs SCL and SDA pulled up to 3.3 V. The board's two pull-up
+resistors were removed (2026-10-08) so it works with the FlatSat; without pull-ups
+both lines sit at 0 V, the scan is silent and every write times out (ETIMEDOUT),
+though the board is powered. On the bench there are two ways back:
+
+- 4.7 kΩ from GP16 (SDA) and from GP17 (SCL) to the Pico's 3V3(OUT), on the bench
+  harness: the reliable fix, and the board stays as the FlatSat needs it. Then
+  `"pullup": "board"` and `"freq": 100000` in `cryo_board.i2c`.
+- `"pullup": "internal"` and a slow bus, `"freq": 20000`, in `cryo_board.i2c` of the
+  live `usbmap.json`: the Pico turns on its own pull-ups (about 50 kΩ). Weak, so slow;
+  set on this bench since 2026-10-08.
 
 ## Power thresholds
 
@@ -146,7 +182,7 @@ cryo = CryoBoard("cryo_board")
 
 cryo.scan()             # ['0x18', '0x74']  -- communication health
 cryo.present()          # {'converter': True, 'digipot': True, ...}
-cryo.read_status()      # decoded STATUS: pgood / intvref / sc / ocp / ovp
+cryo.read_status()      # decoded STATUS: mode (boost/buck/buck-boost) / sc / ocp / ovp
 cryo.read_registers()   # full dump of both devices
 ```
 
@@ -169,7 +205,7 @@ cryo.shutdown()                                   # disable + release the link
 |---|---|
 | `connected`, `port` | serial link to the bridge |
 | `i2c_devices`, `converter_present`, `digipot_present` | bus health |
-| `pgood`, `intvref`, `faulted`, `faults`, `output_healthy` | converter output health |
+| `output_on`, `conversion`, `faulted`, `faults`, `output_healthy` | converter output health: its own enable bit, its operating mode, its latched protection flags; healthy = on with no fault |
 | `enabled`, `output_voltage_v`, `resistance_ohms`, `resistance_code` | what was commanded |
 
 A transport failure raises; a device that simply does not answer is reported

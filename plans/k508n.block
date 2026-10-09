@@ -7,8 +7,9 @@
 # board's supply to reach 20 V, the least its converter can drive the cooler from.
 # Sets the variable resistor, which sets the K508N's fixed-point temperature control
 # (which resistance gives which temperature has not been measured), then the cooler
-# voltage, 8.5 to 20 V, and turns the output on. Then waits up to 30 s for the output
-# to be in regulation. The cooler runs until cryo off, cryo shutdown or the end of
+# voltage, 8.5 to 20 V, and turns the output on. Then waits up to 30 s for the
+# converter to report its output on with no fault (it reports no power-good: the
+# voltage itself takes a meter). The cooler runs until cryo off, cryo shutdown or the end of
 # the run. While rCryoBoard runs, psu1 CH1 is its own: a plan that calls this block
 # may not command it.
 block k508n at <volts:number 8.5..20 V> with <resistance:number 62..1120 ohm>
@@ -20,4 +21,4 @@ until CRYO_SUPPLY_V >= 20 V within 1 min
 cryo ccvres {resistance}
 cryo ccv {volts}
 cryo on
-until CRYO_PGOOD = true within 30 s
+until CRYO_OK = true within 30 s

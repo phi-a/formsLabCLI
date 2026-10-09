@@ -358,6 +358,17 @@ def test_rpsu_applies_requests_publishes_scalars_and_turns_off_at_shutdown(run, 
     assert psu.ch[1]["on"] is False and psu.disconnected
 
 
+def test_rpsu_switches_nothing_on_while_the_run_is_ending(run, bench):
+    """The end script cuts the cooler's and the camera's supplies; nothing may turn them
+    back on before the routines let go."""
+    rscripts.load(run, ["rPSU"])
+    run.ending = True
+    WriteCommand({"1": {"voltage": 24.0, "current": 1.0, "on": True}}, "psu1")
+    rscripts.tick(run)
+    assert bench["psu1"].ch[1]["on"] is False and bench["psu1"].ch[1]["vset"] == 24.0   # set, not switched on
+    rscripts.shutdown(run)
+
+
 def test_rpsu_leaves_channels_it_did_not_switch_on(run, bench):
     rscripts.load(run, ["rPSU"])
     rscripts.tick(run)

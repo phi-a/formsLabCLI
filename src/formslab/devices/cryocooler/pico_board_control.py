@@ -19,6 +19,13 @@ Pin assignment
 ``SCL_PIN``/``SDA_PIN`` below are only defaults. The PC overrides them from
 the ``cryo_board.i2c`` block in ``lab/usbmap.json`` on every connection, so
 rewiring the board is a config edit, not a firmware edit.
+
+Pull-ups
+--------
+I2C needs pull-ups on SCL and SDA. They are normally resistors on the board;
+``pull=True`` (``"pullup": "internal"`` in usbmap.json) turns on the Pico's own
+instead, about 50 kohm, for a board whose resistors were removed. They are
+weak: use a slow bus with them (about 20 kHz).
 """
 
 import machine
@@ -29,15 +36,17 @@ SDA_PIN = 23
 FREQ = 200000
 
 _i2c = None
-_config = {"scl": SCL_PIN, "sda": SDA_PIN, "freq": FREQ}
+_config = {"scl": SCL_PIN, "sda": SDA_PIN, "freq": FREQ, "pull": False}
 
 
-def configure(scl=SCL_PIN, sda=SDA_PIN, freq=FREQ):
-    """Bind the I2C bus to a pin pair. Returns the configuration in use."""
+def configure(scl=SCL_PIN, sda=SDA_PIN, freq=FREQ, pull=False):
+    """Bind the I2C bus to a pin pair, with the Pico's own pull-ups when `pull`.
+    Returns the configuration in use."""
     global _i2c
     _config["scl"] = int(scl)
     _config["sda"] = int(sda)
     _config["freq"] = int(freq)
+    _config["pull"] = bool(pull)
     _i2c = _open_bus()
     return dict(_config)
 
@@ -47,10 +56,16 @@ def config():
     return dict(_config)
 
 
+def _pin(number):
+    if _config["pull"]:
+        return machine.Pin(number, machine.Pin.OPEN_DRAIN, machine.Pin.PULL_UP)
+    return machine.Pin(number)
+
+
 def _open_bus():
     return machine.SoftI2C(
-        scl=machine.Pin(_config["scl"]),
-        sda=machine.Pin(_config["sda"]),
+        scl=_pin(_config["scl"]),
+        sda=_pin(_config["sda"]),
         freq=_config["freq"],
     )
 

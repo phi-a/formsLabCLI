@@ -152,6 +152,7 @@ class LabSequenceRunner:
         wrong, one line each: the end script, where every step is tried."""
         warnings: list[str] = []
         start = self._clock()
+        self._ending = True
         for i, seg in enumerate(segments):
             label = seg.label or seg.verb
             if self._clock() - start >= cap_s:
@@ -297,7 +298,7 @@ def _command(runner, run, segment) -> int:
     # here; one it cannot tell yet (the owner has not reported since the start) is
     # waited for, within the step's limit.
     start = runner.elapsed
-    while problems := assess(label, request):
+    while problems := assess(label, request, ending=getattr(runner, "_ending", False)):
         if any(definite for _, definite in problems) or runner.elapsed - start >= timeout:
             raise SequenceError(f"{label}: {request} not sent. " + " ".join(w for w, _ in problems))
         tick()

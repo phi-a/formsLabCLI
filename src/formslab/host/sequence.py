@@ -271,6 +271,7 @@ def _end(run, plan, how: str) -> dict:
     shutdowns. Never raises: ending must not fail."""
     global paused
     paused = False
+    run.ending = True                     # routines read it: rPSU switches nothing on, rCryoBoard no bring-up
     out = {"plan": plan.name, "when": datetime.now(timezone.utc).isoformat(timespec="seconds"),
            "how": how, "chamber": None, "warnings": []}
     try:

@@ -249,11 +249,19 @@ def ccvres_ohms_from_code(code):
 # STATUS register
 # --------------------------------------------------------------------------
 
+# TPS55288 datasheet, register 07h: SCP (bit 7), OCP (6), OVP (5) latch a
+# protection event and clear when the register is read; bits 1-0 are the
+# operating mode the converter is in. There is no power-good bit: the
+# converter does not report over I2C whether its output is in regulation, so
+# the output voltage is confirmed only with a meter.
 STATUS_SC = 0x80
 STATUS_OCP = 0x40
 STATUS_OVP = 0x20
-STATUS_PGOOD = 0x02
-STATUS_INTVREF = 0x01
+STATUS_MODE_MASK = 0x03
+STATUS_MODES = {0: "boost", 1: "buck", 2: "buck-boost", 3: "reserved"}
+
+# MODE register (06h) bit 7, OE: the output enable, as the converter holds it.
+MODE_OE = 0x80
 
 STATUS_FAULT_MASK = STATUS_SC | STATUS_OCP | STATUS_OVP
 
@@ -262,11 +270,10 @@ def decode_status(value):
     """
     Decode a STATUS byte into named flags.
 
-    ``faulted`` is true when any protection flag is latched; ``healthy`` means
-    the converter reports a good output off a ready internal reference and no
-    fault. Both describe the *converter*, not the I2C link -- a board whose
-    input sits between ~15 V and ~20 V answers on the bus and still reports an
-    unhealthy output.
+    ``faulted`` is true when any protection flag is latched; ``mode`` is the
+    operating mode (boost, buck, buck-boost); ``healthy`` means no fault and a
+    valid mode. None of it says the output is in regulation: the TPS55288 has no
+    power-good bit (see STATUS_MODES above).
     """
     raw = int(value) & 0xFF
     flags = {
@@ -274,11 +281,10 @@ def decode_status(value):
         "sc": bool(raw & STATUS_SC),
         "ocp": bool(raw & STATUS_OCP),
         "ovp": bool(raw & STATUS_OVP),
-        "pgood": bool(raw & STATUS_PGOOD),
-        "intvref": bool(raw & STATUS_INTVREF),
+        "mode": STATUS_MODES[raw & STATUS_MODE_MASK],
     }
     flags["faulted"] = bool(raw & STATUS_FAULT_MASK)
-    flags["healthy"] = flags["pgood"] and flags["intvref"] and not flags["faulted"]
+    flags["healthy"] = not flags["faulted"] and flags["mode"] != "reserved"
     return flags
 
 

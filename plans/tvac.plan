@@ -14,7 +14,7 @@
 # a different `load` line in a folder named by $FORMSLAB_PLANS_DIR (searched
 # before this checkout), e.g. without rLACO.
 
-load rLACO rSMTC08 rPSU
+load rCryoBoard rLACO rOrbit rPSU rSLTA rSMTC08
 record every 30 s
 
 log manual operation: use the cast tab; ctrl `end` to stop

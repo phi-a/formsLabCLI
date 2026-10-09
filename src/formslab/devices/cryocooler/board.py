@@ -50,6 +50,8 @@ class CryoBoard:
         self.scl_pin = int(i2c_config.get("scl_pin", 22))
         self.sda_pin = int(i2c_config.get("sda_pin", 23))
         self.i2c_freq = int(i2c_config.get("freq", 200000))
+        # "pullup": "internal" -- the Pico's own pull-ups, for a board without its resistors
+        self.i2c_pull = str(i2c_config.get("pullup", "board")).lower() == "internal"
         self.device_path = None
         self.transport = transport
         self.state = {
@@ -126,6 +128,7 @@ class CryoBoard:
                 sda_pin=self.sda_pin,
                 freq=self.i2c_freq,
                 firmware_path=self._firmware_path(),
+                pull=self.i2c_pull,
             )
         self.transport.open()
         self.state["connected"] = True
@@ -225,6 +228,11 @@ class CryoBoard:
         self.state["output_dac_code"] = code
         return code
 
+    def _converter_on(self):
+        """The converter's own output-enable bit (MODE bit 7)."""
+        mode = self._bus().read_register(regs.VCONV_ADDR, regs.MODE)[0]
+        return bool(mode & regs.MODE_OE)
+
     def _write_resistance(self, ohms):
         code = regs.ccvres_code_from_ohms(ohms)
         self._bus().write_register(regs.DIGIPOT_ADDR, regs.REG0, code)
@@ -291,11 +299,24 @@ class CryoBoard:
         A resistance change on a live output drops the output first and
         restores it afterwards if it was requested to stay on, so the wiper
         never moves under load.
+
+        On and off are decided from the converter, not from what was last
+        commanded: an output the converter turned off by itself (a trip, or a
+        reset that also lost its settings) is turned on again by `enabled=True`,
+        with its voltage and current limit written again first.
         """
         if voltage is None and resistance is None and enabled is None:
             return self.status()
 
         current_enabled = bool(self.state.get("enabled", False))
+        if enabled is not None:
+            current_enabled = self._converter_on()
+            if enabled and not current_enabled and self.state.get("enabled"):
+                # Commanded on, but off on the converter: it may have reset, so
+                # what it should hold goes back before the output does.
+                self.disable_current_limit()
+                if voltage is None and self.state.get("output_voltage_v") is not None:
+                    voltage = self.state["output_voltage_v"]
         target_enabled = current_enabled if enabled is None else bool(enabled)
 
         if resistance is not None:
@@ -324,10 +345,13 @@ class CryoBoard:
 
         Communication health -- ``connected``, ``i2c_devices``,
         ``converter_present``, ``digipot_present`` -- comes from an I2C scan.
-        Output health -- ``pgood``, ``intvref``, ``faulted``, ``faults`` --
-        comes from the converter's STATUS register. They are separate on
-        purpose: between roughly 15 V and 20 V of board input the devices
-        answer on the bus while the converter still cannot drive an output.
+        Output health comes from the converter itself: ``output_on`` is its own
+        output-enable bit (MODE), ``conversion`` its operating mode and
+        ``faulted``/``faults`` its latched protection flags (STATUS);
+        ``output_healthy`` is the output on with no fault. The converter reports
+        no power-good, so whether the voltage is right takes a meter. They are
+        separate on purpose: between roughly 15 V and 20 V of board input the
+        devices answer on the bus while the converter still cannot drive an output.
 
         Transport failures propagate; a device that simply does not answer is
         reported in the returned dict.
@@ -348,23 +372,25 @@ class CryoBoard:
             # Reading STATUS there would return noise dressed up as telemetry.
             if self.state["converter_present"] and verdict != "sda_stuck_low":
                 raw = bus.read_register(regs.VCONV_ADDR, regs.STATUS)[0]
+                mode = bus.read_register(regs.VCONV_ADDR, regs.MODE)[0]
                 flags = regs.decode_status(raw)
+                output_on = bool(mode & regs.MODE_OE)
                 self.state.update(
                     {
                         "status_raw": flags["raw"],
-                        "pgood": flags["pgood"],
-                        "intvref": flags["intvref"],
+                        "output_on": output_on,
+                        "conversion": flags["mode"],
                         "faulted": flags["faulted"],
                         "faults": regs.status_faults(raw),
-                        "output_healthy": flags["healthy"],
+                        "output_healthy": output_on and flags["healthy"],
                     }
                 )
             else:
                 self.state.update(
                     {
                         "status_raw": None,
-                        "pgood": None,
-                        "intvref": None,
+                        "output_on": None,
+                        "conversion": None,
                         "faulted": None,
                         "faults": [],
                         "output_healthy": False,

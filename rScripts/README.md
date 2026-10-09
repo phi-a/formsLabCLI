@@ -81,7 +81,7 @@ trailing `?` (`hvc platen ?`) lists what can come next.
 | `rLACO` | LACO chamber via `devices.laco.LACO` (HVC-3500): every controller command | `hvc` | `chamberP`, `<zone>T`, `target_<zone>`, `<zone>_effSP`, `HVC_<sensor>` (K); the valves, pumps and thermal control as on/off (`VentValve`, `VacuumPump`, `HoldingTemperature`, ...); `outputs/LACO.jsonl`. Holds a zone at a thermocouple: `hvc platen 40 at TC01` (docs/SEQUENCE.md) |
 | `rSMTC08` | SMTC08 thermocouple boards A (TC01-08), B (TC09-16) | `tc` (read-only) | `TC01`..`TC16` (K) |
 | `rPSU` | Rigol DP832A supplies psu1/psu2 (enabled ones only) | `psu1`, `psu2` | `PSU1_CH<n>_V/_I/_ON` |
-| `rCryoBoard` | cryocooler control board (Pico I2C), the K508N's drive, and its PSU1 CH1 supply | `cryo` | `CRYO_LINK`, `CRYO_ON`, `CRYO_PGOOD` (on/off), `CRYO_CCV`, `CRYO_SUPPLY_V` (V), `CRYO_RES` (ohm); answers each request |
+| `rCryoBoard` | cryocooler control board (Pico I2C), the K508N's drive, and its PSU1 CH1 supply | `cryo` | `CRYO_LINK`, `CRYO_ON`, `CRYO_OK` (on/off), `CRYO_CCV`, `CRYO_SUPPLY_V` (V), `CRYO_RES` (ohm); answers each request |
 | `rSLTA` | sLTA camera, powered from PSU2 CH1; a capture in progress is stopped at shutdown | `slta` | status on CAST |
 | `rOrbit` | no hardware: an orbit file, followed on the wall clock or from its epoch (docs/ORBIT.md) | `orbit` | `InUmbra`, `UmbraDuration`, `UmbraTimeRemaining`, `NextUmbra` (s), `OrbitBeta` (deg), `OrbitAltitude` (km) |
 

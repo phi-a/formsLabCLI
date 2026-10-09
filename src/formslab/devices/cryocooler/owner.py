@@ -80,8 +80,35 @@ def _init_psu2(run, r_global):
     return r_global
 
 
+INIT_RETRY_S = 10.0     # seconds between attempts to bring up a board that failed
+
+
+def diagnose(exc, supply: dict) -> str:
+    """Why the board did not come up, in words, with what its supply reads."""
+    text = str(exc)
+    if "ETIMEDOUT" in text or "Errno 110" in text:
+        why = ("the I2C clock line stayed low (ETIMEDOUT): the board side has no power, "
+               "or its pull-ups are not reaching the Pico")
+    elif "ENODEV" in text or "Errno 19" in text or "EIO" in text or "Errno 5" in text:
+        why = "nothing answered on the I2C bus (ENODEV): the board's chips are unpowered or not connected"
+    elif "could not open port" in text or "FileNotFoundError" in text or "PermissionError" in text:
+        why = "the Pico's serial port did not open: is it plugged in, and its port right in usbmap.json?"
+    else:
+        last = next((ln for ln in reversed(text.strip().splitlines()) if ln.strip()), type(exc).__name__)
+        why = f"{type(exc).__name__}: {last.strip()}"
+    volts, amps = supply.get("vmeas"), supply.get("cmeas")
+    if volts is not None and amps is not None:
+        why += f"; its supply reads {float(volts):.1f} V, {float(amps) * 1000:.0f} mA"
+        if float(volts) > 15 and float(amps) < 0.010:
+            why += (", too little current for a powered board: check the cable from the "
+                    "supply to the board, and the board's input")
+    return why
+
+
 def _init_cryo_board(run, r_global):
     if r_global.cryo is not None:
+        return r_global
+    if time.monotonic() < getattr(r_global, "_init_retry_at", 0.0):
         return r_global
     try:
         try:
@@ -110,10 +137,24 @@ def _init_cryo_board(run, r_global):
             level="INFO",
             component="CRYO",
         )
+        r_global._init_error, r_global._init_failures = None, 0
     except Exception as exc:
-        tb = traceback.format_exc()
-        run.log(f"Cryocooler board initialization failed: {exc}\n{tb}", level="ERROR", component="CRYO")
+        label, channel = cryo_supply(r_global)
+        why = diagnose(exc, read_psu_channel_status(label, channel))
+        failures = getattr(r_global, "_init_failures", 0) + 1
+        if failures == 1:                        # the whole story once; then one line each time
+            run.log(f"Cryocooler board did not start: {why}\n{traceback.format_exc()}",
+                    level="ERROR", component="CRYO")
+        else:
+            run.log(f"Cryocooler board did not start (try {failures}): {why}", level="ERROR", component="CRYO")
+        if r_global.cryo is not None:            # release the Pico, so the next try can open it
+            try:
+                r_global.cryo.close()
+            except Exception:
+                pass
         r_global.cryo = None
+        r_global._init_error, r_global._init_failures = why, failures
+        r_global._init_retry_at = time.monotonic() + INIT_RETRY_S
     return r_global
 
 

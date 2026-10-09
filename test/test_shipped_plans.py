@@ -30,7 +30,7 @@ def shipped(monkeypatch):
 
 
 def test_the_set_is_what_the_docs_name():
-    assert PLANS == ["end", "rest_from_ambient", "thermal_cycle", "tvac", "vent_to_ambient", "warm_soak"]
+    assert PLANS == ["Cryocooler", "end", "rest_from_ambient", "thermal_cycle", "tvac", "vent_to_ambient", "warm_soak"]
     assert BLOCKS == ["begin", "cool", "detector", "k508n", "pumpdown", "vent", "warm"]
 
 

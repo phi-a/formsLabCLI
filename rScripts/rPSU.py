@@ -221,7 +221,10 @@ def _handle_channel_request(run, label, psu, channel_text, channel_request):
             changed = True
 
         if "on" in channel_request:
-            if channel_request["on"]:
+            if channel_request["on"] and getattr(run, "ending", False):
+                run.log(f"{label.upper()} CH{channel} ON ignored: the run is ending", level="WARNING",
+                        component=name)
+            elif channel_request["on"]:
                 psu.on(channel)
                 rg._switched_on.add((label, channel))
                 run.log(f"{label.upper()} CH{channel} turned ON", component=name)

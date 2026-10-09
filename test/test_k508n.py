@@ -58,7 +58,7 @@ def test_startup_then_on_is_answered_and_published(cryo):
     assert run.get("CRYO_ON") == 1 and run.get("CRYO_CCV") == pytest.approx(17.0)
     assert run.get("CRYO_RES") == pytest.approx(266.0, abs=9)    # the nearest of the resistor's 64 steps
     assert run.get("CRYO_SUPPLY_V") == pytest.approx(24.0)
-    assert run.get("CRYO_PGOOD") == 1                     # the fake converter reports a good output
+    assert run.get("CRYO_OK") == 1                        # the converter's own enable bit on, no fault
 
 
 def test_the_k508n_range_reaches_down_to_8_5_volts(cryo):
@@ -160,3 +160,89 @@ def test_a_plan_that_runs_the_board_may_not_command_its_channel(tmp_path, monkey
         errors, _ = review(base + step + "\n")
         assert errors == [(3, "psu1 ch1 feeds the cryocooler board, and rCryoBoard, loaded here, drives it.")], step
     assert review(base + "psu1 ch2 on\n")[0] == []
+
+
+# --- a board that does not come up ---------------------------------------------------------
+
+class StuckBus(FakeI2C):
+    """The Pico's answer when the board side is unpowered: SCL held low."""
+
+    def write_register(self, address, register, data):
+        raise RuntimeError('Traceback (most recent call last):\n  File "main.py", line 114, in write\n'
+                           "OSError: [Errno 110] ETIMEDOUT")
+
+
+@pytest.fixture
+def stuck(monkeypatch):
+    """rCryoBoard with a board that times out on I2C; its supply on but drawing 2 mA."""
+    bus = StuckBus()
+    real = boardmod.CryoBoard
+    monkeypatch.setattr(boardmod, "CryoBoard",
+                        lambda label: real(label, config_path=config.usbmap_path(), transport=bus))
+    monkeypatch.setattr(owner.time, "sleep", lambda s: None)
+    monkeypatch.setattr(owner, "INIT_RETRY_S", 0.0)
+    spec = importlib.util.spec_from_file_location("rCryoBoard_stuck", ROOT / "rScripts" / "rCryoBoard.py")
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    m.rg.TICK_INTERVAL = 0.0
+    UpdateStatus("psu1", {"1": {"on": True, "vset": 24.0, "cset": 1.0, "vmeas": 24.0, "cmeas": 0.0023}})
+    return m, rscripts.Run(name="T"), bus
+
+
+def test_a_board_that_does_not_answer_is_refused_at_once_with_why(stuck):
+    m, run, bus = stuck
+    out = send(m, run, {"startup": True}, ticks=4)
+    assert out["ok"] is False
+    why = out["messages"][0]
+    assert "ETIMEDOUT" in why and "24.0 V, 2 mA" in why and "check the cable" in why
+    assert bus.closed                                     # the Pico is released for the next try
+    from formslab.console.cast.castutils import ReadStatus
+    assert "ETIMEDOUT" in ReadStatus("cryo")["ERR"]       # and the status card says so
+
+
+@pytest.mark.parametrize("error, words", [
+    ("OSError: [Errno 110] ETIMEDOUT", "clock line stayed low"),
+    ("OSError: [Errno 19] ENODEV", "nothing answered"),
+    ("could not open port 'COM9'", "serial port did not open"),
+])
+def test_the_reason_names_what_the_i2c_error_means(error, words):
+    why = owner.diagnose(RuntimeError(error), {"vmeas": 24.0, "cmeas": 0.25})
+    assert words in why and "24.0 V, 250 mA" in why and "check the cable" not in why
+
+
+def test_end_may_cut_the_boards_channel_and_nothing_switches_it_back_on(cryo):
+    from formslab.rscripts.rules import assess
+    m, run, _ = cryo
+    supply()
+    send(m, run, {"startup": True})
+    off = {"1": {"on": False}}
+    assert assess("psu1", off)                            # a plan step may not
+    assert assess("psu1", off, ending=True) == []         # the end script may
+    assert assess("psu1", {"1": {"on": True}}, ending=True)   # but not switch it on
+    run.ending = True
+    supply(on=False)                                       # the end script has cut it
+    for _ in range(3):
+        m.rScript(run)
+    from formslab.console.cast.castutils import ReadCommand
+    assert not (ReadCommand("psu1") or {}).get("1", {}).get("on")   # rCryoBoard did not ask for it back
+
+
+def test_cryo_on_turns_on_an_output_the_converter_dropped_and_says_why(cryo):
+    from formslab.devices.cryocooler import registers as regs
+    m, run, bus = cryo
+    logged = []
+    run.log = lambda message, **kw: logged.append(message)
+    supply()
+    send(m, run, {"startup": True})
+    send(m, run, {"voltage": 12.0, "enabled": True})
+    assert run.get("CRYO_OK") == 1
+    bus.status = 0b01000001                               # OCP latched...
+    bus.registers[(regs.VCONV_ADDR, regs.MODE)] = 0b00100000   # ...and the output off
+    send(m, run, {"update": True})
+    bus.status = 0b00000001                               # read once, the flag is gone
+    send(m, run, {"update": True})
+    from formslab.console.cast.castutils import ReadStatus
+    assert run.get("CRYO_OK") == 0 and ReadStatus("cryo")["LASTFAULT"].startswith("OCP at")
+    assert any("went off without cryo off" in line and "OCP" in line for line in logged)
+    assert send(m, run, {"enabled": True})["ok"] is True
+    assert run.get("CRYO_OK") == 1                        # on again, from the converter's own bit
