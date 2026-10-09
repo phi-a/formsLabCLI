@@ -259,7 +259,7 @@ def help_panel() -> CLIResult:
     result.append("RUNS\n", HEADER)
     for cmd, desc in (("plans", "List lab plans"),
                       ("run tvac", "Manual chamber operation until `end` (cast tab)"),
-                      ("run <plan>", "Run a lab plan, e.g. run rest_from_ambient")):
+                      ("run <plan>", "Run a lab plan, e.g. run ambient_to_rest")):
         result.append(f"  {cmd:<16}", LABEL)
         result.append(desc + "\n", TEXT)
 

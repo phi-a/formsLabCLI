@@ -329,10 +329,17 @@ Shipped plans, the bench's tests, each built from the blocks above:
 | plan | does | takes about |
 |---|---|---|
 | `tvac` | manual operation from the cast tab, until `end` | until `end` |
-| `rest_from_ambient` | pumps down from ambient to 3 Torr, seals the chamber and leaves it to rest | 10 minutes |
-| `vent_to_ambient` | lets air into a sealed chamber | 5 minutes |
+| `ambient_to_rest` | pumps down from ambient to 3 Torr, seals the chamber and leaves it to rest | 10 minutes |
+| `rest_to_ambient` | lets air into a sealed chamber | 5 minutes |
 | `warm_soak` | pumps down, holds both zones at 40 °C for 30 minutes, returns to air | 1 h 40 min |
 | `thermal_cycle` | pumps down, takes both zones between 60 and -20 °C three times, returns to air | 2 h 30 min or more |
+
+In `plans/` they are sorted into folders: `vacuum/` (`ambient_to_rest`,
+`rest_to_ambient`), `thermal/` (`warm_soak`, `thermal_cycle`) and `darkness/`, with
+the blocks in `blocks/` and orbit files in `orbits/`; `tvac` and `end` stay at the
+top. A folder only sorts the files. A file is found by its name in any of them, so
+moving one changes nothing. Keep each name once: of two files with one name, the
+first found is used. A hidden folder (`.trash`) is not searched.
 
 Each starts with a header that says the state it starts from, the state it leaves,
 and what fails it. Every shipped plan must check with no error and no warning, and
@@ -354,7 +361,8 @@ labcli status / end
 ```
 
 Plans are found by path, or by name in `$FORMSLAB_PLANS_DIR`, `<cwd>/plans`,
-then the checkout's `plans/`. A plan whose rScripts do not all load does not
+then the checkout's `plans/`, in any folder inside them. Blocks and orbit files
+are found the same way. A plan whose rScripts do not all load does not
 start.
 
 Each loop (10 Hz): poll ctrl, pausing here while paused -> each routine once ->

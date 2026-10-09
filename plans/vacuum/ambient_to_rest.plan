@@ -1,5 +1,5 @@
 # ============================================================
-# plan: rest_from_ambient -- pump down from ambient, then seal and rest
+# plan: ambient_to_rest -- pump down from ambient, then seal and rest
 # ============================================================
 # Leaves the chamber sealed under rough vacuum with nothing running, so it can
 # rest there. No orbit and no thermal control.

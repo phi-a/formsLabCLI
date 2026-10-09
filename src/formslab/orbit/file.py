@@ -96,15 +96,9 @@ GRAMMAR = Grammar([
 
 def discover() -> list[Path]:
     """Every orbit file on the plan search path, first of each name."""
-    from formslab.sequence.plan import search_dirs
+    from formslab.sequence.plan import files
 
-    seen, out = set(), []
-    for d in search_dirs():
-        for p in sorted(d.glob(f"*{SUFFIX}")):
-            if p.stem not in seen:
-                seen.add(p.stem)
-                out.append(p)
-    return out
+    return files(SUFFIX)
 
 
 # --- reading -----------------------------------------------------------------

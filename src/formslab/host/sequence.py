@@ -3,7 +3,7 @@
 Started by the console's ctrl tab or `labcli run <plan>`, or directly:
 
     python -m formslab.host.sequence tvac              # manual operation, until `end`
-    python -m formslab.host.sequence plans/rest_from_ambient.plan
+    python -m formslab.host.sequence plans/vacuum/ambient_to_rest.plan
 
 Every run is a lab plan (see `formslab.sequence`): the plan names its rScripts,
 the host loads them on a `Run` handle and runs the plan's steps in one

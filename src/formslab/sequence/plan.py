@@ -133,21 +133,26 @@ def find_plan(target: str) -> Path | None:
     if path.suffix == SUFFIX and path.is_file():
         return path
     stem = target[: -len(SUFFIX)] if target.endswith(SUFFIX) else target
-    for d in search_dirs():
-        candidate = d / f"{stem}{SUFFIX}"
-        if candidate.is_file():
-            return candidate
-    return None
+    return next((p for p in discover() if p.stem == stem), None)
 
 
-def discover() -> list[Path]:
+def files(suffix: str) -> list[Path]:
+    """Every file ending in `suffix` in `search_dirs`, first of each name. Folders
+    inside a plans folder only sort its files: one is searched like the folder
+    itself, so moving a file between them changes nothing. A hidden folder (the
+    trash) is not searched."""
     seen, out = set(), []
     for d in search_dirs():
-        for p in sorted(d.glob(f"*{SUFFIX}")):
-            if p.stem not in seen:
+        for p in sorted(d.rglob(f"*{suffix}")):
+            if p.stem not in seen and p.is_file() and not any(
+                    part.startswith(".") for part in p.relative_to(d).parts):
                 seen.add(p.stem)
                 out.append(p)
     return out
+
+
+def discover() -> list[Path]:
+    return files(SUFFIX)
 
 
 # --- reading -----------------------------------------------------------------

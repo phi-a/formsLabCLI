@@ -158,7 +158,7 @@ are read-only here, marked *shipped*. Two buttons move a file between the
 shipped plans and yours, so a name is only ever in one place:
 
 - *Edit* takes a shipped file out to `~/.formslab/plans/`, where you can change
-  it. It keeps its name, so `run <name>` still finds it. In the checkout, git sees
+  it. It keeps its name and its folder, so `run <name>` still finds it. In the checkout, git sees
   it as removed from `plans/` until you ship it again.
 - *Ship* puts one of yours into formsLabCLI's own `plans/` folder, read-only
   again. Git sees it as changed or new: commit it to share it. A file with

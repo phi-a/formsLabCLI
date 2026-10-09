@@ -5,8 +5,8 @@ instruments, then commands (the cast tab's words), hold, until and log. The
 host runs it on a `Run` in real time; see `plan` for the syntax and `runner`
 for how a step runs.
 
-    python -m formslab.sequence rest_from_ambient  # check, no hardware
-    python -m formslab.host.sequence rest_from_ambient
+    python -m formslab.sequence ambient_to_rest  # check, no hardware
+    python -m formslab.host.sequence ambient_to_rest
 
 Orbit work is FORMS' job: it computes a profile offline, and a plan replays it.
 """

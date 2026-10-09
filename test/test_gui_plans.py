@@ -413,6 +413,22 @@ def test_edit_takes_a_shipped_file_out_to_yours_and_ship_puts_it_back(shipped):
     assert (shipped / "ours.plan").exists() and not (user_plans_dir() / "ours.plan").exists()
 
 
+def test_folders_only_sort_the_files_and_edit_and_ship_keep_them(shipped):
+    (shipped / "vacuum").mkdir()
+    (shipped / "ours.plan").replace(shipped / "vacuum" / "ours.plan")
+    (shipped / "blocks").mkdir()
+    (shipped / "blocks" / "settle.block").write_text("block settle\nload rSMTC08\n\nhold 1 s\n", encoding="utf-8")
+    assert find_plan("ours") == shipped / "vacuum" / "ours.plan"
+    assert plans.problems("load rSMTC08\nsettle\n")["errors"] == []                    # a block in a folder is called by name
+    (shipped / "orbits").mkdir()
+    (shipped / "orbits" / "leo.orbit").write_text("# an orbit\n", encoding="utf-8")
+    assert "leo" in {p.stem for p in plans.orbitfile.discover()}
+    edited = plans.edit("ours", plans.read("ours")["hash"])
+    assert edited["editable"] is True and find_plan("ours") == user_plans_dir() / "vacuum" / "ours.plan"
+    assert plans.ship("ours", edited["hash"])["editable"] is False
+    assert find_plan("ours") == shipped / "vacuum" / "ours.plan"
+
+
 def test_a_file_of_yours_never_shipped_ships_into_the_shipped_folder(shipped):
     saved = plans.save("newone", "load rSMTC08\nhold 1 s\n", None, as_new=True, kind="plan")
     assert plans.ship("newone", saved["hash"])["editable"] is False and (shipped / "newone.plan").exists()

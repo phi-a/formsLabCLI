@@ -9,12 +9,19 @@ architecture are in [project.md](project.md); the GUI's plan is in [gui.md](gui.
 
 - **On main:** everything through PR #9, merged 2026-10-05 (J2, loops, conditions,
   rename, the orbit-first check).
+- **Focus (2026-10-09): plans and blocks for darkness thermal testing.** First step
+  done: the two plans tested on the bench renamed `ambient_to_rest` (was
+  `rest_from_ambient`) and `rest_to_ambient` (was `vent_to_ambient`), and `plans/`
+  sorted into folders (`vacuum/`, `thermal/`, `darkness/`, `blocks/`, `orbits/`).
+  Decided: folders are only for sorting, so files can be dragged between them; a name
+  is still found in any folder and must stay unique.
 - **In progress:** the bench's official tests, and a practice session for students.
-  `plans/` holds five blocks (`begin`, `pumpdown`, `vent`, `warm`, `cool`) and five plans
-  (`tvac`, `rest_from_ambient`, `vent_to_ambient`, `warm_soak`, `thermal_cycle`), each with
+  `plans/` holds the blocks (`begin`, `pumpdown`, `vent`, `warm`, `cool`, `k508n`,
+  `detector`) and the plans (`tvac`, `ambient_to_rest`, `rest_to_ambient`, `warm_soak`,
+  `thermal_cycle`, `Cryocooler`), each with
   a header: start, end, what fails it. All run end to end against the simulated chamber
-  (`test/test_shipped_plans.py`); none has run on the bench except what `rest_from_ambient`
-  and `vent_to_ambient` repeat of the 2026-10-01 pumpdown and vent. Warming and cooling have
+  (`test/test_shipped_plans.py`). `ambient_to_rest` and `rest_to_ambient` have run on the
+  bench and work; the others have not. Warming and cooling have
   not been run through formsLabCLI. The session is docs/SESSION.md, on the GUI demo. The old
   plans, blocks and orbits are the suite's fixtures (`test/fixtures/plans/`). Tests that run
   with an orbit come next.
