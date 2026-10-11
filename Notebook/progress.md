@@ -15,6 +15,15 @@ architecture are in [project.md](project.md); the GUI's plan is in [gui.md](gui.
   sorted into folders (`vacuum/`, `thermal/`, `darkness/`, `blocks/`, `orbits/`).
   Decided: folders are only for sorting, so files can be dragged between them; a name
   is still found in any folder and must stay unique.
+- **Cryocooler by hand (2026-10-09).** Commands sent from the GUI after `Cryocooler`
+  were refused at times as "cryo is not live": the GUI expected its card every 1 s,
+  rCryoBoard writes it every 5 s; the GUI now waits 17 s. `cryo ccv 17` on a running
+  cooler tripped the converter with its enable bit still set, so `cryo on` did
+  nothing; now a change on a running output drops and restores it (decided: off, set,
+  on, not a ramp), `cryo on` re-arms a tripped output, and `CRYO_FAULT` records a
+  trip. host.log keeps the last run's as host.log.1. **Open:** after the trip the
+  cooler drew a steady 0.10 A instead of 0.47 A, also in the next run: at its fixed
+  point, or its controller holding off? To check at the bench (docs/CRYOCOOLER.md).
 - **In progress:** the bench's official tests, and a practice session for students.
   `plans/` holds the blocks (`begin`, `pumpdown`, `vent`, `warm`, `cool`, `k508n`,
   `detector`) and the plans (`tvac`, `ambient_to_rest`, `rest_to_ambient`, `warm_soak`,

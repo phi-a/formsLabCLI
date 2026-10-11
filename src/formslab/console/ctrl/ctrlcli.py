@@ -60,7 +60,12 @@ def _launch_sequence(plan_path: str) -> CLIResult:
     # The host log is UTF-8 whatever the console's codepage: on Windows a redirected
     # stdout defaults to cp1252, and a log line with a character outside it ("→", "❌")
     # would otherwise raise inside the host.
-    log = log_path().open("w", encoding="utf-8")
+    path = log_path()
+    try:                                              # the last run's log is kept, one back
+        os.replace(path, path.with_name(path.name + ".1"))
+    except OSError:                                   # none yet, or held open by a reader
+        pass
+    log = path.open("w", encoding="utf-8")
     env = dict(os.environ, PYTHONIOENCODING="utf-8")
     proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, env=env,
                             stdin=subprocess.DEVNULL, **flags)

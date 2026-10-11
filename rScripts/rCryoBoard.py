@@ -5,8 +5,8 @@
 # (cryo ccvres, cryo code), with its supply, psu1 CH1, asked of rPSU. Each request
 # on CAST "cryo" is answered: done once the board has applied it, or refused with
 # why, so a plan step stops the run on a refusal. The board's state is published
-# for plans to wait on, and recorded: CRYO_LINK, CRYO_ON, CRYO_OK, CRYO_CCV, CRYO_RES,
-# CRYO_SUPPLY_V.
+# for plans to wait on, and recorded: CRYO_LINK, CRYO_ON, CRYO_OK, CRYO_FAULT, CRYO_CCV,
+# CRYO_RES, CRYO_SUPPLY_V.
 import os
 import time
 
@@ -72,10 +72,13 @@ COMMANDS = [
      channel at once unless the board is shut down, and at each cryo startup.""", _supply),
     (f"ccv <volts:number {CCV_MIN_V:g}..{CCV_MAX_V:g} V>", f"""Set the cryocooler voltage
      The board's output to the cooler, {CCV_MIN_V:g} to {CCV_MAX_V:g} V: the K508N's input
-     range. It is applied while the output is on.""", lambda v: {"voltage": v}),
+     range. On a running output, the output is dropped while the voltage changes
+     and restored after: a step on a running cooler trips the converter.""",
+     lambda v: {"voltage": v}),
     ("on|off", """Turn the cryocooler output on or off
      On needs the board's supply at 20 V or more: below that the converter cannot
-     produce an output. This is checked before the command is sent.""",
+     produce an output. This is checked before the command is sent. On an output
+     the converter tripped, on turns it off, then on: that re-arms it.""",
      lambda s: {"enabled": s == "on"}),
     ("ccvres <ohms:number 62..1120>", """Set the variable resistor in ohms
      The board's variable resistor, 62 to 1120 ohms, set to the nearest of its 64
@@ -91,14 +94,15 @@ COMMANDS = [
      board now.""",
      lambda w: {w: True}),
 ]
-VARIABLES = [("CRYO_LINK", "bool"), ("CRYO_ON", "bool"), ("CRYO_OK", "bool"),
+VARIABLES = [("CRYO_LINK", "bool"), ("CRYO_ON", "bool"), ("CRYO_OK", "bool"), ("CRYO_FAULT", "bool"),
              ("CRYO_CCV", "V"), ("CRYO_RES", "ohm"), ("CRYO_SUPPLY_V", "V")]
 
 
 def READINGS(label, status):
     return [
         ("Board", None, [("ERR", "Problem"), ("LINK", "Board link", ("Up", "Down")), ("ON", "Output", ("On", "Off")),
-                         ("OK", "Output on, no fault", ("Yes", "No")), ("MODE", "Converter mode"),
+                         ("OK", "Output on, no fault", ("Yes", "No")),
+                         ("TRIPPED", "Tripped (cryo on re-arms)", ("Yes", "No")), ("MODE", "Converter mode"),
                          ("FAULTS", "Faults"), ("LASTFAULT", "Last fault"),
                          ("CCV", "Cooler voltage (V)"), ("CCVRES", "Variable resistor (ohm)"),
                          ("CCVRES#", "Resistor step")]),
@@ -166,6 +170,7 @@ def _refresh_status(run, r_global):
         "OK": None,
         "MODE": None,
         "FAULTS": None,
+        "TRIPPED": False,
         "LASTFAULT": getattr(r_global, "_last_fault", None),
         "ERR": getattr(r_global, "_init_error", None),
     }
@@ -197,6 +202,7 @@ def _refresh_status(run, r_global):
                     "OK": board.get("output_healthy"),
                     "MODE": board.get("conversion"),
                     "FAULTS": ", ".join(board.get("faults") or []) or "none",
+                    "TRIPPED": bool(board.get("tripped")),
                 }
             )
         except Exception as exc:
@@ -231,7 +237,7 @@ def _watch_output(run, r_global, status):
 
 def _publish(run, status):
     """The board's state as the run's values, for plans to wait on."""
-    for name, key in (("CRYO_LINK", "LINK"), ("CRYO_ON", "ON"), ("CRYO_OK", "OK")):
+    for name, key in (("CRYO_LINK", "LINK"), ("CRYO_ON", "ON"), ("CRYO_OK", "OK"), ("CRYO_FAULT", "TRIPPED")):
         run.publish(name, 1 if status.get(key) else 0, "bool")
     for name, key, unit in (("CRYO_CCV", "CCV", "V"), ("CRYO_RES", "CCVRES", "ohm"),
                             ("CRYO_SUPPLY_V", "CCVINM", "V")):
@@ -377,7 +383,7 @@ def _apply_request(run, r_global, request):
 
         if voltage is not None or resistance is not None or enabled is not None:
             try:
-                r_global.cryo.update(
+                board = r_global.cryo.update(
                     voltage=voltage,
                     resistance=resistance,
                     enabled=enabled,
@@ -390,6 +396,8 @@ def _apply_request(run, r_global, request):
                     parts.append(f"resistance={resistance:.1f} ohm")
                 if enabled is not None:
                     parts.append("enabled" if enabled else "disabled")
+                if (board or {}).get("note"):
+                    parts.append(board["note"])
                 run.log(f"Cryocooler updated: {', '.join(parts)}", component="CRYO")
                 said.append("cryocooler " + ", ".join(parts))
             except Exception as exc:

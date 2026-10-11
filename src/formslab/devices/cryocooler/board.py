@@ -248,6 +248,7 @@ class CryoBoard:
         for register, value in sequence:
             bus.write_register(regs.VCONV_ADDR, register, value)
         self.state["enabled"] = bool(enabled)
+        self.state["tripped"] = []          # a fresh enable or disable re-arms the converter
 
     def set_output_voltage_raw(self, code):
         """Programme the reference DAC directly, bypassing the calibration."""
@@ -296,22 +297,37 @@ class CryoBoard:
         """
         Apply any combination of voltage, resistance and enable state.
 
-        A resistance change on a live output drops the output first and
-        restores it afterwards if it was requested to stay on, so the wiper
-        never moves under load.
+        A resistance or voltage change on a live output drops the output first
+        and restores it afterwards if it was requested to stay on, so the wiper
+        never moves under load and the cooler never sees a step. (A voltage
+        stepped on a running K508N, 12 to 17 V, tripped the converter on
+        2026-10-09.)
 
         On and off are decided from the converter, not from what was last
         commanded: an output the converter turned off by itself (a trip, or a
         reset that also lost its settings) is turned on again by `enabled=True`,
-        with its voltage and current limit written again first.
+        with its voltage and current limit written again first. A trip can
+        leave the enable bit set with the output dead; only a fresh off-to-on
+        re-arms it, so `enabled=True` then writes the output off, then on.
+
+        ``state["note"]`` says what this call did beyond what was asked, or None.
         """
         if voltage is None and resistance is None and enabled is None:
             return self.status()
 
-        current_enabled = bool(self.state.get("enabled", False))
+        self.state["note"] = None
+        commanded = bool(self.state.get("enabled", False))
+        current_enabled = commanded
         if enabled is not None:
             current_enabled = self._converter_on()
-            if enabled and not current_enabled and self.state.get("enabled"):
+            if enabled and current_enabled:
+                tripped = self.state.get("tripped") or regs.status_faults(
+                    self._bus().read_register(regs.VCONV_ADDR, regs.STATUS)[0])
+                if tripped:
+                    self._write_enabled(False)
+                    current_enabled = False
+                    self.state["note"] = f"output had tripped ({', '.join(tripped)}); turned on again"
+            if enabled and not current_enabled and commanded:
                 # Commanded on, but off on the converter: it may have reset, so
                 # what it should hold goes back before the output does.
                 self.disable_current_limit()
@@ -324,9 +340,13 @@ class CryoBoard:
         if voltage is not None:
             voltage = self._normalize_voltage(voltage)
 
-        if resistance is not None and current_enabled:
+        changes = (resistance is not None
+                   or (voltage is not None and voltage != self.state.get("output_voltage_v")))
+        if changes and current_enabled:
             self._write_enabled(False)
             current_enabled = False
+            if target_enabled:
+                self.state["note"] = "output dropped and restored"
 
         if resistance is not None:
             self._write_resistance(resistance)
@@ -385,6 +405,10 @@ class CryoBoard:
                         "output_healthy": output_on and flags["healthy"],
                     }
                 )
+                if output_on and flags["faulted"]:
+                    # Reading STATUS clears its flags; the trip is kept until
+                    # the output is turned on (or off) again.
+                    self.state["tripped"] = regs.status_faults(raw)
             else:
                 self.state.update(
                     {
