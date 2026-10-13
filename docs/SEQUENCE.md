@@ -371,6 +371,8 @@ up a hold.
 
 ## Ending
 
+The whole design, its decisions, code map, tests and open items: docs/END.md.
+
 A run cut short -- End in the GUI, `labcli end`, ctrl `end`, Ctrl+C, a failed
 step, a crash -- first runs the **end script**, `plans/end.plan`, with every
 routine still live. It is a plan like any other, read in the editor and by
@@ -410,6 +412,13 @@ and writes `~/.formslab/.run/ended.json` (plan, when, how, that line, and what
 the script could not do), which the GUI shows until dismissed. A plan that runs
 to its last step leaves the chamber as its steps said; only the routines'
 shutdowns follow.
+
+A host that is killed (a crash, Task Manager, a power cut) runs none of this and
+leaves its lock behind. `labcli status` and the GUI then say the run stopped
+without its end, and `labcli end` or the GUI's *Run End now* runs it: a fresh
+host (`python -m formslab.host.sequence --end`) loads that run's routines, runs
+none of its steps, and runs the end script and the shutdowns as above. It never
+runs by itself: someone at the HMI may have stopped the host on purpose.
 
 The chamber's states the end script confirms are published for any plan:
 `VentValve`, `FillValve`, `GateValve`, `RoughValve`, `ForelineValve` (open),

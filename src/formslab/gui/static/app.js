@@ -263,24 +263,40 @@
   $("#pause").addEventListener("click", () => act("/api/pause", {}, "Pause"));
   $("#resume").addEventListener("click", () => act("/api/resume", {}, "Resume"));
   // End: the dialog says what the end script will do for this plan's routines.
-  $("#end").addEventListener("click", async () => {
+  async function confirmEnd() {
     let steps = [];
     try { steps = (await api("/api/end/steps")).steps; } catch (e) { /* the generic question then */ }
     const what = steps.length ? "End the run? This runs, in order:\n\n" + steps.map((s) => "  " + s).join("\n")
       + "\n\nthen each instrument's shutdown." : "End the run? Each instrument's shutdown runs.";
     if (confirm(what)) act("/api/end", {}, "End");
-  });
+  }
+  $("#end").addEventListener("click", confirmEnd);
+
+  // A run whose host stopped without its end (killed, crashed, a power cut): said
+  // until its end has run, from here or `labcli end`, or another run starts.
+  function renderLost(box, s) {
+    box.className = "banner lost";
+    box.replaceChildren(el("span", {}, `${s.lost.plan}, started ${new Date(s.lost.started).toLocaleString()}, `
+      + "stopped without its end: its host was stopped (a crash, Task Manager or a power cut). "
+      + "The chamber and the supplies are as it left them."));
+    const go = el("button", { type: "button" }, "Run End now");
+    go.disabled = busy(s);
+    go.addEventListener("click", confirmEnd);
+    box.append(go);
+    box.hidden = false;
+  }
 
   // How the last run ended, shown until dismissed (the dismissal is this browser's).
   function renderEnded(s) {
     const box = $("#ended");
+    if (!s.host && s.lost) { renderLost(box, s); return; }
     const e = s.ended;
     let seen = null;
     try { seen = localStorage.getItem("ended-seen"); } catch (err) { /* no storage */ }
     if (s.host || !e || seen === e.when) { box.hidden = true; return; }
     const warned = (e.warnings || []).length > 0 || /not reached/.test(e.chamber || "");
     box.className = "banner " + (warned ? "stopped" : "running");
-    const how = { ended: "ended", complete: "completed", failed: "stopped on a failed step", error: "stopped on an error" }[e.how] || e.how;
+    const how = { ended: "ended", lost: "was ended after its host was lost", complete: "completed", failed: "stopped on a failed step", error: "stopped on an error" }[e.how] || e.how;
     const lines = [`${e.plan} ${how} at ${new Date(e.when).toLocaleString()}.`];
     if (e.chamber) lines.push(e.chamber + ".");
     if (warned) lines.push("Not done: " + (e.warnings || []).join("; ") + ".");

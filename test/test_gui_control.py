@@ -183,6 +183,26 @@ def test_end_with_no_run_is_refused(client, monkeypatch):
     assert code == 409 and "no run is going" in body["error"]
 
 
+def test_end_on_a_lost_run_starts_a_host_for_its_end_and_sends_no_end(client, monkeypatch):
+    """Its host was killed: End runs that run's end from a fresh host (`--end`)."""
+    launched = []
+    monkeypatch.setattr(api, "host", lambda: None)
+    monkeypatch.setattr(api, "lost_run", lambda: HOST)
+    monkeypatch.setattr(ctrlcli, "_launch_sequence", lambda path, end_only=False: launched.append((path, end_only)))
+    ctrlutils.LoadCommands()
+    assert client.json("GET", "/api/status")[1]["lost"] == HOST
+    code, body = client.json("POST", "/api/end", {})
+    assert (code, body) == (200, {"state": "ending", "plan": "tvac"})
+    wait_idle()
+    assert launched == [(None, True)]
+    assert "end" not in ctrlutils.ReadCommands(["end"])                      # it stops by itself
+
+
+def test_end_keeps_asking_for_as_long_as_the_end_script_may_take():
+    from formslab.host.sequence import END_CAP_S
+    assert api.END_WAIT_S > END_CAP_S
+
+
 # --- pause, resume ---------------------------------------------------------------------------------------
 
 def test_pause_and_resume_reach_the_host_through_ctrl(client, host_up):

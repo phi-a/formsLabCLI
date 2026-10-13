@@ -43,6 +43,7 @@ main { padding: 16px; max-width: 1400px; margin: 0 auto; }
 .banner { padding: 10px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); margin-bottom: 14px; }
 .banner.running { border-color: var(--ok); }
 .banner.stopped { border-color: var(--line); color: var(--muted); }
+.banner.lost { border-color: var(--bad); }
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 12px; }
 .card { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 10px 12px; min-width: 0; }
 .card.stale { opacity: .62; }

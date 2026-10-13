@@ -236,6 +236,19 @@ def test_status_reports_each_channel(opened):
     assert state[1] == {"on": True, "vset": 12.0, "cset": 1.5, "vmeas": 11.998, "cmeas": 0.25}
 
 
+def test_protection_is_read_from_the_supply_and_shown_with_its_channel(opened):
+    _, replies = opened
+    replies.update({
+        ":OUTP? CH1": "ON", ":APPL?": "24.000,1.000", ":MEAS:VOLT?": "23.990", ":MEAS:CURR?": "0.470",
+        ":VOLT:PROT?": "24.500", ":CURR:PROT?": "1.250", ":VOLT:PROT:STAT?": "ON", ":CURR:PROT:STAT?": "ON",
+    })
+    psu = PSU(USB)
+
+    assert psu.protection(1) == {"ovp": 24.5, "ocp": 1.25, "protect": True}
+    assert psu.status()[1]["ocp"] == 1.25
+    assert "ocp" not in psu.status()[2]                         # not read: not shown
+
+
 def test_status_marks_a_failed_channel_unknown(opened):
     _, replies = opened
     replies[":OUTP? CH2"] = TimeoutError("no reply")

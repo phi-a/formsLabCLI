@@ -9,7 +9,9 @@
 #   {"update": true}                            refresh the status now
 #
 # Each supply's readings are published as PSU<n>_CH<c>_V / _I / _ON, so a
-# run's CSV has the supplies beside everything else.
+# run's CSV has the supplies beside everything else. Each channel's protection
+# (OVP, OCP, on/off) is read back from the supply at the start and after each
+# change, shown with the channel, and a warning logged when it is not as set.
 # On host stop, rShutdown turns off every channel this run switched on.
 # Supplies disabled in usbmap.json are not opened.
 import math
@@ -168,6 +170,24 @@ def _publish_gap(run, label):
     _publish_channels(run, label, {ch: {} for ch in (1, 2, 3)})
 
 
+def _read_protection(run, label, psu, channel, wanted=None):
+    """Read a channel's protection back from the supply, so a limit it did not
+    take is seen. `wanted`: what was just set ({ovp, ocp, protect}); a reading
+    that differs is a warning."""
+    try:
+        held = psu.protection(channel)
+    except Exception as exc:
+        run.log(f"{label.upper()} CH{channel} protection not read: {exc}", level="WARNING", component=name)
+        return
+    differs = [k for k, v in (wanted or {}).items()
+               if v is not None and (held.get(k) is None or
+                                     (held[k] != v if isinstance(v, bool) else abs(held[k] - v) > 0.005))]
+    if differs:
+        run.log(f"{label.upper()} CH{channel} protection reads ovp={held['ovp']} V, ocp={held['ocp']} A, "
+                f"{'on' if held['protect'] else 'off'}: not as set ({', '.join(differs)})",
+                level="WARNING", component=name)
+
+
 def _handle_channel_request(run, label, psu, channel_text, channel_request):
     if not isinstance(channel_request, dict):
         return False
@@ -206,6 +226,10 @@ def _handle_channel_request(run, label, psu, channel_text, channel_request):
                 ),
                 component=name,
             )
+            enable = True if protect is None else bool(protect)
+            _read_protection(run, label, psu, channel,
+                             {"ovp": ovp if enable else None, "ocp": ocp if enable else None,
+                              "protect": enable})
             changed = True
 
         if "voltage" in channel_request or "current" in channel_request:
@@ -296,6 +320,11 @@ def rScript(run):
         return
 
     if not rg._status_initialized:
+        for label in ("psu1", "psu2"):                 # the limits as the supplies hold them, once
+            psu = getattr(rg, label)
+            if psu is not None and hasattr(psu, "protection"):
+                for ch in (1, 2, 3):
+                    _read_protection(run, label, psu, ch)
         _publish_status(run, "psu1", rg.psu1)
         _publish_status(run, "psu2", rg.psu2)
         rg._status_initialized = True

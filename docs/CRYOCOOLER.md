@@ -66,7 +66,9 @@ changed too. The step refuses a voltage outside 20 to 24.5 V (the cooler cannot 
 board takes no more), a current above 2.0 A, and protection below the setting. It
 is sent at once unless the board is shut down, and again at each `cryo startup`;
 without it, rCryoBoard uses the values above (`cryocooler/config.py`). The channel's
-voltage and current are read back; its protection limits are not.
+voltage and current are read back, and so are its protection limits: rPSU reads
+OVP, OCP and whether protection is on from the supply after each change, shows
+them on the psu1 card, and logs a warning when they are not as set.
 
 ## The K508N cryocooler, from a plan
 

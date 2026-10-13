@@ -75,7 +75,7 @@ def main(argv: list[str]) -> int:
             return USAGE
         return show(ctrlcli.run_sequence(args))
     if verb in ("end", "pause", "resume"):
-        if ctrlcli.running() is None:
+        if ctrlcli.running() is None and not (verb == "end" and ctrlcli.lost_run()):
             out.print("✗ no run is going.", markup=False)
             return 0 if verb == "end" else 1           # ending what has ended is done
         return show(ctrlcli.end_sequence() if verb == "end" else ctrlcli.execute_command([verb]))

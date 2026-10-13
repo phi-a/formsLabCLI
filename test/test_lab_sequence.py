@@ -292,6 +292,13 @@ class FakePSU:
                    for c in (1, 2, 3)}
         self.state = {}
         self.disconnected = False
+        self.held = {}                                   # protection, as the supply holds it
+
+    def setOVCP(self, ch, ovp=None, ocp=None, enable=True):
+        self.held[ch] = {"ovp": ovp, "ocp": ocp, "protect": enable}
+
+    def protection(self, ch):
+        return dict(self.held.get(ch, {"ovp": None, "ocp": None, "protect": False}))
 
     def set(self, ch, v, c):
         self.ch[ch].update(vset=v, cset=c)
@@ -366,6 +373,21 @@ def test_rpsu_switches_nothing_on_while_the_run_is_ending(run, bench):
     WriteCommand({"1": {"voltage": 24.0, "current": 1.0, "on": True}}, "psu1")
     rscripts.tick(run)
     assert bench["psu1"].ch[1]["on"] is False and bench["psu1"].ch[1]["vset"] == 24.0   # set, not switched on
+    rscripts.shutdown(run)
+
+
+def test_rpsu_reads_protection_back_and_warns_when_the_supply_did_not_take_it(run, bench, capsys):
+    rscripts.load(run, ["rPSU"])
+    rscripts.tick(run)
+    psu = bench["psu1"]
+    WriteCommand({"1": {"ovp": 24.5, "ocp": 1.25, "protect": True}}, "psu1")
+    rscripts.tick(run)
+    assert "not as set" not in capsys.readouterr().out
+    psu.setOVCP = lambda ch, ovp=None, ocp=None, enable=True: psu.held.update(
+        {ch: {"ovp": ovp, "ocp": 3.3, "protect": enable}})                  # the supply kept its old OCP
+    rpsu = sys.modules["rScripts.rPSU"]                                       # within the routine's 1 s tick
+    rpsu._handle_psu_request(run, "psu1", psu, {"1": {"ovp": 24.5, "ocp": 1.25, "protect": True}})
+    assert "PSU1 CH1 protection reads ovp=24.5 V, ocp=3.3 A, on: not as set (ocp)" in capsys.readouterr().out
     rscripts.shutdown(run)
 
 

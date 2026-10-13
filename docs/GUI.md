@@ -54,6 +54,9 @@ goes), one card per instrument, and the end of the host log. From here:
   how the run ended and how the chamber was left (`Chamber left: sealed, 3.2 Torr,
   pump off, turbo off, zones off`), red with what the end script could not do when
   there was anything; *Dismiss* hides it in this browser.
+- A run whose host was killed (a crash, Task Manager, a power cut) shows a red
+  banner: it stopped without its end. *Run End now* runs that end from a fresh
+  host, with the same dialog (docs/END.md, A host that was killed).
 - The command box takes the cast tab's words (`hvc platen 20`, `psu1 ch1 on`).
   The buttons under it are what the instruments' own grammar allows next, with
   limits and units; click one or type. A bad command is refused with what would
