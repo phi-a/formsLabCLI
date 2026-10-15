@@ -329,10 +329,17 @@ Shipped plans, the bench's tests, each built from the blocks above:
 | plan | does | takes about |
 |---|---|---|
 | `tvac` | manual operation from the cast tab, until `end` | until `end` |
-| `rest_from_ambient` | pumps down from ambient to 3 Torr, seals the chamber and leaves it to rest | 10 minutes |
-| `vent_to_ambient` | lets air into a sealed chamber | 5 minutes |
+| `ambient_to_rest` | pumps down from ambient to 3 Torr, seals the chamber and leaves it to rest | 10 minutes |
+| `rest_to_ambient` | lets air into a sealed chamber | 5 minutes |
 | `warm_soak` | pumps down, holds both zones at 40 °C for 30 minutes, returns to air | 1 h 40 min |
 | `thermal_cycle` | pumps down, takes both zones between 60 and -20 °C three times, returns to air | 2 h 30 min or more |
+
+In `plans/` they are sorted into folders: `vacuum/` (`ambient_to_rest`,
+`rest_to_ambient`), `thermal/` (`warm_soak`, `thermal_cycle`) and `darkness/`, with
+the blocks in `blocks/` and orbit files in `orbits/`; `tvac` and `end` stay at the
+top. A folder only sorts the files. A file is found by its name in any of them, so
+moving one changes nothing. Keep each name once: of two files with one name, the
+first found is used. A hidden folder (`.trash`) is not searched.
 
 Each starts with a header that says the state it starts from, the state it leaves,
 and what fails it. Every shipped plan must check with no error and no warning, and
@@ -354,7 +361,8 @@ labcli status / end
 ```
 
 Plans are found by path, or by name in `$FORMSLAB_PLANS_DIR`, `<cwd>/plans`,
-then the checkout's `plans/`. A plan whose rScripts do not all load does not
+then the checkout's `plans/`, in any folder inside them. Blocks and orbit files
+are found the same way. A plan whose rScripts do not all load does not
 start.
 
 Each loop (10 Hz): poll ctrl, pausing here while paused -> each routine once ->
@@ -362,6 +370,8 @@ CSV row when due. Holds and limits count active time, so a pause does not use
 up a hold.
 
 ## Ending
+
+The whole design, its decisions, code map, tests and open items: docs/END.md.
 
 A run cut short -- End in the GUI, `labcli end`, ctrl `end`, Ctrl+C, a failed
 step, a crash -- first runs the **end script**, `plans/end.plan`, with every
@@ -402,6 +412,13 @@ and writes `~/.formslab/.run/ended.json` (plan, when, how, that line, and what
 the script could not do), which the GUI shows until dismissed. A plan that runs
 to its last step leaves the chamber as its steps said; only the routines'
 shutdowns follow.
+
+A host that is killed (a crash, Task Manager, a power cut) runs none of this and
+leaves its lock behind. `labcli status` and the GUI then say the run stopped
+without its end, and `labcli end` or the GUI's *Run End now* runs it: a fresh
+host (`python -m formslab.host.sequence --end`) loads that run's routines, runs
+none of its steps, and runs the end script and the shutdowns as above. It never
+runs by itself: someone at the HMI may have stopped the host on purpose.
 
 The chamber's states the end script confirms are published for any plan:
 `VentValve`, `FillValve`, `GateValve`, `RoughValve`, `ForelineValve` (open),

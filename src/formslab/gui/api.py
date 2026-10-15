@@ -20,7 +20,9 @@ from formslab.console.ctrl import ctrlcli, ctrlutils
 from formslab.console.log.logcli import log_path
 from formslab.console.safefile import read_json
 from formslab.gui import plans, runs
-from formslab.host.sequence import END_SCRIPT, ended_path, is_host, read_lock
+from formslab.host.sequence import (
+    END_CAP_S, END_SCRIPT, END_SETTLE_S, ended_path, is_host, lost_run, read_lock,
+)
 from formslab.orbit import file as orbitfile
 from formslab.orbit.propagate.kepler import live
 from formslab.sequence import block as blockfile
@@ -35,12 +37,14 @@ from formslab.state import cast_state_path
 
 # How often each block is republished while its owner runs (seconds). A block
 # older than three of these, plus a little slack, is not live.
-CADENCE_S = {"tc": 2.0, "hvc": 6.0, "psu1": 1.0, "psu2": 1.0, "cryo": 1.0, "slta": 3.0, "orbit": 1.0}
+CADENCE_S = {"tc": 2.0, "hvc": 6.0, "psu1": 1.0, "psu2": 1.0, "cryo": 5.0, "slta": 3.0, "orbit": 1.0}
 DEFAULT_CADENCE_S = 5.0
 SLACK_S = 2.0
 LOG_TAIL_BYTES = 64 * 1024
 CAST_TAKE_S = castutils.TAKE_S     # how long a command may wait to be taken
-END_WAIT_S = 120.0         # how long an `end` is kept being sent to a host that is still up
+# How long an `end` is kept being sent to a host that is still up: the end script's
+# own limit, then its routines' threads (15 s) and their shutdowns.
+END_WAIT_S = END_CAP_S + 30.0
 END_RESEND_S = 3.0
 
 
@@ -117,7 +121,8 @@ def status(log_lines: int = 40) -> dict:
                          **freshness(label, block, running, now)}
     return {"now": now, "host": running, "last_run": None if running else read_lock(),
             "action": current_action(), "blocks": blocks, "cast_unreadable": data is None,
-            "log": log_tail(log_lines), "ended": None if running else last_ended()}
+            "log": log_tail(log_lines), "ended": None if running else last_ended(),
+            "lost": None if running else lost_run()}
 
 
 def last_ended() -> dict | None:
@@ -130,9 +135,9 @@ def last_ended() -> dict | None:
 
 
 def end_steps() -> list[str]:
-    """What End will do for the running plan: the end script's steps for the
-    routines it loaded, as the End dialog lists them."""
-    running = host()
+    """What End will do for the running plan, or for the run whose host was lost:
+    the end script's steps for the routines it loaded, as the End dialog lists them."""
+    running = host() or lost_run()
     if running is None:
         raise ApiError(409, "no run is going")
     path = next((p for p in discover() if p.stem == END_SCRIPT), None)
@@ -280,10 +285,14 @@ def start_run(name: str) -> dict:
 def end_run() -> dict:
     """Ask the host to stop, so every rScript's rShutdown runs. `end` is sent
     again every few seconds while the host lives (a host that is starting clears
-    the ctrl file and can erase it), and the host is never killed from here."""
+    the ctrl file and can erase it), and the host is never killed from here.
+    With no host but a lost run (its host was killed), that run's end runs from
+    a fresh host."""
     running = host()
     if running is None:
-        raise ApiError(409, "no run is going")
+        if lost_run() is None:
+            raise ApiError(409, "no run is going")
+        return _end_lost()
     _begin("ending")
 
     def end(pid: int) -> None:
@@ -302,6 +311,26 @@ def end_run() -> dict:
 
     threading.Thread(target=end, args=(running["pid"],), name="gui-end", daemon=True).start()
     return {"state": "ending", "plan": running["plan"]}
+
+
+def _end_lost() -> dict:
+    """Start a host that runs only the end of the run whose host was lost
+    (`--end`), and show "ending" until it has gone. No `end` is sent to it: it
+    stops by itself, and an `end` would cut short its wait for first readings."""
+    lost = lost_run()
+    _begin("ending")
+
+    def end() -> None:
+        try:
+            ctrlcli._launch_sequence(None, end_only=True)
+            deadline = time.monotonic() + END_SETTLE_S + END_WAIT_S
+            while time.monotonic() < deadline and host() is not None:
+                time.sleep(0.25)
+        finally:
+            _finish()
+
+    threading.Thread(target=end, name="gui-end-lost", daemon=True).start()
+    return {"state": "ending", "plan": lost["plan"]}
 
 
 def ctrl(command: str) -> dict:

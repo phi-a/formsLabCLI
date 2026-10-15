@@ -121,6 +121,36 @@ def test_a_plan_that_runs_to_its_last_step_leaves_what_it_said(chamber, tmp_path
     assert "[end 1/" not in capsys.readouterr().out
 
 
+def lose_a_run(plan="tvac"):
+    """A lock left by a host that was killed: this test's own pid, which is not a host."""
+    import os
+    host.lock_path().write_text(f"{os.getpid()}\n{plan}\n2026-10-13T09:00:00+00:00\n/x\n", encoding="utf-8")
+
+
+def test_a_run_whose_host_was_killed_is_found_and_ended_from_a_fresh_host(chamber, tmp_path):
+    with chamber.state.lock:
+        chamber.state.devices.update(OV=True, OP=True)            # it was venting, pump on
+        chamber.state.zone_active[1] = True
+    plan = tmp_path / "t.plan"
+    plan.write_text("load rLACO\nrecord every 1 s\nhold until end\n", encoding="utf-8")
+    lose_a_run("t")
+    assert host.lost_run()["plan"] == "t"
+    host.channel(plan_path=plan, end_only=True)                    # what `--end` runs: none of its steps
+    s = chamber.state
+    assert not any(s.devices[c] for c in ("OR", "OV", "OF", "OG", "OP"))
+    assert not any(s.zone_active.values())
+    ended = json.loads(host.ended_path().read_text(encoding="utf-8"))
+    assert ended["how"] == "lost" and ended["chamber"].startswith("Chamber left: sealed")
+    assert ended["warnings"] == ["the supply channels the lost run switched on are not known: check the supplies"]
+    assert host.lost_run() is None and host.read_lock() is None
+
+
+def test_end_on_its_own_needs_a_lost_run(capsys):
+    assert host.lost_run() is None
+    assert host.main(["--end"]) == 2
+    assert "No run to end" in capsys.readouterr().out
+
+
 # --- the pieces ------------------------------------------------------------------------
 
 def test_the_chamber_publishes_its_states_for_plans_to_confirm(chamber, tmp_path):

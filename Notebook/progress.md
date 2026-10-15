@@ -7,14 +7,31 @@ architecture are in [project.md](project.md); the GUI's plan is in [gui.md](gui.
 
 ## Now (2026-10-05)
 
-- **On main:** everything through PR #9, merged 2026-10-05 (J2, loops, conditions,
-  rename, the orbit-first check).
+- **On main:** everything through PR #11, merged 2026-10-09 (the bench's plans,
+  rules and units, a readable End, the K508N, the cryocooler board). Open: PR #12
+  (the plans renamed and sorted, the cryocooler by hand, End for a killed host).
+- **Focus (2026-10-09): plans and blocks for darkness thermal testing.** First step
+  done: the two plans tested on the bench renamed `ambient_to_rest` (was
+  `rest_from_ambient`) and `rest_to_ambient` (was `vent_to_ambient`), and `plans/`
+  sorted into folders (`vacuum/`, `thermal/`, `darkness/`, `blocks/`, `orbits/`).
+  Decided: folders are only for sorting, so files can be dragged between them; a name
+  is still found in any folder and must stay unique.
+- **Cryocooler by hand (2026-10-09).** Commands sent from the GUI after `Cryocooler`
+  were refused at times as "cryo is not live": the GUI expected its card every 1 s,
+  rCryoBoard writes it every 5 s; the GUI now waits 17 s. `cryo ccv 17` on a running
+  cooler tripped the converter with its enable bit still set, so `cryo on` did
+  nothing; now a change on a running output drops and restores it (decided: off, set,
+  on, not a ramp), `cryo on` re-arms a tripped output, and `CRYO_FAULT` records a
+  trip. host.log keeps the last run's as host.log.1. **Open:** after the trip the
+  cooler drew a steady 0.10 A instead of 0.47 A, also in the next run: at its fixed
+  point, or its controller holding off? To check at the bench (docs/CRYOCOOLER.md).
 - **In progress:** the bench's official tests, and a practice session for students.
-  `plans/` holds five blocks (`begin`, `pumpdown`, `vent`, `warm`, `cool`) and five plans
-  (`tvac`, `rest_from_ambient`, `vent_to_ambient`, `warm_soak`, `thermal_cycle`), each with
+  `plans/` holds the blocks (`begin`, `pumpdown`, `vent`, `warm`, `cool`, `k508n`,
+  `detector`) and the plans (`tvac`, `ambient_to_rest`, `rest_to_ambient`, `warm_soak`,
+  `thermal_cycle`, `Cryocooler`), each with
   a header: start, end, what fails it. All run end to end against the simulated chamber
-  (`test/test_shipped_plans.py`); none has run on the bench except what `rest_from_ambient`
-  and `vent_to_ambient` repeat of the 2026-10-01 pumpdown and vent. Warming and cooling have
+  (`test/test_shipped_plans.py`). `ambient_to_rest` and `rest_to_ambient` have run on the
+  bench and work; the others have not. Warming and cooling have
   not been run through formsLabCLI. The session is docs/SESSION.md, on the GUI demo. The old
   plans, blocks and orbits are the suite's fixtures (`test/fixtures/plans/`). Tests that run
   with an orbit come next.
@@ -52,7 +69,13 @@ architecture are in [project.md](project.md); the GUI's plan is in [gui.md](gui.
   (`ended.json`) shows in the GUI until dismissed; the End dialog lists the steps.
   Routine shutdowns run by dependency (`SHUTDOWN_BEFORE`); rSLTA got a shutdown. A plan
   that completes leaves what it said. Tested against the simulated chamber
-  (`test/test_end.py`); not yet on the bench.
+  (`test/test_end.py`); not yet on the bench. **2026-10-13:** a run whose host was
+  killed is found (its lock left behind) and its end runs from a fresh host when
+  the operator asks (`labcli end`, *Run End now*); decided: never by itself. The
+  GUI resends End for 150 s. rPSU reads OVP/OCP back and warns when not as set.
+  Decided: End does not send `hvc abort`; the manual says it faults the controller
+  and runs the recipe's home steps, which may open valves. Next for recipes: find
+  at the bench what the controller reports while one runs (docs/END.md, Open items).
 - **Next:** the environment profile, the first stage after orbit files
   ([gui.md](gui.md), section 4): orbit file + spacecraft model → per-face background
   temperature over an orbit → a recorder-format CSV in the Plots tab. It needs a way to
@@ -73,6 +96,8 @@ architecture are in [project.md](project.md); the GUI's plan is in [gui.md](gui.
 | 2026-10-05 | #7 | One writing standard (docs/WRITING.md); part symbols in commands, cards and the chamber view; orbit files in the Plans tab with a live panel; one orbit stack (orbit files drive the models, numpy in base); roughing refused below the crossover; blocks; Edit and Ship; CI fixed on Windows |
 | 2026-10-05 | #8 | rOrbit: a plan follows an orbit file and waits for its umbra; *Use in a plan* |
 | 2026-10-05 | #9 | J2 drift, so sun-synchronous orbits keep their local time; one umbra reading for the panel and rOrbit; a wait on an orbit value before an orbit is chosen is refused; loops (`repeat … end`); conditions (`< <= > >=`, `= true`, `within`, `or go on`; `above`, `below`, `timeout` retired); rename; list symbols; CI runs the orbit extra |
+| 2026-10-06 | #10 | The Notebook: the project's intent, architecture and progress |
+| 2026-10-09 | #11 | Plans for the bench and a student session; rules (`when … then`), units, holds at a thermocouple; the K508N; a readable End (the end script); the cryocooler board as it really is |
 
 ## Waiting on a decision
 

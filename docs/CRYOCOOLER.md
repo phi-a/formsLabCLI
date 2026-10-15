@@ -66,7 +66,9 @@ changed too. The step refuses a voltage outside 20 to 24.5 V (the cooler cannot 
 board takes no more), a current above 2.0 A, and protection below the setting. It
 is sent at once unless the board is shut down, and again at each `cryo startup`;
 without it, rCryoBoard uses the values above (`cryocooler/config.py`). The channel's
-voltage and current are read back; its protection limits are not.
+voltage and current are read back, and so are its protection limits: rPSU reads
+OVP, OCP and whether protection is on from the supply after each change, shows
+them on the psu1 card, and logs a warning when they are not as set.
 
 ## The K508N cryocooler, from a plan
 
@@ -96,9 +98,27 @@ run's CSV:
 | `CRYO_LINK` | the board answers through the Pico (on/off) |
 | `CRYO_ON` | the output is enabled (on/off) |
 | `CRYO_OK` | the converter reports its output on (its own enable bit) with no fault latched (on/off). It does not say the voltage is right: the TPS55288 has no power-good bit, so the output voltage takes a meter |
+| `CRYO_FAULT` | a protection (SC, OCP, OVP) tripped the output and it has not been turned on or off since (on/off). The converter clears its flags when read; this keeps the trip |
 | `CRYO_CCV` | the cooler voltage commanded (V) |
 | `CRYO_RES` | the variable resistor as set (ohm) |
 | `CRYO_SUPPLY_V` | the board's supply as measured (V) |
+
+**Changing it while it runs.** A voltage or resistance change on a running output
+drops the output, writes the change and turns it on again; the answer says "output
+dropped and restored". A voltage stepped on a running cooler (12 to 17 V,
+2026-10-09) tripped the converter: its output died with its enable bit still set.
+`cryo on` on a tripped output turns it off, then on, which re-arms it, and the answer
+says "output had tripped (OCP); turned on again". Sending the same voltage again
+leaves a running output alone.
+
+**The cooler's draw after the trip is not understood.** Before it, the cooler at
+12 V drew 0.42 to 0.48 A from psu1 CH1 (24 V). After it, every "on" drew a steady
+0.10 A (2.4 W), also in a fresh run after End had cut psu1 CH1 for about 17 s and
+the board was set up from scratch. Either the K508N had reached its fixed point
+(267 ohm) and dropped to holding power, or its own controller was holding off.
+To find out: a thermocouple on the cold finger, note the draw, listen for the
+compressor; then again after psu1 CH1 has been off for a few minutes. Until it is
+known, leave about a minute between `cryo off` and `cryo on`.
 
 **Which resistance gives which temperature is not known.** No script in the
 project's history maps it: rEX_CryoRamp (removed) only nudged the resistor one

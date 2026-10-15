@@ -18,8 +18,9 @@ from formslab.sequence import SequenceError, load_plan, plan as planfile
 from formslab.sequence.plan import find_plan, review
 
 SHIPPED = Path(__file__).resolve().parents[1] / "plans"
-PLANS = sorted(p.stem for p in SHIPPED.glob("*.plan"))
-BLOCKS = sorted(p.stem for p in SHIPPED.glob("*.block"))
+PATHS = {p.stem: p for p in [*SHIPPED.rglob("*.plan"), *SHIPPED.rglob("*.block")]}   # in any folder
+PLANS = sorted(n for n, p in PATHS.items() if p.suffix == ".plan")
+BLOCKS = sorted(n for n, p in PATHS.items() if p.suffix == ".block")
 
 
 @pytest.fixture(autouse=True)
@@ -30,13 +31,13 @@ def shipped(monkeypatch):
 
 
 def test_the_set_is_what_the_docs_name():
-    assert PLANS == ["Cryocooler", "end", "rest_from_ambient", "thermal_cycle", "tvac", "vent_to_ambient", "warm_soak"]
+    assert PLANS == ["Cryocooler", "ambient_to_rest", "end", "rest_to_ambient", "thermal_cycle", "tvac", "warm_soak"]
     assert BLOCKS == ["begin", "cool", "detector", "k508n", "pumpdown", "vent", "warm"]
 
 
 @pytest.mark.parametrize("name", PLANS)
 def test_a_plan_reads_clean_and_says_where_it_starts_and_ends(name):
-    text = (SHIPPED / f"{name}.plan").read_text(encoding="utf-8")
+    text = PATHS[name].read_text(encoding="utf-8")
     assert review(text) == ([], []), name
     if name not in ("tvac", "end"):                      # manual operation, and what End runs
         for word in ("# Start:", "# End:", "# Fails:"):
@@ -45,7 +46,7 @@ def test_a_plan_reads_clean_and_says_where_it_starts_and_ends(name):
 
 @pytest.mark.parametrize("name", BLOCKS)
 def test_a_block_reads_without_error(name):
-    errors, _ = blockfile.review((SHIPPED / f"{name}.block").read_text(encoding="utf-8"))
+    errors, _ = blockfile.review(PATHS[name].read_text(encoding="utf-8"))
     assert errors == [], name
 
 
@@ -80,26 +81,26 @@ def run(name):
     sequence.channel(plan_path=find_plan(name))
 
 
-def test_rest_from_ambient_leaves_the_chamber_sealed_under_vacuum(chamber, quick):
-    run("rest_from_ambient")
+def test_ambient_to_rest_leaves_the_chamber_sealed_under_vacuum(chamber, quick):
+    run("ambient_to_rest")
     s = chamber.state
     assert s.pressure < 3.0
     assert not any(s.devices.values())                  # every valve closed, both pumps off
     assert not any(s.zone_active.values())
 
 
-def test_rest_from_ambient_stops_when_the_chamber_is_not_at_air(chamber, quick):
+def test_ambient_to_rest_stops_when_the_chamber_is_not_at_air(chamber, quick):
     with chamber.state.lock:
         chamber.state.pressure = 50.0
     with pytest.raises(SequenceError, match="chamberP > 700 not met"):
-        run("rest_from_ambient")
+        run("ambient_to_rest")
     assert not chamber.state.devices["OP"]              # no pump was started
 
 
-def test_vent_to_ambient_brings_a_sealed_chamber_to_air(chamber, quick):
+def test_rest_to_ambient_brings_a_sealed_chamber_to_air(chamber, quick):
     with chamber.state.lock:
         chamber.state.pressure = 3.0
-    run("vent_to_ambient")
+    run("rest_to_ambient")
     s = chamber.state
     assert s.pressure >= 700 and s.devices["OV"] is True
 

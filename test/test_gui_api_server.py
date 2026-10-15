@@ -49,6 +49,20 @@ def test_the_chamber_must_say_it_is_connected():
     assert api.freshness("hvc", block(1, {}), HOST, NOW)["reason"] == "chamber not connected"
 
 
+def test_the_cryo_card_is_live_between_rcryoboards_writes():
+    """rCryoBoard writes its card every STATUS_INTERVAL; a cadence shorter than that
+    refused cryo commands for about a second in six (2026-10-09)."""
+    import importlib.util
+    from formslab import rscripts
+    path = next(d / "rCryoBoard.py" for d in rscripts.search_dirs() if (d / "rCryoBoard.py").exists())
+    spec = importlib.util.spec_from_file_location("rCryoBoard_cadence", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert api.CADENCE_S["cryo"] >= module.STATUS_INTERVAL
+    assert api.freshness("cryo", block(8), HOST, NOW)["live"] is True
+    assert api.freshness("cryo", block(20), HOST, NOW)["live"] is False
+
+
 def test_a_block_written_to_by_a_command_alone_gets_no_credit_without_its_owner():
     """A command bumps the block's timestamp; with no owner publishing, it ages out."""
     assert api.freshness("psu1", block(10), HOST, NOW)["live"] is False

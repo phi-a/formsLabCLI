@@ -18,8 +18,8 @@ has an orange DEMO bar. The chamber is simulated, starts at atmosphere (760 Torr
 with both zones near 22 °C, and its files are deleted when the student presses
 Ctrl+C. Each student has their own, so nobody waits for anybody else.
 
-The bench's tests are listed beside the demo's own: `tvac`, `rest_from_ambient`,
-`vent_to_ambient`, `warm_soak`, `thermal_cycle`, and the blocks they share
+The bench's tests are listed beside the demo's own: `tvac`, `ambient_to_rest`,
+`rest_to_ambient`, `warm_soak`, `thermal_cycle`, and the blocks they share
 (`begin`, `pumpdown`, `vent`, `warm`, `cool`). They are read-only, marked *shipped*.
 The demo's chamber heats in seconds, so a test that takes an hour on the bench
 takes minutes here, apart from its holds.
@@ -67,7 +67,7 @@ You can send a command, read a refusal, and put the chamber back.
 
 ### 3. Read a test
 
-Open **Plans** and choose `rest_from_ambient`. It is shown line by line.
+Open **Plans** and choose `ambient_to_rest`. It is shown line by line.
 
 - The comments at the top say where the test starts, where it ends and what makes it
   fail. Every shipped test has them. Read them before running anything.
@@ -83,14 +83,14 @@ starts.
 
 ### 4. Run a test
 
-On **Status**, choose `rest_from_ambient` and *Start run*. Watch **Chamber**: the
+On **Status**, choose `ambient_to_rest` and *Start run*. Watch **Chamber**: the
 Vacuum pump starts, 15 seconds later the Vacuum valve opens, the pressure falls, and
 the test seals the chamber. Press *End run* only if something looks wrong.
 
 When it finishes, open **Plots**, choose the run, and select the Chamber pressure.
 Zoom with the wheel, reset with a double-click.
 
-Then start `vent_to_ambient` and watch the chamber return to air.
+Then start `rest_to_ambient` and watch the chamber return to air.
 
 You can start a test, follow it, and read what it recorded.
 

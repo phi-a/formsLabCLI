@@ -268,6 +268,7 @@ class PSU:
         self.resource = label if "::" in label else resource_for(label)
         self.driver = None
         self.state = {}
+        self.limits = {}          # each channel's protection, as last read (`protection`)
 
         self._last_channel = None
         self._lock = threading.Lock()
@@ -447,6 +448,19 @@ class PSU:
             "cmeas": parse_float(self.driver.query(":MEAS:CURR?")),
         }
 
+    def protection(self, ch):
+        """A channel's protection as the supply holds it: {ovp (V), ocp (A),
+        protect}, protect true when both cut-offs are on. Kept in `limits`, which
+        `status` adds to the channel; read when it is set, not every poll."""
+        with self._lock:
+            self._select(ch)
+            ovp = parse_float(self.driver.query(":VOLT:PROT?"))
+            ocp = parse_float(self.driver.query(":CURR:PROT?"))
+            on = [self.driver.query(q).strip().upper() in {"1", "ON"}
+                  for q in (":VOLT:PROT:STAT?", ":CURR:PROT:STAT?")]
+            self.limits[ch] = {"ovp": ovp, "ocp": ocp, "protect": all(on)}
+            return dict(self.limits[ch])
+
     def update(self, channels=CHANNELS):
         """Refresh `self.state` from the instrument, at most once per cooldown."""
         self._ensure_connected()
@@ -469,7 +483,7 @@ class PSU:
 
     def status(self) -> dict:
         self.update()
-        return self.state.copy()
+        return {ch: {**s, **self.limits.get(ch, {})} for ch, s in self.state.items()}
 
     # --- Helpers ---
 

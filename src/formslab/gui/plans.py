@@ -13,8 +13,9 @@ is refused.
 
 *Edit* moves a shipped file into this machine's folder, so it can be changed;
 *Ship* moves one of yours into the checkout's ``plans/``, read-only again. A name
-is only ever in one place, so neither shadows anything. *Rename* renames one of
-yours, and what refers to it: a block's calls, an orbit's `orbit follow` lines.
+is only ever in one place, so neither shadows anything. Both keep the folder a
+file sits in (``plans/vacuum/`` to ``<config>/plans/vacuum/``). *Rename* renames
+one of yours, and what refers to it: a block's calls, an orbit's `orbit follow` lines.
 
 Saving writes the file in one step and refuses to overwrite a file that changed
 since it was opened (compared by a hash of its contents). Deleting moves the file
@@ -63,7 +64,17 @@ def editable_dirs() -> set[Path]:
 
 
 def is_editable(path: Path) -> bool:
-    return path.resolve().parent in editable_dirs()
+    path = path.resolve()
+    return any(path.is_relative_to(d) for d in editable_dirs())
+
+
+def _within(path: Path) -> Path:
+    """`path` from the plans folder it is in, so a move keeps the folders inside it."""
+    path = path.resolve()
+    for d in planfile.search_dirs():
+        if path.is_relative_to(d.resolve()):
+            return path.relative_to(d.resolve())
+    return Path(path.name)
 
 
 def find(name: str) -> Path | None:
@@ -159,14 +170,14 @@ def _move(name: str, base_hash: str | None, shipped: bool) -> tuple[Path, Path]:
     if path is None:
         raise PlanFileError(404, f"no plan {name!r}")
     if is_editable(path) == shipped:
-        hidden = user_plans_dir() / path.name
+        hidden = user_plans_dir() / _within(path)
         raise PlanFileError(409, f"{name!r} is already yours" if shipped
                             else f"a shipped {name!r} is in {path.parent}, and your copy, {hidden}, is "
                                  "hidden behind it; move or delete one of them" if hidden.exists()
                             else f"{name!r} is already shipped")
     if base_hash != content_hash(path.read_bytes()):
         raise PlanFileError(409, f"{name!r} changed on disk since you opened it; reload it first")
-    target = (user_plans_dir() if shipped else planfile.shipped_dir()) / path.name
+    target = (user_plans_dir() if shipped else planfile.shipped_dir()) / _within(path)
     if target.exists():
         raise PlanFileError(409, f"{target} already exists; move or delete it first")
     return path, target

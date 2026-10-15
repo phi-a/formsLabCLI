@@ -126,7 +126,7 @@ src/formslab/
 ├── gui/         the web GUI (`labcli gui`; docs/GUI.md)
 └── orbit/       orbit files and the orbit, view-factor and environment models (docs/ORBIT.md)
 rScripts/        the routines that own the instruments during a run
-plans/           the bench's tests, e.g. rest_from_ambient.plan
+plans/           the bench's tests in folders (vacuum/ambient_to_rest.plan), blocks/, orbits/
 scripts/         launchers and standalone analysis tools
 ```
 
@@ -192,11 +192,11 @@ hvc stop
 ```
 
 ```
-labcli check rest_from_ambient                     # read a plan; touches no hardware
+labcli check ambient_to_rest                     # read a plan; touches no hardware
 labcli --ctrl
 ctrl> plans                                        # lab plans; tvac runs until end
 ctrl> run tvac                                     # manual operation: then the cast tab
-ctrl> run rest_from_ambient                        # or any plan
+ctrl> run ambient_to_rest                        # or any plan
 ctrl> pause / resume / end
 log>  tail 50                                      # the host's output
 ```

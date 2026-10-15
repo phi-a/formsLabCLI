@@ -52,6 +52,14 @@ class Launch(unittest.TestCase):
         popen, _ = self._launch("tvac")
         self.assertEqual(Path(popen.call_args.kwargs["stdout"].name), logcli.log_path())
 
+    def test_the_last_runs_log_is_kept_one_back(self):
+        """End and start again must not erase what the last run logged."""
+        log = logcli.log_path()
+        log.parent.mkdir(parents=True, exist_ok=True)
+        log.write_text("the last run\n", encoding="utf-8")
+        self._launch("tvac")
+        self.assertEqual(log.with_name("host.log.1").read_text(encoding="utf-8"), "the last run\n")
+
     def test_a_second_run_is_refused_while_one_is_alive(self):
         popen, result = self._launch("tvac", running=(HOST,))
         popen.assert_not_called()

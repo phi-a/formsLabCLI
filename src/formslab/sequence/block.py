@@ -365,15 +365,9 @@ def describe(text: str, line: int) -> dict:
 # --- finding blocks: the plans' own folders ------------------------------------------
 
 def discover() -> list[Path]:
-    from formslab.sequence.plan import search_dirs
+    from formslab.sequence.plan import files
 
-    seen, out = set(), []
-    for d in search_dirs():
-        for p in sorted(d.glob(f"*{SUFFIX}")):
-            if p.stem not in seen:
-                seen.add(p.stem)
-                out.append(p)
-    return out
+    return files(SUFFIX)
 
 
 _cache: dict[Path, tuple[float, object]] = {}

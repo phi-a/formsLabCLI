@@ -463,6 +463,56 @@ def test_on_when_already_on_writes_the_enable_and_nothing_else():
     assert regs.REF_L not in [reg for _, reg, _ in bus.writes]
 
 
+ENABLE = [(regs.CDC, [0b10100000]), (regs.MODE, [0b10100000]), (regs.CDC, [0b11100000])]
+DISABLE = [(regs.MODE, [0b00100000])]
+
+
+def test_on_after_a_trip_with_the_enable_bit_still_set_turns_it_off_then_on():
+    """2026-10-09: the converter tripped with OE still set; `cryo on` answered done
+    and wrote nothing, so the output stayed dead."""
+    board, bus = make_board()
+    board.initialize(voltage=12.0, resistance=270.0)
+    board.enable_output()
+    bus.status = regs.STATUS_OCP | 0b01
+    assert board.status()["output_healthy"] is False
+    bus.status = 0b01                                   # reading STATUS cleared the flag
+    bus.writes.clear()
+    out = board.update(enabled=True)
+    ops = bus.converter_writes()
+    assert ops[0] == DISABLE[0] and ops[-3:] == ENABLE
+    assert out["output_healthy"] is True and out["note"] == "output had tripped (OCP); turned on again"
+    assert out["tripped"] == []
+
+
+def test_a_voltage_change_on_a_live_output_drops_it_and_restores_it():
+    board, bus = make_board()
+    board.initialize(voltage=12.0, resistance=270.0)
+    board.enable_output()
+    bus.writes.clear()
+    out = board.set_output_voltage(17.0)
+    ops = bus.converter_writes()
+    assert ops[0] == DISABLE[0] and ops[1][0] == regs.REF_L and ops[-3:] == ENABLE
+    assert out["output_voltage_v"] == 17.0 and out["enabled"] is True
+    assert out["note"] == "output dropped and restored"
+
+
+def test_a_voltage_change_on_an_output_that_is_off_only_writes_the_voltage():
+    board, bus = make_board()
+    board.initialize(voltage=12.0, resistance=270.0)
+    bus.writes.clear()
+    board.set_output_voltage(17.0)
+    assert [reg for reg, _ in bus.converter_writes()] == [regs.REF_L, regs.VOUT_FS]
+
+
+def test_the_same_voltage_again_leaves_a_live_output_alone():
+    board, bus = make_board()
+    board.initialize(voltage=12.0, resistance=270.0)
+    board.enable_output()
+    bus.writes.clear()
+    board.set_output_voltage(12.0)
+    assert regs.MODE not in [reg for reg, _ in bus.converter_writes()]
+
+
 def test_off_always_reaches_the_converter():
     board, bus = make_board()
     board.initialize(voltage=12.0, resistance=270.0)

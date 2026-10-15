@@ -5,7 +5,8 @@
     plans             list lab plans
     status, ps        is a host running, and which plan
     pause, resume     hold / continue the running plan's steps
-    end               stop it; rScripts' rShutdown runs before it exits
+    end               stop it; rScripts' rShutdown runs before it exits. With no
+                      host but a lost run's lock: that run's end, from a fresh host
 
 The running host is found through its lock file, which the host itself writes
 (pid, plan, start time) -- so it is found however it was started, and on
@@ -13,6 +14,7 @@ Windows the pid is the real interpreter, not the venv launcher in front of it.
 
 Every handler returns a CLIResult; nothing prints.
 """
+import json
 import os
 import subprocess
 import sys
@@ -27,7 +29,7 @@ from formslab.console.ctrl.ctrlutils import LoadCommands, WriteCommand
 from formslab.console.log.logcli import log_path
 from formslab.console.sessions.base import CLIResult
 from formslab.console.style import DIM, ERROR, HEADER, INFO, LABEL, SUCCESS, TEXT, WARNING
-from formslab.host.sequence import is_host, read_lock
+from formslab.host.sequence import END_SETTLE_S, ended_path, is_host, lost_run, read_lock
 from formslab.sequence import discover as discover_plans, find_plan
 
 # `end`: how long the host gets to take the request, then to finish cleanup.
@@ -44,15 +46,16 @@ def running():
     return lock if lock and is_host(lock["pid"]) else None
 
 
-def _launch_sequence(plan_path: str) -> CLIResult:
+def _launch_sequence(plan_path: str | None, end_only: bool = False) -> CLIResult:
     """Start `python -m formslab.host.sequence <plan>`, output to the log tab's
     file, in this working directory. On Windows it is detached from the
-    console, so closing the console window does not kill a run."""
+    console, so closing the console window does not kill a run. `end_only`
+    (no plan): the end of the run whose host was lost (`--end`)."""
     host = running()
     if host:
         return CLIResult(f"✔ sequence host already running (pid {host['pid']}, "
                          f"plan {host['plan']})")
-    cmd = [sys.executable, "-m", "formslab.host.sequence", plan_path]
+    cmd = [sys.executable, "-m", "formslab.host.sequence"] + (["--end"] if end_only else [plan_path])
     if sys.platform == "win32":
         flags = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS}
     else:
@@ -60,7 +63,12 @@ def _launch_sequence(plan_path: str) -> CLIResult:
     # The host log is UTF-8 whatever the console's codepage: on Windows a redirected
     # stdout defaults to cp1252, and a log line with a character outside it ("→", "❌")
     # would otherwise raise inside the host.
-    log = log_path().open("w", encoding="utf-8")
+    path = log_path()
+    try:                                              # the last run's log is kept, one back
+        os.replace(path, path.with_name(path.name + ".1"))
+    except OSError:                                   # none yet, or held open by a reader
+        pass
+    log = path.open("w", encoding="utf-8")
     env = dict(os.environ, PYTHONIOENCODING="utf-8")
     proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, env=env,
                             stdin=subprocess.DEVNULL, **flags)
@@ -139,7 +147,8 @@ def status_panel() -> CLIResult:
     if stale:
         return CLIResult(Text(f"⚠ sequence host not running -- the last run (plan "
                               f"{stale['plan']}, pid {stale['pid']}) ended without cleanup; "
-                              "its instruments may be as it left them.", style=WARNING),
+                              "its instruments may be as it left them. `end` runs its end now.",
+                              style=WARNING),
                          clear=False, ok=False)
     return CLIResult("✗ sequence host not running.", clear=False, ok=False)
 
@@ -206,7 +215,7 @@ def end_sequence(take_s: float = END_TAKE_S, finish_s: float = END_FINISH_S) -> 
     (hung) is killed -- and then rShutdown has not run."""
     host = running()
     if host is None:
-        return status_panel()
+        return _end_lost(finish_s + END_SETTLE_S) if lost_run() else status_panel()
     pid = host["pid"]
     try:
         WriteCommand("end")
@@ -246,6 +255,30 @@ def end_sequence(take_s: float = END_TAKE_S, finish_s: float = END_FINISH_S) -> 
     return CLIResult(f"✖ sequence host (pid {pid}, plan {host['plan']}) stopped cleanly.")
 
 
+def _end_lost(finish_s: float) -> CLIResult:
+    """The end of a run whose host stopped without it: a fresh host loads that
+    run's routines and runs the end script, then their shutdowns."""
+    lost = lost_run()
+    started = _launch_sequence(None, end_only=True)
+    host = running()
+    if host is None or host["pid"] == lost["pid"]:
+        return started
+    deadline = time.monotonic() + finish_s
+    while time.monotonic() < deadline and is_host(host["pid"]):
+        time.sleep(0.2)
+    if is_host(host["pid"]):
+        return CLIResult(f"… ending {lost['plan']}, whose host was lost (pid {host['pid']}); "
+                         "`status` shows when it has stopped.", clear=False)
+    try:
+        out = json.loads(ended_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        out = {}
+    lines = [f"✖ {lost['plan']}, whose host was lost, has been ended."]
+    lines += [out["chamber"]] if out.get("chamber") else []
+    lines += [f"  not done: {w}" for w in out.get("warnings", [])]
+    return CLIResult(Text("\n".join(lines), style=WARNING if out.get("warnings") else SUCCESS))
+
+
 def help_panel() -> CLIResult:
     result = Text()
     result.append("═" * 60 + "\n", DIM)
@@ -259,7 +292,7 @@ def help_panel() -> CLIResult:
     result.append("RUNS\n", HEADER)
     for cmd, desc in (("plans", "List lab plans"),
                       ("run tvac", "Manual chamber operation until `end` (cast tab)"),
-                      ("run <plan>", "Run a lab plan, e.g. run rest_from_ambient")):
+                      ("run <plan>", "Run a lab plan, e.g. run ambient_to_rest")):
         result.append(f"  {cmd:<16}", LABEL)
         result.append(desc + "\n", TEXT)
 

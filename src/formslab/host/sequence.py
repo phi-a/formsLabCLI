@@ -3,7 +3,8 @@
 Started by the console's ctrl tab or `labcli run <plan>`, or directly:
 
     python -m formslab.host.sequence tvac              # manual operation, until `end`
-    python -m formslab.host.sequence plans/rest_from_ambient.plan
+    python -m formslab.host.sequence plans/vacuum/ambient_to_rest.plan
+    python -m formslab.host.sequence --end             # the end of a run whose host was lost
 
 Every run is a lab plan (see `formslab.sequence`): the plan names its rScripts,
 the host loads them on a `Run` handle and runs the plan's steps in one
@@ -19,7 +20,9 @@ The console's ctrl tab reads it to find, show and stop the run, however and
 from wherever it was started.
 
 However a run ends, each loaded rScript's ``rShutdown`` runs before the process
-exits. Only one host runs at a time: two would fight over the same instruments.
+exits. Only a killed host skips it; its lock stays behind (``lost_run``), and
+``--end`` runs that run's end from a fresh host. Only one host runs at a time:
+two would fight over the same instruments.
 """
 from __future__ import annotations
 
@@ -168,15 +171,19 @@ def _on_signal(sig, _frame):  # pragma: no cover - signal path
 
 # --- the run ---------------------------------------------------------------------------
 
-def _build(plan_path):
+def _build(plan_path, end_only: bool = False):
     """The plan, and a handle with its rScripts loaded and recording set. A
     plan whose rScripts do not all load does not start: its steps would only
-    time out against a missing instrument owner."""
+    time out against a missing instrument owner. With `end_only`, it goes on
+    with the ones that loaded."""
     plan = load_plan(plan_path)
     run = rscripts.Run(name=plan.name)
     loaded = rscripts.load(run, plan.rscripts)
     missing = [n for n in plan.rscripts if n not in loaded]
-    if missing:
+    if missing and end_only:              # the end of a lost run does what it can
+        run.log(f"{plan.name}: rScripts did not load: {', '.join(missing)}; the end skips "
+                "their steps", level="WARNING", component=COMPONENT)
+    elif missing:
         raise PlanError(f"{plan.name}: rScripts did not load: {', '.join(missing)} "
                         "(the log above says why)")
     run.record(value=plan.record_interval, unit=plan.record_unit)
@@ -196,6 +203,15 @@ def _build(plan_path):
 
 END_CAP_S = 120.0
 END_SCRIPT = "end"
+END_SETTLE_S = 20.0       # a fresh host's routines get this long to read their instruments once
+
+
+def lost_run() -> dict | None:
+    """The lock of a run whose host stopped without its end (killed, crashed, a
+    power cut): the lock is still there and its process is not a host. None
+    otherwise. A host always removes its lock once its end is done."""
+    lock = read_lock()
+    return lock if lock and not is_host(lock["pid"]) else None
 
 
 def _needs(seg, labels) -> set:
@@ -249,6 +265,28 @@ def _end_script(run) -> list[str]:
     return runner.attempt_each(segments, END_CAP_S)
 
 
+def _settle(run, limit_s: float = END_SETTLE_S) -> None:
+    """A fresh host's routines have read nothing yet. Wait, within `limit_s`, until
+    each value the end script confirms has been read once, so that a confirmation
+    is not given up as "never read". An `end` sent meanwhile stops the wait."""
+    from formslab.rscripts import cast
+
+    path = find_plan(END_SCRIPT)
+    try:
+        script = load_plan(path) if path is not None else None
+    except PlanError:
+        script = None
+    if script is None:
+        return
+    loaded, labels = set(rscripts.loaded()), cast.owners()[0]
+    names = {s.params["variable"] for s in script.sequence.segments
+             if s.verb == "until" and _needs(s, labels) <= loaded}
+    deadline = time.monotonic() + limit_s
+    while time.monotonic() < deadline and any(run.variable(n) is None for n in names):
+        check_ctrl_commands(run)
+        time.sleep(0.2)
+
+
 def _chamber_left() -> str | None:
     """The chamber as the end left it, from rLACO's last report; None without rLACO."""
     if "rLACO" not in rscripts.loaded():
@@ -280,6 +318,9 @@ def _end(run, plan, how: str) -> dict:
             if dropped:
                 run.log(f"end: a request still waiting was dropped: {', '.join(dropped)}", component=COMPONENT)
             out["warnings"] = _end_script(run)
+        if how == "lost":
+            out["warnings"].append("the supply channels the lost run switched on are not known: "
+                                   "check the supplies")
         out["chamber"] = _chamber_left()
         if out["chamber"]:
             run.log(out["chamber"], level="WARNING" if "not" in out["chamber"] else "INFO",
@@ -297,8 +338,10 @@ def _write_ended(out: dict) -> None:
         pass
 
 
-def channel(plan_path, relay_func=None):
-    """Run a lab plan until its last step, or until ctrl `end`."""
+def channel(plan_path, relay_func=None, end_only: bool = False):
+    """Run a lab plan until its last step, or until ctrl `end`. With `end_only`,
+    run none of its steps: load its routines and run the end, for a run whose
+    host stopped without it (`lost_run`)."""
     global paused
     paused = False
 
@@ -311,7 +354,8 @@ def channel(plan_path, relay_func=None):
         ResetCtrlState()
         ResetJson()
         events_path().write_text("", encoding="utf-8")
-        run, plan = _build(plan_path)
+        run, plan = _build(plan_path, end_only)
+        run.ending = end_only            # set before any routine runs: no supply on, no bring-up
     except BaseException:
         _release_lock()
         raise
@@ -323,6 +367,13 @@ def channel(plan_path, relay_func=None):
     workers = Workers(run, hz=LOOP_HZ)
     how = "complete"
     try:
+        if end_only:
+            how = "lost"
+            run.log(f"Ending {plan.name}, whose host stopped without its end (pid {os.getpid()}).",
+                    component=COMPONENT)
+            workers.start()
+            _settle(run)
+            return
         run.log(f"Plan {plan.name} running ({LOOP_HZ:g} Hz, pid {os.getpid()}).",
                   component=COMPONENT)
         workers.start()
@@ -332,7 +383,7 @@ def channel(plan_path, relay_func=None):
         runner.execute()
         run.log(f"Plan {plan.name} complete.", component=COMPONENT)
     except GracefulExit:
-        how = "ended"
+        how = "lost" if end_only else "ended"
         run.log("Run ended.", component=COMPONENT)
     except SequenceError as exc:
         how = "failed"
@@ -367,15 +418,38 @@ def main(argv=None) -> int:
             pass
     ap = ArgumentParser(prog="python -m formslab.host.sequence",
                         description="Run a lab plan against the bench.")
-    ap.add_argument("plan", help="a .plan file: a path, or a name found in plans/ (e.g. tvac)")
+    ap.add_argument("plan", nargs="?",
+                    help="a .plan file: a path, or a name found in plans/ (e.g. tvac)")
+    ap.add_argument("--end", action="store_true",
+                    help="run only the end, for a run whose host stopped without it: "
+                         "the plan named, or else the lost run's")
     args = ap.parse_args(argv)
 
-    plan_path = find_plan(args.plan)
+    name = args.plan
+    if args.end and name is None:
+        lost = lost_run()
+        if lost is None:
+            print("No run to end: the last one ended, or one is still going.", flush=True)
+            return 2
+        name = lost["plan"]
+    if name is None:
+        ap.error("a plan is needed")
+    plan_path = find_plan(name)
+    if args.end:                                     # its plan gone or unreadable: the end script's routines
+        try:
+            if plan_path is not None:
+                load_plan(plan_path)
+        except PlanError as exc:
+            print(f"Plan not read: {exc}", flush=True)
+            plan_path = None
+        if plan_path is None:
+            print(f"Ending {name} with the end script's own routines.", flush=True)
+            plan_path = find_plan(END_SCRIPT)
     if plan_path is None:
-        print(f"Plan not found: {args.plan}", flush=True)
+        print(f"Plan not found: {name}", flush=True)
         return 2
     try:
-        channel(plan_path)
+        channel(plan_path, end_only=args.end)
     except GracefulExit:
         pass
     except SequenceError:
