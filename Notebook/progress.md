@@ -7,9 +7,10 @@ architecture are in [project.md](project.md); the GUI's plan is in [gui.md](gui.
 
 ## Now (2026-10-05)
 
-- **On main:** everything through PR #11, merged 2026-10-09 (the bench's plans,
-  rules and units, a readable End, the K508N, the cryocooler board). Open: PR #12
-  (the plans renamed and sorted, the cryocooler by hand, End for a killed host).
+- **On main:** everything through PR #12, merged 2026-10-15 (the plans renamed and
+  sorted, the cryocooler by hand, End for a killed host, supply protection read
+  back). **Next:** the End bench checklist (docs/END.md, section 9), on the bench
+  computer with someone at the HMI; End was rehearsed on the GUI demo 2026-10-15.
 - **Focus (2026-10-09): plans and blocks for darkness thermal testing.** First step
   done: the two plans tested on the bench renamed `ambient_to_rest` (was
   `rest_from_ambient`) and `rest_to_ambient` (was `vent_to_ambient`), and `plans/`
@@ -98,6 +99,7 @@ architecture are in [project.md](project.md); the GUI's plan is in [gui.md](gui.
 | 2026-10-05 | #9 | J2 drift, so sun-synchronous orbits keep their local time; one umbra reading for the panel and rOrbit; a wait on an orbit value before an orbit is chosen is refused; loops (`repeat … end`); conditions (`< <= > >=`, `= true`, `within`, `or go on`; `above`, `below`, `timeout` retired); rename; list symbols; CI runs the orbit extra |
 | 2026-10-06 | #10 | The Notebook: the project's intent, architecture and progress |
 | 2026-10-09 | #11 | Plans for the bench and a student session; rules (`when … then`), units, holds at a thermocouple; the K508N; a readable End (the end script); the cryocooler board as it really is |
+| 2026-10-15 | #12 | The two tested plans renamed, `plans/` in folders; the cryocooler by hand (no false "not live", a tripped output turns on again); End for a killed host (`--end`, *Run End now*); End resent for 150 s; supply protection read back; docs/END.md |
 
 ## Waiting on a decision
 
