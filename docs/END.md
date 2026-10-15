@@ -329,6 +329,14 @@ Driven by hand on the GUI demo (2026-10-08) through the page's own API: End
 mid-pumpdown with a zone on, and End while paused. Both took 12 to 16 s and left
 the chamber sealed, pumps and zones off, no warnings.
 
+Again on 2026-10-15, with the killed-host end added:
+
+| Scenario | End took | Left |
+|---|---|---|
+| End mid-pumpdown, platen on at 60 °C | 16 s | sealed, pump off, zones off, no warnings |
+| End while paused, pump on | 11 s | the same |
+| The host killed (pump and platen on), then *Run End now* | the lost run shown within 1 s; its end 19 s | the same; `how` `lost`, the one warning to check the supplies; a second End refused, nothing lost |
+
 Run them: `pytest test/test_end.py` (about 4 minutes; it runs real plans against
 the simulator).
 
