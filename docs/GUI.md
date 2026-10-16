@@ -13,6 +13,11 @@ labcli gui                 # then open http://localhost:8080/
 `--port N` changes the port. Stop it with Ctrl+C. Runs started from the console
 or over SSH keep running either way.
 
+On Windows, `scripts\labgui.cmd` does both from a double-click or a desktop
+shortcut: it starts `labcli gui` in a minimized window if nothing answers on port
+8080, then opens the page in an Edge window with no tabs or address bar. Closing
+that window leaves the GUI running; closing the `labcli gui` window stops it.
+
 To try it without the bench (a simulated chamber, a throwaway login and config, nothing real
 touched): `python scripts/gui_demo.py`, then open `http://localhost:8088/` (user `demo`,
 password `demo`). The demo has its own port and an orange DEMO bar, so it cannot be
