@@ -1,5 +1,5 @@
 @echo off
-rem Open the GUI as a desktop window, for a desktop shortcut or a double-click.
+rem Open formsLAB, the GUI, as a desktop window, for a desktop shortcut or a double-click.
 rem Starts `labcli gui` if nothing answers on its port yet, waits for it, then
 rem opens the page in an Edge app window (no tabs, no address bar).
 setlocal

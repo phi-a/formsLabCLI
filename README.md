@@ -55,7 +55,7 @@ a double-click: `labcli.cmd` on Windows and `labcli.sh` on Linux and macOS.
 Both resolve the venv relative to the checkout and run from the repo root, so
 `outputs/` lands beside the code. The Windows one also switches the console to
 UTF-8, because the default OEM codepage mangles the box-drawing characters.
-`labgui.cmd` opens the GUI as a desktop window on Windows (docs/GUI.md).
+`labgui.cmd` opens the GUI, formsLAB, as a desktop window on Windows (docs/GUI.md).
 
 ## Tabs
 

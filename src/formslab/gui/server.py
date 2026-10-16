@@ -340,7 +340,7 @@ def main(argv: list[str]) -> int:
     except OSError as e:
         print(f"✗ cannot listen on {host}:{args.port}: {e}", file=sys.stderr)
         return 1
-    print(f"formsLabCLI GUI on http://{'localhost' if not args.listen else host}:{args.port}/   (Ctrl+C stops)")
+    print(f"formsLAB on http://{'localhost' if not args.listen else host}:{args.port}/   (Ctrl+C stops)")
     if args.listen:
         print("  listening on every interface; the login is sent as plain HTTP")
     try:

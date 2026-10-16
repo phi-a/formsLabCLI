@@ -1,6 +1,6 @@
 # The GUI
 
-A small web app for the bench machine, used from a browser. It shows what the
+formsLAB, a small web app for the bench machine, used from a browser. It shows what the
 host is doing, starts and ends runs, sends commands, and plots recorded runs. It
 is a client of the files the console and the sequence host already share; it
 never opens an instrument.

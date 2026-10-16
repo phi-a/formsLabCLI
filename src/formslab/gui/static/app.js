@@ -625,7 +625,7 @@
       const { demo } = await (await fetch("/api/info")).json();
       $("#demo-bar").hidden = !demo;
       $("#login-demo").hidden = !demo;
-      if (demo) document.title = "DEMO - formsLabCLI";
+      if (demo) document.title = "DEMO - formsLAB";
     } catch (e) { /* the page works without it */ }
   }
   showDemo();
