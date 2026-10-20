@@ -145,6 +145,60 @@ def test_a_run_whose_host_was_killed_is_found_and_ended_from_a_fresh_host(chambe
     assert host.lost_run() is None and host.read_lock() is None
 
 
+# --- Fast End ----------------------------------------------------------------------------
+
+def test_fast_end_sends_every_step_in_order_without_confirming_them(chamber, tmp_path, capsys):
+    plan = tmp_path / "t.plan"
+    plan.write_text("load rLACO\nrecord every 1 s\nhvc platen 60\nhvc platen on\nhvc pump on\n"
+                    "hvc rough open\nhold until end\n", encoding="utf-8")
+    timer = threading.Timer(6.0, lambda: ctrl("end", "fast"))
+    timer.start()
+    host.channel(plan_path=plan)
+    timer.join()
+    s = chamber.state
+    assert not any(s.devices[c] for c in ("OR", "OV", "OF", "OG", "OP", "OT"))
+    assert not any(s.zone_active.values()) and s.zone_setpoint[1] == 20.0
+    ended = json.loads(host.ended_path().read_text(encoding="utf-8"))
+    assert ended["fast"] is True
+    assert ended["warnings"] == ["Fast End: 7 confirmations skipped; check the chamber at the HMI"]
+    # read once the routines have carried out what they took, not before
+    assert ended["chamber"].startswith("Chamber left: sealed") and "pump off" in ended["chamber"]
+    assert "skipped, Fast End" in capsys.readouterr().out
+
+
+def test_fast_end_asked_while_an_end_waits_stops_the_wait(chamber, tmp_path):
+    """With the turbo running, `hvc stop` is refused and End waits 30 s for the
+    vacuum pump to stop; a Fast End cuts that short."""
+    import time
+    with chamber.state.lock:
+        chamber.state.devices.update(OT=True, O4=True, OP=True)
+    plan = tmp_path / "t.plan"
+    plan.write_text("load rLACO\nrecord every 1 s\nhold until end\n", encoding="utf-8")
+    t0 = time.monotonic()
+    timers = [threading.Timer(3.0, lambda: ctrl("end")), threading.Timer(12.0, lambda: ctrl("end", "fast"))]
+    for t in timers:
+        t.start()
+    host.channel(plan_path=plan)
+    for t in timers:
+        t.join()
+    ended = json.loads(host.ended_path().read_text(encoding="utf-8"))
+    assert ended["fast"] is True and time.monotonic() - t0 < 25
+    assert any(w.startswith("Fast End: ") for w in ended["warnings"])
+    assert chamber.state.devices["OG"] is False and chamber.state.devices["OT"] is False
+
+
+def test_a_lost_run_can_be_fast_ended(chamber, tmp_path):
+    with chamber.state.lock:
+        chamber.state.devices.update(OV=True, OP=True)
+    plan = tmp_path / "t.plan"
+    plan.write_text("load rLACO\nrecord every 1 s\nhold until end\n", encoding="utf-8")
+    lose_a_run("t")
+    host.channel(plan_path=plan, end_only=True, fast_end=True)
+    assert not any(chamber.state.devices[c] for c in ("OR", "OV", "OP"))
+    ended = json.loads(host.ended_path().read_text(encoding="utf-8"))
+    assert ended["how"] == "lost" and ended["fast"] is True
+
+
 def test_end_on_its_own_needs_a_lost_run(capsys):
     assert host.lost_run() is None
     assert host.main(["--end"]) == 2

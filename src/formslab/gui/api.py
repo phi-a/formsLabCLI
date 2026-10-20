@@ -282,18 +282,29 @@ def start_run(name: str) -> dict:
     return {"state": "starting", "plan": name}
 
 
-def end_run() -> dict:
+_end_key: dict = {"key": None}            # what End sends: "fast" for a Fast End
+
+
+def end_run(fast: bool = False) -> dict:
     """Ask the host to stop, so every rScript's rShutdown runs. `end` is sent
     again every few seconds while the host lives (a host that is starting clears
     the ctrl file and can erase it), and the host is never killed from here.
     With no host but a lost run (its host was killed), that run's end runs from
-    a fresh host."""
+    a fresh host. `fast`: a Fast End, the end script's steps sent without waiting
+    to confirm them; asked while an End is going, it makes the rest of it fast."""
     running = host()
     if running is None:
         if lost_run() is None:
             raise ApiError(409, "no run is going")
-        return _end_lost()
+        return _end_lost(fast)
+    with _action_lock:
+        already = fast and _action["name"] == "ending"
+    if already:
+        _end_key["key"] = "fast"
+        ctrlutils.WriteCommand("end", "fast")
+        return {"state": "ending", "plan": running["plan"]}
     _begin("ending")
+    _end_key["key"] = "fast" if fast else None
 
     def end(pid: int) -> None:
         try:
@@ -302,7 +313,7 @@ def end_run() -> dict:
                 if time.monotonic() >= resend_at:
                     resend_at = time.monotonic() + END_RESEND_S
                     try:
-                        ctrlutils.WriteCommand("end")
+                        ctrlutils.WriteCommand("end", _end_key["key"])
                     except (OSError, ValueError):
                         pass                             # tried again next round
                 time.sleep(0.25)
@@ -313,7 +324,7 @@ def end_run() -> dict:
     return {"state": "ending", "plan": running["plan"]}
 
 
-def _end_lost() -> dict:
+def _end_lost(fast: bool = False) -> dict:
     """Start a host that runs only the end of the run whose host was lost
     (`--end`), and show "ending" until it has gone. No `end` is sent to it: it
     stops by itself, and an `end` would cut short its wait for first readings."""
@@ -322,7 +333,7 @@ def _end_lost() -> dict:
 
     def end() -> None:
         try:
-            ctrlcli._launch_sequence(None, end_only=True)
+            ctrlcli._launch_sequence(None, end_only=True, fast=fast)
             deadline = time.monotonic() + END_SETTLE_S + END_WAIT_S
             while time.monotonic() < deadline and host() is not None:
                 time.sleep(0.25)

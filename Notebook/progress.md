@@ -79,6 +79,13 @@ architecture are in [project.md](project.md); the GUI's plan is in [gui.md](gui.
   at the bench what the controller reports while one runs (docs/END.md, Open items).
   **2026-10-15:** rPSU keeps the channels it switched on in `.run/psu_on.json`, so a
   killed run's channels go off at the next host's end.
+  **2026-10-20:** Fast End (docs/END.md, D11), asked for because there was no way to
+  stop waiting on a slow End: the same steps, in order, each command sent once
+  taken, the confirmations skipped; also while an End is going. GUI *Fast End*,
+  `end fast` in the console and `labcli end fast`. Decided: it is not a "freeze"
+  (stop the plan, leave the chamber as it is); Pause is the nearest to that. The
+  GUI is now called formsLAB (desktop shortcut `scripts/labgui.cmd`); formsLabCLI
+  stays the name of the project and the console.
 - **Next:** the environment profile, the first stage after orbit files
   ([gui.md](gui.md), section 4): orbit file + spacecraft model → per-face background
   temperature over an orbit → a recorder-format CSV in the Plots tab. It needs a way to

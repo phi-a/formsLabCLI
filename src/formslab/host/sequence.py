@@ -55,6 +55,7 @@ COMPONENT = "sequence"
 
 _CTRL_LABELS = ("end", "reset", "resume", "pause")
 paused = False
+fast = False             # Fast End asked for: the end script does not wait to confirm its steps
 
 
 class GracefulExit(SystemExit):
@@ -143,6 +144,7 @@ def check_ctrl_commands(run) -> None:
             continue
         run.log(f"ctrl command received: {label}", component=COMPONENT)
         if label == "end":
+            _fast_if_asked(pending["end"])
             raise GracefulExit()
         if label == "pause":
             paused = True
@@ -152,6 +154,24 @@ def check_ctrl_commands(run) -> None:
             ensure_runtime_files()           # an older version's stale blocks and entries go
             ResetCtrlState()
             ResetJson()
+
+
+def _fast_if_asked(block: dict) -> None:
+    """`end` with the key `fast` (Fast End): the end script skips its waits."""
+    global fast
+    fast = fast or block.get("key") == "fast"
+
+
+def _watch_for_fast(run) -> None:
+    """While the end script runs: an `end` with `fast` makes the rest of it fast."""
+    if fast:
+        return
+    block = ReadCommands(("end",)).get("end")
+    if block is not None:
+        _fast_if_asked(block)
+        if fast:
+            run.log("Fast End: the remaining steps are sent without waiting to confirm them",
+                    level="WARNING", component=COMPONENT)
 
 
 def poll(run, watch=None) -> None:
@@ -261,8 +281,8 @@ def _end_script(run) -> list[str]:
         segments.append(seg)
     run.log(f"Ending: {len(segments)} steps of {path.name}", component=COMPONENT)
     runner = LabSequenceRunner(run, Sequence(name=END_SCRIPT, segments=tuple(segments)),
-                               poll=lambda: None, tick=lambda _run: None, hz=LOOP_HZ)
-    return runner.attempt_each(segments, END_CAP_S)
+                               poll=lambda: _watch_for_fast(run), tick=lambda _run: None, hz=LOOP_HZ)
+    return runner.attempt_each(segments, END_CAP_S, skip_waits=lambda: fast)
 
 
 def _settle(run, limit_s: float = END_SETTLE_S) -> None:
@@ -282,7 +302,7 @@ def _settle(run, limit_s: float = END_SETTLE_S) -> None:
     names = {s.params["variable"] for s in script.sequence.segments
              if s.verb == "until" and _needs(s, labels) <= loaded}
     deadline = time.monotonic() + limit_s
-    while time.monotonic() < deadline and any(run.variable(n) is None for n in names):
+    while not fast and time.monotonic() < deadline and any(run.variable(n) is None for n in names):
         check_ctrl_commands(run)
         time.sleep(0.2)
 
@@ -311,21 +331,31 @@ def _end(run, plan, how: str) -> dict:
     paused = False
     run.ending = True                     # routines read it: rPSU switches nothing on, rCryoBoard no bring-up
     out = {"plan": plan.name, "when": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-           "how": how, "chamber": None, "warnings": []}
+           "how": how, "fast": False, "chamber": None, "warnings": []}
     try:
         if how != "complete":
             dropped = ClearPending()
             if dropped:
                 run.log(f"end: a request still waiting was dropped: {', '.join(dropped)}", component=COMPONENT)
             out["warnings"] = _end_script(run)
-        out["chamber"] = _chamber_left()
-        if out["chamber"]:
-            run.log(out["chamber"], level="WARNING" if "not" in out["chamber"] else "INFO",
-                    component=COMPONENT)
+            out["fast"] = fast
     except BaseException:                            # a bug here must not stop the shutdowns
         run.log(f"end script error: {traceback.format_exc()}", level="ERROR", component=COMPONENT)
         out["warnings"].append("the end script itself failed; see the host log")
     return out
+
+
+def _say_chamber(run, out: dict) -> None:
+    """How the chamber was left, read once the routines' threads have stopped: by
+    then each request they took is carried out, also after a Fast End, which did
+    not wait for them."""
+    try:
+        out["chamber"] = _chamber_left()
+        if out["chamber"]:
+            run.log(out["chamber"], level="WARNING" if "not" in out["chamber"] else "INFO",
+                    component=COMPONENT)
+    except Exception:
+        run.log(f"chamber not read: {traceback.format_exc()}", level="ERROR", component=COMPONENT)
 
 
 def _write_ended(out: dict) -> None:
@@ -335,12 +365,12 @@ def _write_ended(out: dict) -> None:
         pass
 
 
-def channel(plan_path, relay_func=None, end_only: bool = False):
+def channel(plan_path, relay_func=None, end_only: bool = False, fast_end: bool = False):
     """Run a lab plan until its last step, or until ctrl `end`. With `end_only`,
     run none of its steps: load its routines and run the end, for a run whose
-    host stopped without it (`lost_run`)."""
-    global paused
-    paused = False
+    host stopped without it (`lost_run`); `fast_end` makes that end a Fast End."""
+    global paused, fast
+    paused, fast = False, fast_end
 
     def emit(msg: str) -> None:
         (relay_func or print)(msg)
@@ -398,6 +428,7 @@ def channel(plan_path, relay_func=None, end_only: bool = False):
         if stuck:
             run.log(f"rScripts still busy after 15 s: {', '.join(stuck)}; running "
                       "their rShutdown anyway", level="WARNING", component=COMPONENT)
+        _say_chamber(run, out)
         try:
             rscripts.shutdown(run)
         except BaseException:
@@ -420,6 +451,8 @@ def main(argv=None) -> int:
     ap.add_argument("--end", action="store_true",
                     help="run only the end, for a run whose host stopped without it: "
                          "the plan named, or else the lost run's")
+    ap.add_argument("--fast", action="store_true",
+                    help="with --end: a Fast End, its steps sent without waiting to confirm them")
     args = ap.parse_args(argv)
 
     name = args.plan
@@ -446,7 +479,7 @@ def main(argv=None) -> int:
         print(f"Plan not found: {name}", flush=True)
         return 2
     try:
-        channel(plan_path, end_only=args.end)
+        channel(plan_path, end_only=args.end, fast_end=args.end and args.fast)
     except GracefulExit:
         pass
     except SequenceError:

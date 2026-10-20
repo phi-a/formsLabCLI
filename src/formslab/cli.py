@@ -7,6 +7,7 @@
     labcli check <plan>             read a plan without running it
     labcli run <plan>               start a plan; returns once its host is up
     labcli end | pause | resume     the running plan
+    labcli end fast                 a Fast End: the end's steps, not waiting to confirm each
     labcli ps                       every sequence host process
     labcli log [N]                  the host's last N log lines (default 40)
     labcli cast <label> <words>     a command to an instrument, e.g. cast hvc platen 20;
@@ -75,10 +76,16 @@ def main(argv: list[str]) -> int:
             return USAGE
         return show(ctrlcli.run_sequence(args))
     if verb in ("end", "pause", "resume"):
+        args = [a.lower() for a in args]
+        if args not in ([], ["fast"]) or (args and verb != "end"):
+            out.print("✗ end, end fast, pause or resume", markup=False)
+            return USAGE
         if ctrlcli.running() is None and not (verb == "end" and ctrlcli.lost_run()):
             out.print("✗ no run is going.", markup=False)
             return 0 if verb == "end" else 1           # ending what has ended is done
-        return show(ctrlcli.end_sequence() if verb == "end" else ctrlcli.execute_command([verb]))
+        if verb == "end":
+            return show(ctrlcli.end_sequence(fast=args == ["fast"]))
+        return show(ctrlcli.execute_command([verb]))
     if verb == "log":
         return _log(out, args)
     if verb == "cast":

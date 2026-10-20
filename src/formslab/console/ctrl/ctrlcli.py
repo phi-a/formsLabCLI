@@ -46,16 +46,17 @@ def running():
     return lock if lock and is_host(lock["pid"]) else None
 
 
-def _launch_sequence(plan_path: str | None, end_only: bool = False) -> CLIResult:
+def _launch_sequence(plan_path: str | None, end_only: bool = False, fast: bool = False) -> CLIResult:
     """Start `python -m formslab.host.sequence <plan>`, output to the log tab's
     file, in this working directory. On Windows it is detached from the
     console, so closing the console window does not kill a run. `end_only`
-    (no plan): the end of the run whose host was lost (`--end`)."""
+    (no plan): the end of the run whose host was lost (`--end`); `fast`: a Fast End."""
     host = running()
     if host:
         return CLIResult(f"✔ sequence host already running (pid {host['pid']}, "
                          f"plan {host['plan']})")
-    cmd = [sys.executable, "-m", "formslab.host.sequence"] + (["--end"] if end_only else [plan_path])
+    cmd = [sys.executable, "-m", "formslab.host.sequence"] + (
+        (["--end"] + (["--fast"] if fast else [])) if end_only else [plan_path])
     if sys.platform == "win32":
         flags = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS}
     else:
@@ -208,17 +209,24 @@ def _end_pending() -> bool:
     return cmds is None or cmds.get("end", {}).get("processed") is False
 
 
-def end_sequence(take_s: float = END_TAKE_S, finish_s: float = END_FINISH_S) -> CLIResult:
+def end_sequence(take_s: float = END_TAKE_S, finish_s: float = END_FINISH_S,
+                 fast: bool = False) -> CLIResult:
     """Ask the host to stop through ctrl, so its rScripts' rShutdown runs (a
     plan's PSU outputs go off, pumping it started stops). A host that takes
     the request is left to finish its cleanup; only one that never takes it
-    (hung) is killed -- and then rShutdown has not run."""
+    (hung) is killed -- and then rShutdown has not run. `fast`: a Fast End, the
+    end script's steps sent without waiting to confirm them; also to a host
+    already ending."""
     host = running()
     if host is None:
-        return _end_lost(finish_s + END_SETTLE_S) if lost_run() else status_panel()
+        return _end_lost(finish_s + END_SETTLE_S, fast) if lost_run() else status_panel()
     pid = host["pid"]
+
+    def send() -> None:
+        WriteCommand("end", "fast") if fast else WriteCommand("end")
+
     try:
-        WriteCommand("end")
+        send()
     except (OSError, ValueError) as e:
         return CLIResult(Text(f"✗ could not send `end`: {e}", style=ERROR), ok=False)
     resend_at = time.monotonic() + END_RESEND_S
@@ -230,7 +238,7 @@ def end_sequence(take_s: float = END_TAKE_S, finish_s: float = END_FINISH_S) -> 
         if time.monotonic() >= resend_at:
             resend_at += END_RESEND_S
             try:
-                WriteCommand("end")
+                send()
             except (OSError, ValueError):
                 pass                                  # the next pass tries again
 
@@ -255,11 +263,11 @@ def end_sequence(take_s: float = END_TAKE_S, finish_s: float = END_FINISH_S) -> 
     return CLIResult(f"✖ sequence host (pid {pid}, plan {host['plan']}) stopped cleanly.")
 
 
-def _end_lost(finish_s: float) -> CLIResult:
+def _end_lost(finish_s: float, fast: bool = False) -> CLIResult:
     """The end of a run whose host stopped without it: a fresh host loads that
     run's routines and runs the end script, then their shutdowns."""
     lost = lost_run()
-    started = _launch_sequence(None, end_only=True)
+    started = _launch_sequence(None, end_only=True, fast=fast)
     host = running()
     if host is None or host["pid"] == lost["pid"]:
         return started
@@ -302,7 +310,8 @@ def help_panel() -> CLIResult:
                       ("ps", "List all sequence host processes"),
                       ("pause", "Pause the running plan"),
                       ("resume", "Resume it"),
-                      ("end", "Stop it; rShutdown leaves the hardware safe")):
+                      ("end", "Stop it; rShutdown leaves the hardware safe"),
+                      ("end fast", "Fast End: the same steps, not waiting to confirm each")):
         result.append(f"  {cmd:<16}", LABEL)
         result.append(desc + "\n", TEXT)
     return CLIResult(result)
@@ -323,6 +332,8 @@ def execute_command(args: list[str]) -> CLIResult:
     cmd = args[0].lstrip("-").lower()
     if cmd == "run":
         return run_sequence(args[1:])
+    if cmd == "end" and [a.lower() for a in args[1:]] == ["fast"]:
+        return end_sequence(fast=True)
     handler = COMMANDS.get(cmd)
     if handler:
         return handler()

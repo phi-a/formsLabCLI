@@ -164,6 +164,37 @@ def test_end_asks_the_host_and_never_kills_it(client, monkeypatch):
         thread.join(2)
 
 
+def test_fast_end_asks_for_it_also_of_a_run_already_ending(client, monkeypatch):
+    ctrlutils.LoadCommands()
+    alive = threading.Event()
+    alive.set()
+    monkeypatch.setattr(api, "host", lambda: HOST if alive.is_set() else None)
+    monkeypatch.setattr(api, "is_host", lambda pid: alive.is_set())
+    try:
+        assert client.json("POST", "/api/end", {})[0] == 200
+        deadline = time.monotonic() + 2
+        while "end" not in (taken := ctrlutils.ReadCommands(["end"])) and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert taken["end"]["key"] is None                                  # End
+        code, body = client.json("POST", "/api/end", {"fast": True})        # then Fast End, while it ends
+        assert (code, body) == (200, {"state": "ending", "plan": "tvac"})
+        assert ctrlutils.ReadCommands(["end"])["end"]["key"] == "fast"
+    finally:
+        alive.clear()
+        wait_idle()
+
+
+def test_fast_end_on_a_lost_run_starts_its_end_fast(client, monkeypatch):
+    launched = []
+    monkeypatch.setattr(api, "host", lambda: None)
+    monkeypatch.setattr(api, "lost_run", lambda: HOST)
+    monkeypatch.setattr(ctrlcli, "_launch_sequence",
+                        lambda path, end_only=False, fast=False: launched.append((path, end_only, fast)))
+    assert client.json("POST", "/api/end", {"fast": True})[0] == 200
+    wait_idle()
+    assert launched == [(None, True, True)]
+
+
 def test_end_survives_a_host_that_clears_ctrl_as_it_starts(client, monkeypatch):
     ctrlutils.LoadCommands()
     monkeypatch.setattr(api, "END_RESEND_S", 0.2)
@@ -188,13 +219,14 @@ def test_end_on_a_lost_run_starts_a_host_for_its_end_and_sends_no_end(client, mo
     launched = []
     monkeypatch.setattr(api, "host", lambda: None)
     monkeypatch.setattr(api, "lost_run", lambda: HOST)
-    monkeypatch.setattr(ctrlcli, "_launch_sequence", lambda path, end_only=False: launched.append((path, end_only)))
+    monkeypatch.setattr(ctrlcli, "_launch_sequence",
+                        lambda path, end_only=False, fast=False: launched.append((path, end_only, fast)))
     ctrlutils.LoadCommands()
     assert client.json("GET", "/api/status")[1]["lost"] == HOST
     code, body = client.json("POST", "/api/end", {})
     assert (code, body) == (200, {"state": "ending", "plan": "tvac"})
     wait_idle()
-    assert launched == [(None, True)]
+    assert launched == [(None, True, False)]
     assert "end" not in ctrlutils.ReadCommands(["end"])                      # it stops by itself
 
 

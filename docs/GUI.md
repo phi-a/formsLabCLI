@@ -55,7 +55,11 @@ goes), one card per instrument, and the end of the host log. From here:
   loaded (docs/SEQUENCE.md, Ending: the cooler's and the camera's supplies off,
   the chamber's zones off, its valves closed and confirmed, its pumps stopped),
   then each instrument's shutdown. The request is sent again every few seconds
-  until the host is gone; the GUI never kills the host. Afterwards a banner says
+  until the host is gone; the GUI never kills the host. *Fast End*, beside it,
+  sends the same steps in the same order without waiting to confirm each one,
+  for when an End is waiting on something slow; it can be pressed while an End
+  is going, and its banner says to check the chamber at the HMI (docs/END.md,
+  Fast End). Afterwards a banner says
   how the run ended and how the chamber was left (`Chamber left: sealed, 3.2 Torr,
   pump off, turbo off, zones off`), red with what the end script could not do when
   there was anything; *Dismiss* hides it in this browser.

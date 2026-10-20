@@ -212,8 +212,9 @@ class Handler(BaseHTTPRequestHandler):
             result = api.start_run(name)
             audit(user, f"run {name}")
         elif path == "/api/end":
-            result = api.end_run()
-            audit(user, "end")
+            fast = body.get("fast") is True
+            result = api.end_run(fast)
+            audit(user, "end fast" if fast else "end")
         elif path in ("/api/pause", "/api/resume"):
             result = api.ctrl(path[len("/api/"):])
             audit(user, path[len("/api/"):])

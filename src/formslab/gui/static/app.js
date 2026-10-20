@@ -79,8 +79,9 @@
         if (!document.hidden) {
           const s = await api("/api/status?log=" + (view === "status" ? 40 : 1));
           if (gen !== pollGen) return;                     // retired while it was out
-          $("#end").hidden = !s.host;
+          $("#end").hidden = $("#end-fast").hidden = !s.host;
           $("#end").disabled = Boolean(s.action);
+          $("#end-fast").disabled = Boolean(s.action) && s.action !== "ending";   // also to hurry an End along
           renderEnded(s);
           if (view === "status") renderStatus(s);
           if (view === "tvac") renderTvac(s);
@@ -216,8 +217,9 @@
     const running = Boolean(s.host);
     $("#start-box").hidden = running;
     $("#run-box").hidden = !running;
-    $("#end").hidden = !running;
+    $("#end").hidden = $("#end-fast").hidden = !running;
     for (const id of ["#start", "#pause", "#resume", "#end"]) $(id).disabled = busy(s);
+    $("#end-fast").disabled = busy(s) && s.action !== "ending";
     const note = $("#action");
     if (s.action === "starting") { note.className = "note"; note.textContent = "Starting the run..."; }
     else if (s.action === "ending") { note.className = "note"; note.textContent = "Ending: the end script is running, then each instrument's shutdown..."; }
@@ -263,14 +265,19 @@
   $("#pause").addEventListener("click", () => act("/api/pause", {}, "Pause"));
   $("#resume").addEventListener("click", () => act("/api/resume", {}, "Resume"));
   // End: the dialog says what the end script will do for this plan's routines.
-  async function confirmEnd() {
+  // Fast End sends the same steps, in order, without waiting to confirm each one.
+  async function confirmEnd(fast) {
     let steps = [];
     try { steps = (await api("/api/end/steps")).steps; } catch (e) { /* the generic question then */ }
-    const what = steps.length ? "End the run? This runs, in order:\n\n" + steps.map((s) => "  " + s).join("\n")
-      + "\n\nthen each instrument's shutdown." : "End the run? Each instrument's shutdown runs.";
-    if (confirm(what)) act("/api/end", {}, "End");
+    const verb = fast ? "Fast End the run? This sends, in order, without waiting to confirm each step"
+      : "End the run? This runs, in order";
+    const what = steps.length ? verb + ":\n\n" + steps.map((s) => "  " + s).join("\n")
+      + "\n\nthen each instrument's shutdown." : (fast ? "Fast End" : "End") + " the run? Each instrument's shutdown runs.";
+    const after = fast ? "\n\nCheck the chamber at the HMI afterwards." : "";
+    if (confirm(what + after)) act("/api/end", fast ? { fast: true } : {}, fast ? "Fast End" : "End");
   }
-  $("#end").addEventListener("click", confirmEnd);
+  $("#end").addEventListener("click", () => confirmEnd(false));
+  $("#end-fast").addEventListener("click", () => confirmEnd(true));
 
   // A run whose host stopped without its end (killed, crashed, a power cut): said
   // until its end has run, from here or `labcli end`, or another run starts.
@@ -280,9 +287,11 @@
       + "stopped without its end: its host was stopped (a crash, Task Manager or a power cut). "
       + "The chamber and the supplies are as it left them."));
     const go = el("button", { type: "button" }, "Run End now");
-    go.disabled = busy(s);
-    go.addEventListener("click", confirmEnd);
-    box.append(go);
+    const fast = el("button", { type: "button" }, "Fast End now");
+    go.disabled = fast.disabled = busy(s);
+    go.addEventListener("click", () => confirmEnd(false));
+    fast.addEventListener("click", () => confirmEnd(true));
+    box.append(go, fast);
     box.hidden = false;
   }
 
@@ -296,7 +305,8 @@
     if (s.host || !e || seen === e.when) { box.hidden = true; return; }
     const warned = (e.warnings || []).length > 0 || /not reached/.test(e.chamber || "");
     box.className = "banner " + (warned ? "stopped" : "running");
-    const how = { ended: "ended", lost: "was ended after its host was lost", complete: "completed", failed: "stopped on a failed step", error: "stopped on an error" }[e.how] || e.how;
+    const how = e.fast ? (e.how === "lost" ? "was ended (Fast End) after its host was lost" : "was ended with Fast End")
+      : { ended: "ended", lost: "was ended after its host was lost", complete: "completed", failed: "stopped on a failed step", error: "stopped on an error" }[e.how] || e.how;
     const lines = [`${e.plan} ${how} at ${new Date(e.when).toLocaleString()}.`];
     if (e.chamber) lines.push(e.chamber + ".");
     if (warned) lines.push("Not done: " + (e.warnings || []).join("; ") + ".");

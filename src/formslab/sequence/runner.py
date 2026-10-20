@@ -78,6 +78,10 @@ class LabSequenceRunner:
         self._sleep = sleep
         self.index = -1
         self.total_steps = 0
+        # The end script's: true once Fast End is asked for, when its `until` steps
+        # are skipped, also one already waiting (attempt_each).
+        self._skip_waits: Callable[[], bool] = lambda: False
+        self._skipped = 0
         self.elapsed = 0.0
         # Each open loop, by its `repeat` index: passes begun, when it was entered
         # (active seconds), and the loop count at the start of the current pass.
@@ -145,20 +149,27 @@ class LabSequenceRunner:
                                             ended=ended))
         return result
 
-    def attempt_each(self, segments, cap_s: float) -> list[str]:
+    def attempt_each(self, segments, cap_s: float,
+                     skip_waits: Optional[Callable[[], bool]] = None) -> list[str]:
         """Run `segments` one after another, each on its own: one that fails (refused,
         not taken, a state not confirmed in time) is logged and the next still runs.
-        After `cap_s` of wall clock the rest are logged as not run. Returns what went
-        wrong, one line each: the end script, where every step is tried."""
+        After `cap_s` of wall clock the rest are logged as not run. While `skip_waits()`
+        is true (Fast End), `until` steps are skipped, and one waiting stops waiting.
+        Returns what went wrong, one line each: the end script, where every step is tried."""
         warnings: list[str] = []
         start = self._clock()
         self._ending = True
+        self._skip_waits = skip_waits or (lambda: False)
         for i, seg in enumerate(segments):
             label = seg.label or seg.verb
             if self._clock() - start >= cap_s:
                 warnings.append(f"{label}: not run, the {cap_s:g} s for ending ran out")
                 continue
             self.index = i
+            if seg.verb == "until" and self._skip_waits():
+                self._skipped += 1
+                self.run.log(f"[end {i + 1}/{len(segments)}] {label}: skipped, Fast End", component=COMPONENT)
+                continue
             self.run.log(f"[end {i + 1}/{len(segments)}] {label}", component=COMPONENT)
             if seg.verb == "until" and self.run.variable(seg.params["variable"]) is None:
                 # Never published (the instrument was never reached): waiting cannot confirm it.
@@ -171,6 +182,8 @@ class LabSequenceRunner:
             except SequenceError as e:
                 warnings.append(f"{label}: {e}")
                 self.run.log(f"end: {label}: {e}", level="WARNING", component=COMPONENT)
+        if self._skipped:
+            warnings.append(f"Fast End: {self._skipped} confirmations skipped; check the chamber at the HMI")
         return warnings
 
     # --- `when` rules ------------------------------------------------------------
@@ -307,7 +320,8 @@ def _command(runner, run, segment) -> int:
         tick()
     # The step ends when the request is taken, or, for an owner that reports
     # results (rLACO), when it has been carried out: a refusal stops the plan.
-    wait = rscripts.reports_results(label)
+    # In a Fast End, taken is enough; the routine logs what it could not do.
+    wait = rscripts.reports_results(label) and not runner._skip_waits()
 
     out = send_request(request, label, wait_result=wait, take_s=timeout,
                        clock=lambda: runner.elapsed, tick=tick)
@@ -385,6 +399,10 @@ def _until(runner, run, segment) -> int:
         value = now if now is not None else value
         if met:
             run.log(f"{p['variable']} = {value:.4g}{shown}: {_shown(p)}", component=COMPONENT)
+            return n
+        if runner._skip_waits():                             # Fast End, asked for while it waited
+            runner._skipped += 1
+            run.log(f"{_shown(p)}: not confirmed, Fast End", component=COMPONENT)
             return n
         if p["timeout_s"] is not None and runner.elapsed - start >= p["timeout_s"]:
             if p.get("go_on"):

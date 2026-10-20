@@ -7,8 +7,8 @@ in SEQUENCE.md; the cryocooler board in CRYOCOOLER.md.
 
 Status (2026-10-13): built and tested against the simulated chamber and a
 stand-in cryocooler board (PR #11). A run whose host was killed is now found and
-ended on request (D10). Not yet run against the real chamber: see
-[Bench checklist](#9-bench-checklist).
+ended on request (D10). Fast End added 2026-10-20 (D11). Not yet run against
+the real chamber: see [Bench checklist](#9-bench-checklist).
 
 ## Contents
 
@@ -60,6 +60,7 @@ Settled with the bench (2026-10-08). Change them here first, then in the script.
 | D8 | A plan that **completes** does not run the end script | it leaves the chamber as its steps said (`rest_to_ambient` ends vented) |
 | D9 | A controller **recipe or cycle** (`hvc recipe start`, `hvc start`) is out of scope; End does **not** send `hvc abort` | no plan starts one. The manual (sections 4.3.8 and 7) says an abort raises fault 0 and runs the recipe's "home steps", which the recipe defines and may open valves: that would undo D3 and D4, and the fault would refuse the setpoints and `turbo off` |
 | D10 | The end of a run whose host was **killed** runs only when the operator asks (End in the GUI, `labcli end`), never by itself | the host may have been stopped on purpose by someone at the HMI; commanding the chamber unasked could undo what they are doing |
+| D11 | **Fast End** sends the same steps in the same order, without waiting to confirm them: each command goes once its routine has taken it, and the `until` steps are skipped. It can be asked for while an End is going, and the rest of that End is fast | when an End is waiting on something slow (a pump that does not report off, a valve that does not confirm), the operator can choose not to wait. The order still holds, since a routine carries out its requests one at a time in the order taken; what is lost is the check that each step worked, so the banner says to check the chamber at the HMI |
 
 ## 3. The end script
 
@@ -132,9 +133,10 @@ a failed step, an error), but not if the process is killed: see
     2. if how != "complete":
          ClearPending()                                 a waiting request is dropped
          _end_script(run)                               the steps for the loaded routines
-    3. _chamber_left()                                  "Chamber left: sealed, 3.2 Torr, ..."
         ▼
   workers.stop()                                        each routine thread finishes its call (15 s)
+        ▼
+  _say_chamber(run, out)                                "Chamber left: sealed, 3.2 Torr, ..."
         ▼
   rscripts.shutdown(run)                                each rShutdown, by dependency
         ▼
@@ -206,6 +208,28 @@ lock behind. A lock whose process is not a host is a **lost run** (`lost_run`):
 - No `end` is sent to that host: it stops by itself, and an `end` would cut short
   its wait for first readings.
 
+### Fast End
+
+The same end, without waiting to confirm it (D11). Asked for with *Fast End* in
+the GUI's header, `end fast` in the ctrl tab or `labcli end fast`: ctrl `end` with
+the key `fast`. For a lost run, *Fast End now* or `labcli end fast` starts the
+fresh host with `--end --fast`, which also skips the wait for first readings.
+
+- Each command goes once its routine has **taken** it, not once it reports it
+  done. Requests to one routine are still carried out one at a time, in order:
+  zones off, valves closed, then the pumps.
+- Each `until` is **skipped**; one already waiting stops waiting. While the end
+  script runs, the host reads ctrl at every step (`_watch_for_fast`), so a Fast
+  End sent during an End makes the rest of it fast.
+- The chamber line is read after the routines' threads stop, so it shows what
+  their last requests did. The record has `"fast": true` and one warning:
+  `Fast End: 7 confirmations skipped; check the chamber at the HMI`.
+
+On the simulator, from the request to "Host stopped.": End mid-pumpdown 14.4 s,
+Fast End 11.4 s; the rest is the controller carrying the commands out. With the
+turbo running, End waits 30 s for the vacuum pump to stop; a Fast End then ends
+the wait at once.
+
 **The record of the end**, `~/.formslab/.run/ended.json`:
 
 ```json
@@ -213,6 +237,7 @@ lock behind. A lock whose process is not a host is a **lost run** (`lost_run`):
  "plan": "tvac",
  "when": "2026-10-08T14:47:59+00:00",
  "how": "ended",
+ "fast": false,
  "chamber": "Chamber left: sealed, 1e-05 Torr, pump off, turbo off, zones off",
  "warnings": []
 }
@@ -242,6 +267,8 @@ lock behind. A lock whose process is not a host is a **lost run** (`lost_run`):
 | Its end, from a fresh host | `src/formslab/host/sequence.py` | `channel(..., end_only=True)`, `_settle`, `END_SETTLE_S`, `main`'s `--end` |
 | Its end, asked for | `src/formslab/console/ctrl/ctrlcli.py`; `src/formslab/gui/api.py` | `end_sequence` → `_end_lost`; `end_run` → `_end_lost`; `status()["lost"]` |
 | Its banner | `src/formslab/gui/static/app.js` | `renderLost` |
+| Fast End, in the host | `src/formslab/host/sequence.py`; `src/formslab/sequence/runner.py` | `fast`, `_fast_if_asked`, `_watch_for_fast`, `--fast`; `attempt_each(..., skip_waits=)`, `_until`, `_command` |
+| Fast End, asked for | `ctrlcli.py`, `cli.py`; `api.py`, `server.py`, `app.js` | `end_sequence(fast=)`, `end fast`; `end_run(fast)`, `POST /api/end {"fast": true}`, `#end-fast` |
 
 The chamber's states the script confirms are published by rLACO for any plan, each
 `= true` or `= false`:
@@ -275,7 +302,11 @@ The chamber's states the script confirms are published by rLACO for any plan, ea
 
 ## 7. The GUI
 
-- **The button.** *End run* is in the header on every tab while a run is going.
+- **The button.** *End run* is in the header on every tab while a run is going,
+  and *Fast End* beside it ([Fast End](#fast-end)). *Fast End* stays enabled while
+  an End is going, to make the rest of it fast; its dialog lists the same steps,
+  "without waiting to confirm each step", and says to check the chamber at the
+  HMI afterwards. Its banner says the run "was ended with Fast End".
 - **The dialog** lists the end script's steps for the routines the running plan
   loaded (`GET /api/end/steps`), then "then each instrument's shutdown". Without
   the list (an old server), it falls back to "Each instrument's shutdown runs".
@@ -316,6 +347,9 @@ The chamber's states the script confirms are published by rLACO for any plan, ea
 | `test_the_end_script_checks_clean_and_turns_off_the_channels_the_map_owns` | the script reads clean; its `psu` lines are exactly the hardware map's owned channels |
 | `test_the_end_script_runs_only_the_steps_of_the_routines_loaded` | `_needs` |
 | `test_a_run_whose_host_was_killed_is_found_and_ended_from_a_fresh_host` | `lost_run`; `end_only`: valves closed, zones off, `how` is `lost`, the supplies warning, the lock gone |
+| `test_fast_end_sends_every_step_in_order_without_confirming_them` | everything closed and off, `fast` true, the one warning, the chamber line read after the routines stop |
+| `test_fast_end_asked_while_an_end_waits_stops_the_wait` | with the turbo running, the 30 s wait for the pump cut short |
+| `test_a_lost_run_can_be_fast_ended` | `end_only` with `fast_end` |
 | `test_end_on_its_own_needs_a_lost_run` | `--end` with nothing lost refuses |
 
 Elsewhere:
@@ -325,7 +359,10 @@ Elsewhere:
 - `test/test_lab_sequence.py::test_rpsu_switches_nothing_on_while_the_run_is_ending`.
 - `test/test_shipped_plans.py`: `end` is in the shipped set and reads clean.
 - `test/test_gui_control.py::test_end_on_a_lost_run_starts_a_host_for_its_end_and_sends_no_end`
-  and `::test_end_keeps_asking_for_as_long_as_the_end_script_may_take`.
+  and `::test_end_keeps_asking_for_as_long_as_the_end_script_may_take`;
+  `::test_fast_end_asks_for_it_also_of_a_run_already_ending` and
+  `::test_fast_end_on_a_lost_run_starts_its_end_fast`.
+- `test/test_ctrl_host.py::End::test_end_fast_asks_for_a_fast_end`.
 
 Driven by hand on the GUI demo (2026-10-08) through the page's own API: End
 mid-pumpdown with a zone on, and End while paused. Both took 12 to 16 s and left
@@ -364,7 +401,10 @@ read the banner, compare with the HMI's Manual screen.
    Task Manager. Expect the red banner within a few seconds; *Run End now*; expect
    the pump off and everything closed. With a supply channel switched on in that
    run (bench computer only), expect it off too.
-8. **Later, with the turbo path commissioned:** End with the turbo running. Expect
+8. **Fast End mid-pumpdown** (`ambient_to_rest`, around 100 Torr). Expect the same
+   as item 3, sooner, and the banner saying it was a Fast End, to check at the HMI;
+   then the HMI agreeing.
+9. **Later, with the turbo path commissioned:** End with the turbo running. Expect
    gate closed, turbo off, roughing pump and foreline still on, the banner saying
    to finish at the HMI.
 
@@ -375,7 +415,7 @@ Record each result in `Notebook/progress.md`.
 | Item | Why it matters | A way to close it |
 |---|---|---|
 | **A controller recipe or cycle** started by a plan | End does not stop it (D9), and `hvc abort` is not safe to add blindly: it faults the controller and runs the recipe's home steps | first find what the controller reports while a recipe runs (`?TC`, `?MC`, `?RS` at the bench), then publish it (`CycleRunning`) and stop a recipe only when one runs, by `hvc recipe stop` if that leaves the valves alone |
-| **The turbo path** has never been run on the chamber | step 3's handling is right on paper and in the simulator only | bench checklist item 8 |
+| **The turbo path** has never been run on the chamber | step 3's handling is right on paper and in the simulator only | bench checklist item 9 |
 | **The protection command** rPSU sends (`:VOLT:PROT:STAT CH1,ON`) differs from the DP800 guide's form (no channel; the channel selected first) | if the supply ignores it, protection stays off; the read-back now says so ("not as set") | bench checklist item 5; if it warns, send the guide's form |
 | **Confirmation times** (15 s per state, 30 s for the pump) are estimates | a slow valve or pump on the real chamber would be logged as not confirmed | adjust from bench checklist items 3 and 4 |
 

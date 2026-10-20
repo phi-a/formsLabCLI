@@ -116,6 +116,14 @@ class End(unittest.TestCase):
         kill.assert_not_called()
         self.assertIn("stopped cleanly", result.content)
 
+    def test_end_fast_asks_for_a_fast_end(self):
+        with mock.patch.object(ctrlcli, "running", return_value=HOST), \
+                mock.patch.object(ctrlcli, "WriteCommand") as write, \
+                mock.patch.object(ctrlcli, "LoadCommands", return_value={"end": {"processed": True}}), \
+                mock.patch.object(ctrlcli, "is_host", return_value=False):
+            ctrlcli.execute_command(["end", "fast"])
+        write.assert_called_once_with("end", "fast")
+
     def test_a_host_still_cleaning_up_is_left_alone(self):
         with mock.patch.object(ctrlcli, "running", return_value=HOST), \
                 mock.patch.object(ctrlcli, "WriteCommand"), \
