@@ -141,7 +141,7 @@ def test_a_run_whose_host_was_killed_is_found_and_ended_from_a_fresh_host(chambe
     assert not any(s.zone_active.values())
     ended = json.loads(host.ended_path().read_text(encoding="utf-8"))
     assert ended["how"] == "lost" and ended["chamber"].startswith("Chamber left: sealed")
-    assert ended["warnings"] == ["the supply channels the lost run switched on are not known: check the supplies"]
+    assert ended["warnings"] == []
     assert host.lost_run() is None and host.read_lock() is None
 
 

@@ -77,6 +77,8 @@ architecture are in [project.md](project.md); the GUI's plan is in [gui.md](gui.
   Decided: End does not send `hvc abort`; the manual says it faults the controller
   and runs the recipe's home steps, which may open valves. Next for recipes: find
   at the bench what the controller reports while one runs (docs/END.md, Open items).
+  **2026-10-15:** rPSU keeps the channels it switched on in `.run/psu_on.json`, so a
+  killed run's channels go off at the next host's end.
 - **Next:** the environment profile, the first stage after orbit files
   ([gui.md](gui.md), section 4): orbit file + spacecraft model → per-face background
   temperature over an orbit → a recorder-format CSV in the Plots tab. It needs a way to

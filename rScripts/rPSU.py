@@ -12,13 +12,18 @@
 # run's CSV has the supplies beside everything else. Each channel's protection
 # (OVP, OCP, on/off) is read back from the supply at the start and after each
 # change, shown with the channel, and a warning logged when it is not as set.
-# On host stop, rShutdown turns off every channel this run switched on.
+# On host stop, rShutdown turns off every channel this run switched on. The
+# channels switched on are kept in a file beside the host's lock, so the channels
+# of a host that was killed go off at the next host's end.
 # Supplies disabled in usbmap.json are not opened.
+import json
 import math
 import os
 import time
 
+from formslab.config import run_dir
 from formslab.console.cast.castutils import ReadCommand, UpdateStatus
+from formslab.console.safefile import atomic_write_text, read_json
 from formslab.devices.dp832a.config import enabled_psu_labels
 from formslab.devices.dp832a.service import get_psu
 from formslab.rscripts import RScriptControl
@@ -92,9 +97,36 @@ class rGlobal:
 rg = rGlobal
 
 
+def _record_path():
+    """The channels switched on and not yet turned off, beside the host's lock."""
+    return run_dir() / "psu_on.json"
+
+
+def _save_switched_on(run):
+    try:
+        atomic_write_text(_record_path(), json.dumps(sorted([label, ch] for label, ch in rg._switched_on)))
+    except (OSError, TimeoutError) as exc:
+        run.log(f"switched-on record not written: {exc}", level="WARNING", component=name)
+
+
+def _adopt_switched_on(run):
+    """Channels a run switched on and never turned off: its host was killed. They
+    are this run's to turn off at its end."""
+    try:
+        left = read_json(_record_path())
+    except (OSError, ValueError):
+        return
+    for label, ch in left if isinstance(left, list) else []:
+        if (label, int(ch)) not in rg._switched_on:
+            rg._switched_on.add((label, int(ch)))
+            run.log(f"{label.upper()} CH{ch} was switched on by a run that did not end; "
+                    "it goes off at this run's end", level="WARNING", component=name)
+
+
 def _init(run, r_global):
     if r_global._vars_initialized:
         return r_global
+    _adopt_switched_on(run)
 
     try:
         enabled = enabled_psu_labels()
@@ -251,10 +283,12 @@ def _handle_channel_request(run, label, psu, channel_text, channel_request):
             elif channel_request["on"]:
                 psu.on(channel)
                 rg._switched_on.add((label, channel))
+                _save_switched_on(run)
                 run.log(f"{label.upper()} CH{channel} turned ON", component=name)
             else:
                 psu.off(channel)
                 rg._switched_on.discard((label, channel))
+                _save_switched_on(run)
                 run.log(f"{label.upper()} CH{channel} turned OFF", component=name)
             changed = True
     except Exception as exc:
@@ -377,20 +411,25 @@ def rScript(run):
 
 
 def rShutdown(run):
-    """Turn off every channel this run switched on, then hand the front panels
-    back. Channels the run found on, or that an operator switched on from the
-    console, are left as they are."""
+    """Turn off every channel this run switched on (and a killed run's, adopted
+    at the start), then hand the front panels back. Channels the run found on,
+    or that an operator switched on from the front panel, are left as they are.
+    One that could not be turned off stays in the record for the next host."""
+    left = set()
     for label, channel in sorted(rg._switched_on):
         psu = getattr(rg, label, None)
         if psu is None:
+            left.add((label, channel))
             continue
         try:
             psu.off(channel)
             run.log(f"{label.upper()} CH{channel} turned OFF at shutdown", component=name)
         except Exception as exc:
+            left.add((label, channel))
             run.log(f"{label.upper()} CH{channel} OFF at shutdown FAILED: {exc}",
                       level="ERROR", component=name)
-    rg._switched_on.clear()
+    rg._switched_on = left
+    _save_switched_on(run)
     for label in ("psu1", "psu2"):
         psu = getattr(rg, label, None)
         if psu is not None:

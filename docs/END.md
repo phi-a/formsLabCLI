@@ -182,7 +182,7 @@ rPSU, whatever the `load` line's order. What each does:
 | rCryoBoard | releases the Pico link; if its supply is still on, output off and supply off; if the end script already cut the supply, only the link (the board cannot answer) |
 | rSLTA | stops a capture in progress |
 | rLACO | if this run started pumping and the script could not stop it, vacuum valve closed and pump off; ends a thermocouple hold; releases the controller |
-| rPSU | turns off every channel this run switched on; hands the front panels back |
+| rPSU | turns off every channel this run switched on, and any a killed run left on (`psu_on.json`); hands the front panels back |
 | rSMTC08 | closes its boards |
 
 ### A host that was killed
@@ -199,8 +199,10 @@ lock behind. A lock whose process is not a host is a **lost run** (`lost_run`):
   switched on and the board is not brought up. It runs none of the plan's steps.
   It waits up to 20 s (`END_SETTLE_S`) for each value the end script confirms to
   be read once, then runs `_end` as above with `how = "lost"`.
-- A fresh rPSU does not know which channels the lost run switched on, so only the
-  end script's own channels go off; the record says to check the supplies.
+- rPSU keeps the channels it has switched on and not turned off in
+  `~/.formslab/.run/psu_on.json`, written at each change. A fresh rPSU takes them
+  over ("PSU1 CH2 was switched on by a run that did not end") and its shutdown
+  turns them off. A channel it cannot turn off stays in the file for the next host.
 - No `end` is sent to that host: it stops by itself, and an `end` would cut short
   its wait for first readings.
 
@@ -335,7 +337,7 @@ Again on 2026-10-15, with the killed-host end added:
 |---|---|---|
 | End mid-pumpdown, platen on at 60 °C | 16 s | sealed, pump off, zones off, no warnings |
 | End while paused, pump on | 11 s | the same |
-| The host killed (pump and platen on), then *Run End now* | the lost run shown within 1 s; its end 19 s | the same; `how` `lost`, the one warning to check the supplies; a second End refused, nothing lost |
+| The host killed (pump and platen on), then *Run End now* | the lost run shown within 1 s; its end 19 s | the same; `how` `lost`, the one warning to check the supplies (since gone: `psu_on.json`); a second End refused, nothing lost |
 
 Run them: `pytest test/test_end.py` (about 4 minutes; it runs real plans against
 the simulator).
@@ -360,7 +362,8 @@ read the banner, compare with the HMI's Manual screen.
 6. **The camera powered** (psu2 enabled). Expect psu2 CH1 off, a capture stopped.
 7. **A killed host.** `tvac`, `hvc pump on`, then end the host's python process in
    Task Manager. Expect the red banner within a few seconds; *Run End now*; expect
-   the pump off, everything closed, and the banner saying to check the supplies.
+   the pump off and everything closed. With a supply channel switched on in that
+   run (bench computer only), expect it off too.
 8. **Later, with the turbo path commissioned:** End with the turbo running. Expect
    gate closed, turbo off, roughing pump and foreline still on, the banner saying
    to finish at the HMI.
@@ -372,7 +375,6 @@ Record each result in `Notebook/progress.md`.
 | Item | Why it matters | A way to close it |
 |---|---|---|
 | **A controller recipe or cycle** started by a plan | End does not stop it (D9), and `hvc abort` is not safe to add blindly: it faults the controller and runs the recipe's home steps | first find what the controller reports while a recipe runs (`?TC`, `?MC`, `?RS` at the bench), then publish it (`CycleRunning`) and stop a recipe only when one runs, by `hvc recipe stop` if that leaves the valves alone |
-| **A lost run's supply channels** | a fresh host does not know which channels the lost run switched on; only the end script's go off | rPSU could keep the channels it switched on in a file beside the lock |
 | **The turbo path** has never been run on the chamber | step 3's handling is right on paper and in the simulator only | bench checklist item 8 |
 | **The protection command** rPSU sends (`:VOLT:PROT:STAT CH1,ON`) differs from the DP800 guide's form (no channel; the channel selected first) | if the supply ignores it, protection stays off; the read-back now says so ("not as set") | bench checklist item 5; if it warns, send the guide's form |
 | **Confirmation times** (15 s per state, 30 s for the pump) are estimates | a slow valve or pump on the real chamber would be logged as not confirmed | adjust from bench checklist items 3 and 4 |
@@ -381,6 +383,8 @@ Closed 2026-10-13: a killed host is found and its end run on request (D10); the
 GUI resends End for 150 s, longer than an end can take; rPSU reads each channel's
 OVP, OCP and protection back from the supply at the start and after each
 `protect`, shows them on its card, and warns when they are not as set.
+Closed 2026-10-15: a killed run's supply channels go off at the next host's end
+(`psu_on.json`).
 
 ## 11. Changing the end script
 

@@ -318,9 +318,6 @@ def _end(run, plan, how: str) -> dict:
             if dropped:
                 run.log(f"end: a request still waiting was dropped: {', '.join(dropped)}", component=COMPONENT)
             out["warnings"] = _end_script(run)
-        if how == "lost":
-            out["warnings"].append("the supply channels the lost run switched on are not known: "
-                                   "check the supplies")
         out["chamber"] = _chamber_left()
         if out["chamber"]:
             run.log(out["chamber"], level="WARNING" if "not" in out["chamber"] else "INFO",

@@ -391,6 +391,29 @@ def test_rpsu_reads_protection_back_and_warns_when_the_supply_did_not_take_it(ru
     rscripts.shutdown(run)
 
 
+def test_rpsu_keeps_the_channels_it_switched_on_beside_the_lock(run, bench):
+    from formslab.config import run_dir
+    record = run_dir() / "psu_on.json"
+    rscripts.load(run, ["rPSU"])
+    WriteCommand({"2": {"voltage": 5.0, "current": 0.1, "on": True}}, "psu1")
+    rscripts.tick(run)
+    assert json.loads(record.read_text(encoding="utf-8")) == [["psu1", 2]]
+    rscripts.shutdown(run)
+    assert json.loads(record.read_text(encoding="utf-8")) == []
+
+
+def test_rpsu_turns_off_at_its_end_what_a_killed_run_switched_on(run, bench, capsys):
+    from formslab.config import run_dir
+    (run_dir() / "psu_on.json").write_text('[["psu1", 2]]', encoding="utf-8")   # left by a killed host
+    rscripts.load(run, ["rPSU"])
+    rscripts.tick(run)
+    bench["psu1"].on(2)                                  # still on, as the killed run left it
+    assert "PSU1 CH2 was switched on by a run that did not end" in capsys.readouterr().out
+    rscripts.shutdown(run)
+    assert bench["psu1"].ch[2]["on"] is False
+    assert json.loads((run_dir() / "psu_on.json").read_text(encoding="utf-8")) == []
+
+
 def test_rpsu_leaves_channels_it_did_not_switch_on(run, bench):
     rscripts.load(run, ["rPSU"])
     rscripts.tick(run)
