@@ -115,10 +115,24 @@ class Simulator:
         self.one_shot = one_shot
         self.reply_delay_s = reply_delay_s
         self.interlocks = interlocks
+        # The real controller takes one client at a time; this one takes any number
+        # and keeps the most it had at once, for a test to check that is never two.
+        self.clients = self.peak_clients = 0
+        self._clients_lock = threading.Lock()
         sim = self
 
         class Handler(socketserver.StreamRequestHandler):
             def handle(self) -> None:
+                with sim._clients_lock:
+                    sim.clients += 1
+                    sim.peak_clients = max(sim.peak_clients, sim.clients)
+                try:
+                    self._serve()
+                finally:
+                    with sim._clients_lock:
+                        sim.clients -= 1
+
+            def _serve(self) -> None:
                 self.request.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                 buf = b""
                 while True:

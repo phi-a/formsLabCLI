@@ -327,6 +327,8 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--listen", action="store_true",
                     help="listen on every interface, not just this machine (the login is plain HTTP)")
     ap.add_argument("--set-login", action="store_true", help="set the GUI user name and password")
+    ap.add_argument("--no-monitor", action="store_true",
+                    help="do not read the chamber between runs (leave the controller free for scripts/)")
     args = ap.parse_args(argv)
     if args.set_login:
         return _set_login()
@@ -344,10 +346,18 @@ def main(argv: list[str]) -> int:
     print(f"formsLAB on http://{'localhost' if not args.listen else host}:{args.port}/   (Ctrl+C stops)")
     if args.listen:
         print("  listening on every interface; the login is sent as plain HTTP")
+    monitor = None
+    if not args.no_monitor:
+        from formslab.host.monitor import ChamberMonitor
+        monitor = ChamberMonitor()
+        monitor.start()
+        print("  reading the chamber while no run is going (--no-monitor to leave it free)")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
         server.server_close()
+        if monitor is not None:
+            monitor.stop()
     return 0

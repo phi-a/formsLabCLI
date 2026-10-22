@@ -378,6 +378,8 @@ def channel(plan_path, relay_func=None, end_only: bool = False, fast_end: bool =
     if not _acquire_lock(emit, Path(plan_path).stem):
         return
     try:
+        from formslab.host.monitor import wait_released
+        wait_released(emit)                  # formsLAB reads the chamber between runs
         ResetCtrlState()
         ResetJson()
         events_path().write_text("", encoding="utf-8")

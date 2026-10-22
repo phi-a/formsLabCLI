@@ -86,6 +86,12 @@ architecture are in [project.md](project.md); the GUI's plan is in [gui.md](gui.
   (stop the plan, leave the chamber as it is); Pause is the nearest to that. The
   GUI is now called formsLAB (desktop shortcut `scripts/labgui.cmd`); formsLabCLI
   stays the name of the project and the console.
+  **2026-10-22:** the chamber stays live between runs, asked for to watch it after
+  End. The formsLAB server reads it, read-only, and hands the controller to a
+  starting host (`formslab.host.monitor`, docs/GUI.md, Between runs). Decided:
+  the monitor lives in the GUI server, so it reads only while formsLAB is open;
+  only the chamber, not the thermocouples or supplies; `--no-monitor` frees the
+  controller for `scripts/`. Not yet run against the real controller.
 - **Next:** the environment profile, the first stage after orbit files
   ([gui.md](gui.md), section 4): orbit file + spacecraft model → per-face background
   temperature over an orbit → a recorder-format CSV in the Plots tab. It needs a way to

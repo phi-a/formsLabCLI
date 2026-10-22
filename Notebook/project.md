@@ -35,6 +35,8 @@ written for the first of them (docs/WRITING.md).
    One host process runs one plan; the console and the GUI only start, watch and end it.
 3. **One owner per instrument.** During a run, one rScript owns each instrument and
    is the only thing that talks to it. Everything else sends it requests through CAST.
+   Between runs, formsLAB reads the chamber's controller, read-only, and hands it to
+   the next run (`formslab.host.monitor`).
 4. **Declarations as data.** Each rScript declares its commands, published values and
    prerequisites (`COMMANDS`, `VARIABLES`, `RULES`). One grammar reads them, so the
    console, a plan, the GUI's dropdowns and the help all agree, and a plan is checked

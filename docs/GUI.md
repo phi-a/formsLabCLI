@@ -2,8 +2,9 @@
 
 formsLAB, a small web app for the bench machine, used from a browser. It shows what the
 host is doing, starts and ends runs, sends commands, and plots recorded runs. It
-is a client of the files the console and the sequence host already share; it
-never opens an instrument.
+is a client of the files the console and the sequence host already share. The
+one instrument it opens is the chamber's controller, read-only and only while no
+run is going ([Between runs](#between-runs)).
 
 ```
 labcli gui --set-login     # once: choose a user name and password
@@ -83,7 +84,8 @@ Each card shows its readings in groups, by what they are: for the chamber, Valve
 Zones, Thermocouples, Pressure settings; for a supply, one group per channel, named
 with what it feeds. Valves read Open or Closed, pumps On or Off.
 
-Each card says whether it is *live*, and why not when it is not: no run is going, its owner has not updated
+Each card says whether it is *live*, and why not when it is not: no run is going (except the
+chamber, [Between runs](#between-runs)), its owner has not updated
 it recently (is its rScript in the plan's `load` line?), or the chamber says it
 is not connected. A block that is not live is greyed with its age; its numbers
 are the last ones seen, not current readings.
@@ -95,8 +97,26 @@ vacuum and turbo pumps, in the symbols used across the GUI (a valve is a
 bowtie, a pump a circle with a triangle), green when open or on, red when closed
 or off, with the state written beside it, the fault banner, and every other thermocouple below. Temperatures can
 be shown in Celsius or Kelvin. It follows the same rule as the Status cards:
-when no run is going, or the chamber is not connected, the drawing is greyed
+when the chamber is not connected, or not read recently, the drawing is greyed
 and says why, because those are the last values seen, not current readings.
+
+## Between runs
+
+The chamber stays live with no run going, so it can be watched after End: the
+zones warming or cooling, the vacuum holding. The formsLAB server reads it every
+5 s (`poll_interval_s`) and publishes it as rLACO would (`formslab.host.monitor`);
+the Chamber banner adds "No run is going: formsLAB is only reading it". It sends
+no commands: those still need a run.
+
+The controller takes one client at a time, so the monitor gives it up to a run.
+A starting host takes its lock, then waits (up to 15 s, usually under 1) for the
+monitor to close its connection and remove `~/.formslab/.run/monitor.lock`; the
+monitor stops a read in progress between two queries once the host's lock
+appears. After the run it reads again.
+
+`labcli gui --no-monitor` leaves the controller free, for `scripts/vent_test.py`
+and `scripts/pumpdown.py`, which need the connection themselves. The thermocouple
+readers and the supplies are still read only during a run.
 
 Some things on the controller's own screen are not available to formsLabCLI
 and are drawn as "n/a" rather than guessed: heater output %, turbo speed %,

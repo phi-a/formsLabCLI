@@ -14,7 +14,7 @@ hardware test sequences against them. Running those sequences is its central job
  labcli gui (web page)                    └───────────────────────────────────┘
  ┌──────────────────────┐                                  ▲
  │ status, chamber,     │── the same ctrl and CAST files, ─┘
- │ plans, plots         │   lock and log; it never opens an instrument
+ │ plans, plots         │   lock and log; between runs it reads the chamber
  └──────────────────────┘
 ```
 
@@ -83,7 +83,9 @@ grammar (`test/test_orbit_layout.py`).
 
 - **One controller connection:** the HVC-3500 takes one TCP client. While a
   host runs rLACO, `scripts/vent_test.py` and `scripts/pumpdown.py` cannot
-  connect; use the cast tab or the `laco_*` plans.
+  connect; use the cast tab or the `laco_*` plans. Between runs, formsLAB's chamber
+  monitor holds it (docs/GUI.md, Between runs): start the GUI with `--no-monitor`
+  to use the scripts. A host waits for the monitor to let go before it starts.
 - **Owned supply channels:** `usbmap.json` records what each channel feeds and
   which rScript drives it (`"channels"`; shipped: PSU1 CH1 → cryocooler board,
   rCryoBoard; PSU2 CH1 → sLTA camera, rSLTA). Do not command an owned channel

@@ -10,7 +10,8 @@ config and login (`demo` / `demo`), so it can be tried without touching the benc
 **Chamber scripts.** `vent_test.py` and `pumpdown.py` run the LACO chamber's vent
 and rough pumpdown with pre-checks (simulator by default; `--live` is read-only
 unless told otherwise). They need the controller's single connection, so use them
-only when no run is going; otherwise use the cast tab or the `laco_*` plans.
+only when no run is going and formsLAB is not reading the chamber (`labcli gui
+--no-monitor`); otherwise use the cast tab or the `laco_*` plans.
 
 **sLTA.** `fz2fits.py` converts `.fz` frames to `.fits` (needs
 `pip install -e ".[images]"`). `slta_sequencer_*_v1.xml` are the CCD clock-state

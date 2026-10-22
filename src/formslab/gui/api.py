@@ -81,9 +81,13 @@ def freshness(label: str, block: dict, running: dict | None, now: float) -> dict
     within three of its publish cadences (the block's timestamp is only ever set
     by an owner's status write), and a chamber says it is connected."""
     age = now - float(block.get("timestamp") or 0)
-    if running is None:
-        return {"live": False, "age_s": age, "reason": "no run is going"}
     limit = 3 * CADENCE_S.get(label, DEFAULT_CADENCE_S) + SLACK_S
+    if running is None:
+        # Between runs the chamber monitor (formslab.host.monitor) keeps "hvc" read.
+        status = block.get("status") or {}
+        if label == "hvc" and age <= limit and status.get("connected"):
+            return {"live": True, "watched": True, "age_s": age, "reason": ""}
+        return {"live": False, "age_s": age, "reason": "no run is going"}
     if age > limit:
         return {"live": False, "age_s": age, "reason": f"not updated for {age:.0f} s "
                                                        f"(its owner may not be loaded)"}

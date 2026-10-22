@@ -389,6 +389,7 @@
     banner.className = "banner " + (b.live ? "running" : "stopped");
     banner.textContent = b.live
       ? `Chamber live, updated ${fmtAge(b.age_s)} ago.` + (vm.mode ? ` Mode ${vm.mode}.` : "") + (vm.testStatus ? ` ${vm.testStatus}.` : "")
+        + (b.watched ? " No run is going: formsLAB is only reading it; start a run to send commands." : "")
       : `Not live (${b.reason}). Showing the last values seen, ${fmtAge(b.age_s)} old, not current readings.`;
     $("#tvac-fault").textContent = vm.faults ? `Fault${vm.severity && vm.severity !== "N" ? " (severity " + vm.severity + ")" : ""}: ${vm.faults}` : "";
     $("#tvac-info").textContent = (vm.recipe !== null ? `Recipe ${vm.recipe}${vm.recipeStep ? ", step " + vm.recipeStep : ""}. ` : "")

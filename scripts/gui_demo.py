@@ -56,6 +56,9 @@ def main() -> int:
             profile["connection"].update(host=sim.host, port=sim.port, timeout_s=2.0)
             (root / "config" / "tvac_bench.json").write_text(json.dumps(profile), encoding="utf-8")
             server = make_server("127.0.0.1", args.port)
+            from formslab.host.monitor import ChamberMonitor
+            monitor = ChamberMonitor()
+            monitor.start()
             print(f"GUI demo on http://localhost:{args.port}/  -  user: demo   password: demo", flush=True)
             print("A simulated chamber; nothing real is touched. Ctrl+C stops it and deletes its files.", flush=True)
             try:
@@ -64,6 +67,7 @@ def main() -> int:
                 pass
             finally:
                 server.server_close()
+                monitor.stop()
     finally:
         os.chdir(Path(__file__).resolve().parent)
         shutil.rmtree(root, ignore_errors=True)
