@@ -5,7 +5,7 @@
 # the same readings in C on the CAST "tc" block for the console's cast panel
 # (read-only: no commands). A board missing from usbmap is skipped once
 # with a log line; a board that fails to open or read is retried every
-# RETRY_INTERVAL s, and its channels read NaN meanwhile so the CSV shows the gap.
+# RETRY_INTERVAL s, and its channels read NaN meanwhile so the record shows the gap.
 #
 # On Windows the board's serial port comes from "resource_windows" (e.g. "COM7")
 # in its usbmap entry, on Linux from "resource" or the hub "port".

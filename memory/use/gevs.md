@@ -44,7 +44,7 @@ it supplied for the whole run, its exhaust vented outside the building.
 ## What it does not cover
 
 - **100 failure-free hours hot and 100 cold** (2.6.3.6.2): a total across the
-  whole program, not one run. The run's CSV holds the hours at each plateau.
+  whole program, not one run. The run's record holds the hours at each plateau.
 - **Thermal balance** (2.6.4): a different test, which checks a thermal model
   against measured temperatures. It belongs to the orbit environment work.
 - **The outgassing phase and the electrical discharge check** (2.6.3.3.1): they need
@@ -67,7 +67,7 @@ The turbo path has never been run on this chamber. Run `highvac` and then
 5. Whether `hvc platen rate 1` limits the ramp to 1 °C/min on the controller.
 
 End after a turbo run leaves the vacuum pump backing the turbo through the open
-foreline, on purpose ([end](../design/end.md), D6); finish at the HMI once the status
-page shows *Turbo pump turning: No*. LACO's own procedure leaves the turbo running
+foreline, on purpose ([end](../design/end.md), D6); then run `shutdown`, which waits
+for the turbo to stop, stops the pumps and lets air in. LACO's own procedure leaves the turbo running
 between tests behind the closed gate valve; whether this bench does is open
 ([progress](../progress.md), Waiting on a decision).

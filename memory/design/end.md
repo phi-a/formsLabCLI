@@ -55,7 +55,7 @@ Settled with the bench (2026-10-08). Change them here first, then in the script.
 | D3 | Vent and fill are **closed**, never opened | a sealed chamber is safe whatever came before; venting onto a cold platen condenses moisture. Venting is the operator's deliberate step afterwards |
 | D4 | The chamber is **sealed before** the pumps are touched | if the pump steps are refused, the chamber is still sealed |
 | D5 | psu1 CH1 (cooler) and psu2 CH1 (camera) go **off even if this run did not switch them on** | those channels feed the cooler and the camera; End means off |
-| D6 | A **turbo** spinning down keeps its backing: gate closed, turbo off, foreline and roughing pump left until the HMI finishes it | the controller does not report the spin-down; formsLAB counts the turbo as turning for `turbo_spindown_s` (30 min) after it was last on, longer than End's 120 s. Stopping its backing while it spins damages it. A plan stops it properly with `seal chamber` |
+| D6 | A **turbo** spinning down keeps its backing: gate closed, turbo off, foreline and roughing pump left until the HMI finishes it | the controller does not report the spin-down; formsLAB counts the turbo as turning for `turbo_spindown_s` (30 min) after it was last on, longer than End's 120 s. Stopping its backing while it spins damages it. `shutdown` (or any plan, with `seal chamber`) stops it properly |
 | D7 | Every step is **best effort**; the script has **120 s** | an end must not fail or hang |
 | D8 | A plan that **completes** does not run the end script | it leaves the chamber as its steps said (`rest_to_ambient` ends vented) |
 | D9 | A controller **recipe or cycle** (`hvc recipe start`, `hvc start`) is out of scope; End does **not** send `hvc abort` | no plan starts one. The manual (sections 4.3.8 and 7) says an abort raises fault 0 and runs the recipe's "home steps", which the recipe defines and may open valves: that would undo D3 and D4, and the fault would refuse the setpoints and `turbo off` |
@@ -111,7 +111,7 @@ Each step, what it does and why:
 | `hvc vent close`, `fill close`, `gate close`, `rough close` | every valve into the chamber closed | D3, D4. Closing a valve is always allowed, even during a fault |
 | `until VentValve = false …` ×4 | confirms each valve from the controller's report | not confirmed → "check the HMI" |
 | `hvc turbo off` | the turbo spins down behind the closed gate | D6. Refused during a fault |
-| `hvc stop` | vacuum valve closed (again), then the roughing pump off, each verified | refused while the turbo runs or the foreline is open: the pump keeps backing the turbo, and the warning says to finish at the HMI |
+| `hvc stop` | vacuum valve closed (again), then the roughing pump off, each verified | refused while the turbo runs or the foreline is open: the pump keeps backing the turbo, and the chamber line says to run `shutdown` |
 | `until TurboPump = false …`, `until VacuumPump = false …` | confirms both pumps off | the second is the warning when the turbo case kept the pump on |
 
 Not touched on purpose: the foreline valve, the pressure setpoint, ramp rates,
@@ -286,7 +286,7 @@ The chamber's states the script confirms are published by rLACO for any plan, ea
 | End mid-pumpdown | the request in flight is dropped; zones off; valves closed; pump off; sealed at the pressure reached |
 | End with a zone hot or cold | zones off, setpoints 20 °C; the chamber then drifts toward room temperature |
 | End mid-vent | the vent valve closes: the chamber is sealed at whatever pressure it reached (D3) |
-| End with the turbo running | gate closed, turbo off; `hvc stop` refused, so the roughing pump and foreline keep backing it; the banner says "vacuum pump still on: finish at the HMI" |
+| End with the turbo running | gate closed, turbo off; `hvc stop` refused, so the roughing pump and foreline keep backing it; the chamber line ends "pump on, turbo off, zones off; run shutdown to finish", and the banner offers *Run shutdown* |
 | End during a controller fault | valves close, zones off, `stop` runs; the setpoints and `turbo off` are refused and logged |
 | End while paused | the same as not paused: pause is ignored while ending |
 | End twice | the second `end` arrives after the plan has stopped; it changes nothing |
@@ -406,7 +406,7 @@ read the banner, compare with the HMI's Manual screen.
    then the HMI agreeing.
 9. **Later, with the turbo path commissioned:** End with the turbo running. Expect
    gate closed, turbo off, roughing pump and foreline still on, the banner saying
-   to finish at the HMI.
+   to run shutdown; then *Run shutdown*, and the chamber at air with every pump off.
 
 Record each result in [progress](../progress.md).
 

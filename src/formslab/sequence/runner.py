@@ -5,7 +5,7 @@ Each step of the plan is executed by a loop paced in real time:
     poll       host: ctrl, and blocks while paused
     rScripts   every loaded script once -- unless the host runs each on its
                own thread (rscripts.workers), as it does on the bench
-    emit       a CSV row when one is due
+    emit       a recorded row when one is due
 
 Segment durations and time limits count *active* seconds: time spent paused
 inside ``poll`` does not use up a hold or run down a timeout. With worker

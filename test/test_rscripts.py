@@ -4,7 +4,6 @@ rLACO driving the HVC-3500 simulator through a lab-mode host loop.
 Nothing here imports FORMS. That is the point: chamber control has to run on a
 machine with only formsLabCLI installed.
 """
-import csv
 import json
 import re
 import sys
@@ -167,21 +166,29 @@ def test_record_writes_every_variable_at_its_cadence(run, clock, monkeypatch):
     run.record()                        # not due yet
     run.record(force=True)
 
-    rows = list(csv.reader(run.record.path.open(encoding="utf-8")))
-    assert rows[0] == ["index", "timestamp", "plan", "platenT [K]"]
-    assert [r[0] for r in rows[1:]] == ["0", "1"] and {r[2] for r in rows[1:]} == {"T"}
-    assert re.fullmatch(r"\d{8}T\d{6}Z\.csv", run.record.path.name)       # the run's UTC start
+    rows = [json.loads(line) for line in run.record.path.read_text(encoding="utf-8").splitlines()]
+    assert [list(r) for r in rows] == [["index", "timestamp", "plan", "platenT [K]"]] * 2
+    assert [r["index"] for r in rows] == [0, 1] and {r["plan"] for r in rows} == {"T"}
+    assert rows[0]["platenT [K]"] == 295.0
+    assert re.fullmatch(r"T_\d{8}T\d{6}Z\.jsonl", run.record.path.name)   # the plan, then the run's UTC start
 
 
-def test_a_new_variable_widens_the_same_file(run):
+def test_a_new_variable_joins_the_same_file(run):
     run.publish("a", 1)
     run.record(force=True)
     first = run.record.path
     run.publish("b", 2)
     run.record(force=True)
-    rows = list(csv.reader(first.open(encoding="utf-8")))
-    assert run.record.path == first and list(first.parent.glob("*.csv")) == [first]
-    assert [r[:1] + r[2:] for r in rows] == [["index", "plan", "a", "b"], ["0", "T", "1", ""], ["1", "T", "1", "2"]]
+    rows = [json.loads(line) for line in first.read_text(encoding="utf-8").splitlines()]
+    assert run.record.path == first and list(first.parent.glob("*.jsonl")) == [first]
+    assert [{k: v for k, v in r.items() if k != "timestamp"} for r in rows] == [
+        {"index": 0, "plan": "T", "a": 1}, {"index": 1, "plan": "T", "a": 1, "b": 2}]
+
+
+def test_a_failed_reading_is_null(run):
+    run.publish("p", float("nan"), "Torr")
+    run.record(force=True)
+    assert json.loads(run.record.path.read_text(encoding="utf-8"))["p [Torr]"] is None
 
 
 def test_recording_off_writes_nothing(run):
@@ -269,7 +276,7 @@ def test_tvac_plan_runs_until_end(chamber, tmp_path, monkeypatch):
     timer.join()
 
     assert ReadStatus("hvc")["connected"] is True
-    assert list(config.output_dir().glob("*.csv"))
+    assert list(config.output_dir().glob("*.jsonl"))
     assert not sequence.lock_path().exists()
     events = [json.loads(line) for line in
               sequence.events_path().read_text(encoding="utf-8").splitlines()]

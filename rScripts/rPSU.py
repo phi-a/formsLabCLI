@@ -9,7 +9,7 @@
 #   {"update": true}                            refresh the status now
 #
 # Each supply's readings are published as PSU<n>_CH<c>_V / _I / _ON, so a
-# run's CSV has the supplies beside everything else. Each channel's protection
+# run's record has the supplies beside everything else. Each channel's protection
 # (OVP, OCP, on/off) is read back from the supply at the start and after each
 # change, shown with the channel, and a warning logged when it is not as set.
 # On host stop, rShutdown turns off every channel this run switched on. The
@@ -185,7 +185,7 @@ def _publish_status(run, label, psu):
 
 def _publish_channels(run, label, state):
     """A supply's measured volts/amps and output state per channel, as
-    PSU<n>_CH<c>_V / _I / _ON. A channel whose query failed is NaN, so the CSV
+    PSU<n>_CH<c>_V / _I / _ON. A channel whose query failed is NaN, so the record
     shows the gap rather than a stale number."""
     prefix = label.upper()
     for ch, s in state.items():

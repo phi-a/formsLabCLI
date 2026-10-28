@@ -1,4 +1,4 @@
-"""Shared helpers for the GUI tests: recorder CSVs, a running server, a client."""
+"""Shared helpers for the GUI tests: recorded runs, a running server, a client."""
 import http.client
 import json
 import threading
@@ -13,16 +13,20 @@ USER, PASSWORD = "tester", "pw-for-tests"
 
 def write_run(directory: Path, plan="tvac", stamp="20261004T120000Z",
               header=("TC01 [K]", "chamberP [Torr]", "PSU1_CH1_ON"), rows=None) -> Path:
-    """A recorder CSV: index,timestamp,plan,<columns>. `rows` are lists of cell
-    strings, the timestamp then the values."""
-    path = Path(directory) / f"{stamp}.csv"
+    """A recorded run, as the recorder writes it: <plan>_<stamp>.jsonl, one object per
+    row. `rows` are lists of cell strings, the timestamp then the values; an empty
+    cell is a variable not yet published (left out), "nan" a failed reading (null)."""
+    path = Path(directory) / f"{plan}_{stamp}.jsonl"
     rows = rows if rows is not None else [
         ["2026-10-04T12:00:00.000Z", "293.15", "760", "0"],
         ["2026-10-04T12:00:10.000Z", "294.15", "700", "1"],
         ["2026-10-04T12:00:20.000Z", "nan", "650", "1"],
     ]
-    lines = ["index,timestamp,plan," + ",".join(header)]
-    lines += [f"{i},{r[0]},{plan}," + ",".join(r[1:]) for i, r in enumerate(rows)]
+    lines = []
+    for i, r in enumerate(rows):
+        row = {"index": i, "timestamp": r[0], "plan": plan}
+        row.update({k: None if c == "nan" else float(c) for k, c in zip(header, r[1:]) if c != ""})
+        lines.append(json.dumps(row))
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return path
 

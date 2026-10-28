@@ -76,7 +76,7 @@ def test_end_with_the_turbo_running_keeps_its_backing_and_says_so(chamber, tmp_p
     assert s.devices["OG"] is False and s.devices["OT"] is False          # isolated, spinning down
     assert s.devices["OP"] is True and s.devices["O4"] is True            # still backing it
     assert any("hvc stop" in w and "foreline" in w for w in ended["warnings"]), ended["warnings"]
-    assert "pump on" in ended["chamber"]
+    assert "pump on" in ended["chamber"] and ended["chamber"].endswith("; run shutdown to finish")
 
 
 def test_end_during_a_fault_closes_valves_and_zones_but_not_setpoints(chamber, tmp_path):

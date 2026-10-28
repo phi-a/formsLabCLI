@@ -147,7 +147,7 @@ thing is:
 |---|---|---|
 | package | code, Pico firmware, shipped defaults | — |
 | config | live `usbmap.json`, CTRL command table, CAST device state, and in `.run/` the running host's lock, event log and `host.log` | `$FORMSLAB_CONFIG_DIR` (default `~/.formslab`) |
-| output | CSV histories, captured frames, instrument logs | `$FORMSLAB_OUTPUT_DIR` (default `<cwd>/outputs`) |
+| output | run records (JSON Lines), captured frames, instrument logs | `$FORMSLAB_OUTPUT_DIR` (default `<cwd>/outputs`) |
 
 `usbmap.json` is the hardware map: instrument VISA addresses and USB VID/PIDs,
 hub locations, the PowerSwitch host, and the cryo board's I2C pins and firmware
@@ -210,7 +210,7 @@ log>  tail 50                                      # the host's output
 `end` asks the host to stop, so every rScript's `rShutdown` runs (a plan's PSU
 outputs go off, pumping the run started stops) before it exits. `tvac` runs
 the bench's rScripts until `end` while you operate from the cast tab; a plan
-ends by itself. Every run writes a CSV of its variables to `outputs/`.
+ends by itself. Every run records its variables to `outputs/<plan>_<UTC>.jsonl`.
 
 ## One command at a time (SSH, scripts)
 

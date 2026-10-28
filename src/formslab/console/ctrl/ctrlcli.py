@@ -143,7 +143,7 @@ def status_panel() -> CLIResult:
     host = running()
     if host:
         return CLIResult(f"● sequence host running: plan {host['plan']} (pid {host['pid']}, "
-                         f"since {host['started']})\n  CSV in {host['output']}")
+                         f"since {host['started']})\n  data in {host['output']}")
     stale = read_lock()
     if stale:
         return CLIResult(Text(f"⚠ sequence host not running -- the last run (plan "

@@ -43,7 +43,7 @@ written for the first of them ([writing](design/writing.md)).
    console, a plan, the GUI's dropdowns and the help all agree, and a plan is checked
    before anything runs.
 5. **The files are the truth.** Plans, blocks, orbits and the hardware map are text;
-   runs are CSVs; state between processes is the shared CAST and ctrl files. There is
+   runs are JSON Lines; state between processes is the shared CAST and ctrl files. There is
    no database.
 6. **Works without the bench.** Simulators, `scripts/gui_demo.py` and the test suite
    (about 1,200 tests, on Windows and Linux in CI) run with no hardware.
@@ -57,7 +57,7 @@ written for the first of them ([writing](design/writing.md)).
  labcli console ─┐                         ┌─ sequence host (one per run) ─┐
  labcli <cmd>  ──┼── ctrl file ─────────▶  │ plan steps, one per tick      │
  labcli gui    ──┘── CAST file  ◀───────▶  │ rScripts ─▶ devices/ drivers  │──▶ instruments
-                     (requests, status)    │ recorder ─▶ <UTC>.csv         │
+                     (requests, status)    │ recorder ─▶ outputs/*.jsonl   │
                                            └───────────────────────────────┘
 ```
 

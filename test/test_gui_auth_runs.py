@@ -73,7 +73,7 @@ def test_scan_lists_a_run_with_its_columns(tmp_path):
     found = runs.scan([tmp_path])
     assert found["unsupported"] == []
     [run] = found["runs"]
-    assert run["id"] == "20261004T120000Z" and run["name"] == "tvac"
+    assert run["id"] == "tvac_20261004T120000Z" and run["name"] == "tvac"
     assert run["columns"] == [{"name": "TC01", "unit": "K"}, {"name": "chamberP", "unit": "Torr"},
                               {"name": "PSU1_CH1_ON", "unit": ""}]
     assert run["started"] == 1791115200.0                      # 2026-10-04T12:00:00Z
@@ -107,21 +107,21 @@ def test_one_row_has_no_cadence_yet(tmp_path):
 def test_a_half_written_last_row_is_not_shown(tmp_path):
     path = write_run(tmp_path)
     with path.open("a", encoding="utf-8") as f:
-        f.write("3,2026-10-04T12:00:30.000Z,295.1")                  # the host is mid-write: no newline
+        f.write('{"index": 3, "timestamp": "2026-10-04T12:00:30.000Z", "TC')   # the host is mid-write
     run = {**runs.scan([tmp_path])["runs"][0], "_dir": str(tmp_path)}
     assert runs.series(run)["rows"] == 3
 
 
 def test_other_files_are_listed_as_unsupported_not_guessed_at(tmp_path):
     write_run(tmp_path)
-    (tmp_path / "pumpdown_20261001T143932Z.csv").write_text("utc,elapsed_s,pressure_Torr\n", encoding="utf-8")
+    (tmp_path / "pumpdown_20261001T143932Z.jsonl").write_text('{"dir": "tx", "frame": "01"}\n', encoding="utf-8")
     (tmp_path / "notes.csv").write_text("a,b\n1,2\n", encoding="utf-8")
-    (tmp_path / "20261004T130000Z.csv").write_text("", encoding="utf-8")
-    (tmp_path / "tvac_20261003T120000Z.csv").write_text("index,timestamp,TC01 [K]\n", encoding="utf-8")
+    (tmp_path / "tvac_20261004T130000Z.jsonl").write_text("", encoding="utf-8")
+    (tmp_path / "20261003T120000Z.csv").write_text("index,timestamp,plan,TC01 [K]\n", encoding="utf-8")
     found = runs.scan([tmp_path])
-    assert [r["id"] for r in found["runs"]] == ["20261004T120000Z"]
-    assert found["unsupported"] == ["20261004T130000Z.csv", "notes.csv", "pumpdown_20261001T143932Z.csv",
-                                    "tvac_20261003T120000Z.csv"]          # empty; not ours; the old layout
+    assert [r["id"] for r in found["runs"]] == ["tvac_20261004T120000Z"]
+    assert found["unsupported"] == ["20261003T120000Z.csv", "notes.csv", "pumpdown_20261001T143932Z.jsonl",
+                                    "tvac_20261004T130000Z.jsonl"]   # the old layout; not ours; a script's log; empty
 
 
 def test_long_runs_are_thinned_but_keep_their_last_row(tmp_path):
@@ -136,8 +136,8 @@ def test_long_runs_are_thinned_but_keep_their_last_row(tmp_path):
 
 def test_a_run_is_found_by_scanning_never_by_building_a_path(tmp_path):
     write_run(tmp_path)
-    assert runs.find([tmp_path], "20261004T120000Z")["_dir"] == str(tmp_path)
-    for bad in ("../20261004T120000Z", "..\\x", "20261004T120000Z.csv", "nope", ""):
+    assert runs.find([tmp_path], "tvac_20261004T120000Z")["_dir"] == str(tmp_path)
+    for bad in ("../tvac_20261004T120000Z", "..\\x", "tvac_20261004T120000Z.jsonl", "20261004T120000Z", "nope", ""):
         assert runs.find([tmp_path], bad) is None
 
 

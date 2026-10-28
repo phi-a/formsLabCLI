@@ -467,7 +467,7 @@
         for (const kind of addable) {
           const opt = el("option", { value: "@" + kind }, kind + (kind === "load" ? "  (always first)" : "  (after load)"));
           opt.title = kind === "load" ? "Which rScripts run. A plan starts with it; it goes to the top for you."
-                                      : "How often a CSV row is written. It goes right after load for you.";
+                                      : "How often a row of every value is recorded. It goes right after load for you.";
           sel.append(opt);
         }
         const seen = new Set();

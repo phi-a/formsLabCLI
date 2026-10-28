@@ -46,7 +46,7 @@ last 8 hours and end when the server restarts. Logins and logouts are noted in
 
 ## Screens
 
-**Status and control.** Whether a run is going (plan, since when, where its CSV
+**Status and control.** Whether a run is going (plan, since when, where its data
 goes), one card per instrument, and the end of the host log. From here:
 
 - *Start run* starts a plan from the list (the plans `labcli plans` shows).
@@ -63,7 +63,9 @@ goes), one card per instrument, and the end of the host log. From here:
   Fast End). Afterwards a banner says
   how the run ended and how the chamber was left (`Chamber left: sealed, 3.2 Torr,
   pump off, turbo off, zones off`), red with what the end script could not do when
-  there was anything; *Dismiss* hides it in this browser.
+  there was anything; *Dismiss* hides it in this browser. *Run shutdown* beside it
+  starts the `shutdown` plan, after a confirmation: the way to finish when the line
+  says a pump is still on or a zone still holding ([plans](plans.md)).
 - A run whose host was killed (a crash, Task Manager, a power cut) shows a red
   banner: it stopped without its end. *Run End now* runs that end from a fresh
   host, with the same dialog ([end](../design/end.md), A host that was killed).
@@ -236,9 +238,12 @@ Kelvin variables can be shown in Celsius. *Follow the run live* refreshes as eac
 new row is recorded, at the plan's `record every ...` (30 s for `tvac`).
 PNG saves the charts, CSV saves the selected variables.
 
-Runs are the CSVs the host's recorder writes: one file per run, named by when it
-started (`20261028T143000Z.csv`), with the plan's name in its `plan` column. A
-variable that appears mid-run is a new column, empty in the rows before it.
+Runs are the files the host's recorder writes: one per run, named by its plan and
+when it started (`tvac_20261028T143000Z.jsonl`), so a folder listing shows which
+plan made each. Each row is one JSON object, `index`, `timestamp`, `plan` and then
+`"<variable> [<unit>]": value`; a failed reading is `null`. A variable that
+appears mid-run is in the rows after it and missing before, so a row is appended
+and never rewritten. For a spreadsheet, save a CSV from the Plots tab.
 Older files in the output folder with other layouts are not listed.
 
 **Hardware.** Each entry of the hardware map (`~/.formslab/usbmap.json`), found

@@ -5,7 +5,6 @@ verbs on a fake clock, the rShutdown hook, rPSU and rSMTC08 against fake
 instruments, and the host running the shipped first-test plan end to end.
 Nothing here imports FORMS or opens a port.
 """
-import csv
 import json
 import math
 import sys
@@ -481,9 +480,9 @@ def test_host_runs_the_first_plan_and_leaves_psu1_off(bench, monkeypatch):
                           "steps": events[-1]["steps"], "error": None,
                           "ended": None}
     from formslab.config import output_dir
-    headers = [next(csv.reader(p.open(encoding="utf-8")))
-               for p in sorted(output_dir().glob("*.csv"))]
-    assert "TC01 [K]" in headers[-1] and "PSU1_CH1_V [V]" in headers[-1]
+    [path] = output_dir().glob("psu1_smtc08_first_*.jsonl")
+    last = json.loads(path.read_text(encoding="utf-8").splitlines()[-1])
+    assert "TC01 [K]" in last and "PSU1_CH1_V [V]" in last
 
 
 def test_host_refuses_a_plan_whose_scripts_do_not_load(tmp_path, monkeypatch):

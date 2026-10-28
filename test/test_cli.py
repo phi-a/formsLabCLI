@@ -68,7 +68,7 @@ def test_status_with_no_run_exits_1(capsys, no_host):
 
 def test_status_of_a_run(capsys, host):
     code, out = run(capsys, "status")
-    assert code == 0 and "plan tvac" in out and "CSV in /x" in out
+    assert code == 0 and "plan tvac" in out and "data in /x" in out
 
 
 def test_check_a_plan(capsys):

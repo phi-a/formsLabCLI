@@ -32,8 +32,8 @@ def shipped(monkeypatch):
 
 
 def test_the_set_is_what_the_docs_name():
-    assert PLANS == ["Cryocooler", "ambient_to_rest", "end", "gevs_unit", "rest_to_ambient", "thermal_cycle",
-                     "tvac", "warm_soak"]
+    assert PLANS == ["Cryocooler", "ambient_to_rest", "end", "gevs_unit", "rest_to_ambient", "shutdown",
+                     "thermal_cycle", "tvac", "warm_soak"]
     assert BLOCKS == ["begin", "cool", "detector", "highvac", "k508n", "plateau", "pumpdown", "seal", "vent",
                       "warm"]
 
@@ -147,6 +147,33 @@ def test_gevs_unit_reaches_high_vacuum_and_ends_at_air_with_everything_off(chamb
     assert s.zone_rate[1] == s.zone_rate[2] == 1.0      # 1 °C/min
     article = bench["psu1"].ch[2]
     assert article["vset"] == 5.0 and article["on"] is False
+
+
+@pytest.mark.parametrize("state", [
+    dict(pressure=1e-5, devices=dict(OT=True, OG=True, O4=True, OP=True), zones=-30.0),  # turbo on, zones cold
+    dict(pressure=1e-5, devices=dict(O4=True, OP=True)),       # an End that left the backing: turbo off
+    dict(pressure=3.0, devices={}),                            # a rough rest
+    dict(pressure=743.0, devices={}),                          # already at air
+], ids=["high vacuum", "backing left", "rough rest", "at air"])
+def test_shutdown_ends_at_air_with_everything_off_from_anywhere(chamber, quick, bench, state):
+    from formslab.devices.hvc3500.simulator import control_sensor
+    with chamber.state.lock:
+        chamber.state.pressure = state["pressure"]
+        chamber.state.devices.update(state["devices"])
+        for z in (1, 2) if "zones" in state else ():
+            chamber.state.zone_setpoint[z] = state["zones"]
+            chamber.state.zone_active[z] = True
+            chamber.state.temps[control_sensor(z)] = state["zones"]
+    bench["psu1"].on(1)
+    bench["psu1"].on(2)
+    run("shutdown")
+    s = chamber.state
+    assert s.pressure >= 700 and s.devices["OV"] is True
+    assert not any(s.devices[c] for c in ("OR", "OF", "O4", "OG", "OP", "OT"))
+    assert not any(s.zone_active.values())
+    assert s.zone_setpoint[1] == s.zone_setpoint[2] == 25.0
+    assert not bench["psu1"].ch[1]["on"] and not bench["psu1"].ch[2]["on"]
+    assert "psu2" not in bench                               # disabled: the step is taken and logged
 
 
 def test_preparing_for_darkness_reads_clean():

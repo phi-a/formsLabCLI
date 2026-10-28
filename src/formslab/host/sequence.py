@@ -9,13 +9,13 @@ Started by the console's ctrl tab or `labcli run <plan>`, or directly:
 Every run is a lab plan (see `formslab.sequence`): the plan names its rScripts,
 the host loads them on a `Run` handle and runs the plan's steps in one
 loop paced in real time at `LOOP_HZ` -- poll ctrl (pause, resume, reset, end),
-run the plan's current step, write a CSV row when one is due. Each rScript runs
+run the plan's current step, record a row when one is due. Each rScript runs
 on its own thread at the same rate (rscripts.workers), so a slow instrument
 does not hold up the others or the plan. A plan ends after its last step; one
 that holds "until end" (plans/tvac.plan) runs until ctrl `end`.
 
 The lock file (`<config>/.run/sequence.lock`, one per machine) names the
-running host: its process id, plan, start time and the folder its CSV goes to.
+running host: its process id, plan, start time and the folder its record goes to.
 The console's ctrl tab reads it to find, show and stop the run, however and
 from wherever it was started.
 

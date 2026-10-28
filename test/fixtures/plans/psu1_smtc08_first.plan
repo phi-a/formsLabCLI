@@ -4,7 +4,7 @@
 # PSU1 (Rigol DP832A) CH1 to 1.0 V with a 0.10 A limit, output on for one
 # minute, then off, while rSMTC08 records every thermocouple on SMTC08_A
 # (TC01..TC08, kelvin) and rPSU records PSU1's measured V / I / output state.
-# Every 2 s a CSV row lands in outputs/psu1_smtc08_first_<UTC>.csv.
+# Every 2 s a row lands in outputs/psu1_smtc08_first_<UTC>.jsonl.
 #
 # CHECK BEFORE RUNNING: what is wired to PSU1 CH1, and that 1.0 V / 0.10 A is
 # safe for it. The hardware map (usbmap.json, "channels") records it: on this

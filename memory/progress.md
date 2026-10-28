@@ -112,7 +112,7 @@ architecture are in [project](project.md); the GUI's plan is in [gui-design](des
   in [gevs](use/gevs.md)).
 - **Next:** the environment profile, the first stage after orbit files
   ([gui-design](design/gui-design.md), section 4): orbit file + spacecraft model → per-face background
-  temperature over an orbit → a recorder-format CSV in the Plots tab. It needs a way to
+  temperature over an orbit → a run in the recorder's format, in the Plots tab. It needs a way to
   describe the spacecraft first.
 - **2026-10-28: the memory vault.** Asked for because the Notebook had stopped
   being the second memory: `Notebook/` and `docs/` are now one Obsidian vault,

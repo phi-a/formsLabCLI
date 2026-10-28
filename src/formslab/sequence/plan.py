@@ -1,7 +1,7 @@
 """Lab plans: `.plan` files that run rScripts against the bench.
 
 One step per line. ``load`` names the rScripts that own the instruments;
-``record`` sets the CSV cadence; every other line is a step:
+``record`` sets how often a row is recorded; every other line is a step:
 
     # PSU1 CH1 on for a minute, thermocouples recording
     load rPSU rSMTC08
@@ -714,7 +714,7 @@ def _command(label, request):
 
 
 _RECORD = Grammar([("record every <interval:number 0..> s|min|h", """Set how often values are recorded
-                     How often every published value is written to the run's CSV file,
+                     How often every published value is written to the run's file,
                      in the outputs folder. It is the line after load.""",
                     lambda n, u: (_positive("record", n), _RECORD_UNIT[u]))])
 

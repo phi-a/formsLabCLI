@@ -7,7 +7,7 @@ which rScripts own the instruments, then what to do, in order.
 # PSU1 CH1 on for a minute while the thermocouples record.
 # load: the routines that own the instruments (first line).
 load rPSU rSMTC08
-# record: a CSV of every value, outputs/<UTC>.csv (default every 10 s).
+# record: every value to outputs/<plan>_<UTC>.jsonl (default every 10 s).
 record every 2 s
 
 # A command is the same words as the cast tab.
@@ -336,15 +336,16 @@ Shipped plans, the bench's tests, each built from the blocks above:
 |---|---|---|
 | `tvac` | manual operation from the cast tab, until `end` | until `end` |
 | `ambient_to_rest` | pumps down from ambient to 3 Torr, seals the chamber and leaves it to rest | 10 minutes |
-| `rest_to_ambient` | lets air into a sealed chamber | 5 minutes |
+| `rest_to_ambient` | lets air into a sealed chamber at a rough rest | 5 minutes |
+| `shutdown` | from any state to at air with everything off: supplies off, zones to 25 °C, `seal chamber`, `vent`, zones off. Run it after any End and at the end of a session | minutes from a rest; up to 4 h from -150 °C |
 | `warm_soak` | pumps down, holds both zones at 40 °C for 30 minutes, returns to air | 1 h 40 min |
 | `thermal_cycle` | pumps down, takes both zones between 60 and -20 °C three times, returns to air | 2 h 30 min or more |
 | `gevs_unit` | NASA GEVS at the unit level: high vacuum, eight cycles between -30 and 60 °C with 4-hour plateaus, the article on psu1 CH2 started cold and hot, returns to air ([gevs](gevs.md)) | about 4 days |
 
 In `plans/` they are sorted into folders: `vacuum/` (`ambient_to_rest`,
 `rest_to_ambient`), `thermal/` (`warm_soak`, `thermal_cycle`, `gevs_unit`) and `darkness/`, with
-the blocks in `blocks/` and orbit files in `orbits/`; `tvac` and `end` stay at the
-top. A folder only sorts the files. A file is found by its name in any of them, so
+the blocks in `blocks/` and orbit files in `orbits/`; `tvac`, `end` and `shutdown`
+stay at the top. A folder only sorts the files. A file is found by its name in any of them, so
 moving one changes nothing. Keep each name once: of two files with one name, the
 first found is used. A hidden folder (`.trash`) is not searched.
 
@@ -373,7 +374,7 @@ are found the same way. A plan whose rScripts do not all load does not
 start.
 
 Each loop (10 Hz): poll ctrl, pausing here while paused -> each routine once ->
-CSV row when due. Holds and limits count active time, so a pause does not use
+a recorded row when due. Holds and limits count active time, so a pause does not use
 up a hold.
 
 ## Ending
@@ -395,8 +396,8 @@ routine still live. It is a plan like any other, read in the editor and by
    is let in; venting is the operator's deliberate step afterwards.
 4. The pumps: turbo off, then `hvc stop` (vacuum valve closed, roughing pump off),
    each confirmed. While the turbo runs, `hvc stop` is refused and the roughing
-   pump keeps backing it through the open foreline valve; the log says to finish
-   at the HMI once the turbo has stopped.
+   pump keeps backing it through the open foreline valve; the chamber line ends
+   "run shutdown to finish", and `shutdown` does that once the turbo has stopped.
 
 Every step is tried: one that is refused, not answered, or not confirmed in its
 time is logged and the next runs; a step for a routine the plan did not load is

@@ -149,7 +149,8 @@ The same screens run the real chamber, with differences that matter:
   aloud first: where it starts, where it ends, what makes it fail.
 
 *End run* is always safe: each instrument's shutdown runs, so a pump this run started
-is stopped and the Vacuum valve closed.
+is stopped and the Vacuum valve closed. The session ends with the `shutdown` plan:
+the chamber at air with every pump, zone and supply off, whatever the last test left.
 
 ## For the instructor
 

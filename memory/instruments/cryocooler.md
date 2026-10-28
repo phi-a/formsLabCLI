@@ -91,7 +91,7 @@ rCryoBoard answers each `cryo` request: done once the board has applied it, or
 refused with why (its supply not at 24 V, the board not answering through the Pico,
 the board shut down), so a plan step stops the run on a refusal. A request waits up
 to 30 s for the supply and the link. It publishes, for plans to wait on and for the
-run's CSV:
+run's record:
 
 | value | is |
 |---|---|
@@ -126,7 +126,7 @@ step at a time to hold a thermocouple, assuming that a higher resistance cools
 more (`ccvres_up_cools_more`, never checked), and rChilldown set it directly (240
 or 270 ohm). It has to be measured: hold each resistance until the cold side
 settles and read the temperature it settles at; `CRYO_RES` and the thermocouple in
-the same CSV give the curve.
+the same run give the curve.
 
 ## When the board does not start
 

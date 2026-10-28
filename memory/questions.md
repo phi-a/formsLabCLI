@@ -115,8 +115,8 @@ off, sets it, and turns it on again; `cryo on` re-arms a tripped output, and
 ## Setup and files
 
 **Where is my run's data?**
-`outputs/<UTC start>.csv` (`20261028T143000Z.csv`), one row per `record every`, the
-plan's name in its `plan` column. The host's log is
+`outputs/<plan>_<UTC start>.jsonl` (`tvac_20261028T143000Z.jsonl`), one row per
+`record every`. The Plots tab saves a CSV of the variables you pick. The host's log is
 `~/.formslab/.run/host.log`, with the run before as `host.log.1`.
 
 **Where do I set COM ports and addresses?**

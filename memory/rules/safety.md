@@ -87,7 +87,8 @@ It does not:
 
 - **stop a controller recipe or cycle** (D9). Stop it at the HMI.
 - **stop the roughing pump behind a running turbo** (D6). It leaves the pump
-  backing the turbo through the foreline; finish at the HMI once the turbo stops.
+  backing the turbo through the foreline and says to run `shutdown`, which waits
+  for the turbo to stop, stops the pumps and lets air in ([plans](../use/plans.md)).
 - **run by itself for a host that was killed** (D10). Someone may have stopped it
   on purpose; it runs when the operator asks.
 - **confirm anything, if it was a Fast End** (D11). Check the chamber at the HMI.
@@ -115,6 +116,7 @@ checking what else uses them. ([hvc3500](../instruments/hvc3500.md), Network saf
 | The setpoint limits in `tvac_bench.json` are wider than the chamber's rating | the operator keeps setpoints within the rating; the shipped plans do (`thermal_cycle` -20 to 60 °C) |
 | The turbo path (foreline, turbo, gate) has never been run | run it first on its own, watched at the HMI |
 | `turbo_spindown_s` (30 minutes) is a guess: the parts list names no turbo model | read the model off the pump and set the time from its manual; longer only delays `seal chamber`, shorter can starve the turbo |
+| Whether the controller accepts `hvc platen on` at atmosphere (it limits the heaters above 700 Torr) | if it refuses, `shutdown` run on a chamber already at air stops at that step; then move the zone steps after `vent` |
 | Cooling has never been run through formsLabCLI | watch the first cold run at the HMI |
 | End has not been run on the real chamber | the bench checklist, [end](../design/end.md) section 9 |
 | End's confirmation times (15 s, 30 s) are estimates | adjust from the bench checklist |

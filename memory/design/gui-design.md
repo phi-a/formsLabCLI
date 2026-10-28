@@ -36,7 +36,7 @@ new way for the bench to go wrong.
 3. **Watch it in Chamber and Status.** Every value says whether it is current. A
    command sent from the box goes through the same checks as a plan step and says
    what became of it.
-4. **Read it in Plots**, live or afterwards, from the CSV the recorder wrote.
+4. **Read it in Plots**, live or afterwards, from the file the recorder wrote.
 5. **End it from any tab.** End asks the host to stop, so each instrument's shutdown
    runs.
 
@@ -67,7 +67,7 @@ seen and ended from the others.
    A command typed in the console, a plan line and a GUI click are the same thing,
    so they cannot disagree.
 3. **The files are the truth.** Plans, blocks and orbits are text files; runs are
-   CSVs. The GUI reads and writes those and keeps no database, so a page reload loses
+   JSON Lines. The GUI reads and writes those and keeps no database, so a page reload loses
    nothing and git can review every change.
 4. **Works with nothing running.** No host, no chamber: each screen says what is
    missing and stays usable where it can. `scripts/gui_demo.py` runs the whole GUI
@@ -93,7 +93,7 @@ seen and ended from the others.
  │ Plots            │                        │ reads     │ writes
  └──────────────────┘            CAST status │           │ CAST commands, ctrl,
                                  run lock,   │           │ plan/block/orbit files
-                                 CSVs, logs  ▼           ▼
+                                 runs, logs  ▼           ▼
                                       ┌──────────────────────────────┐
                                       │ sequence host (one per run)  │──▶ instruments
                                       └──────────────────────────────┘
@@ -115,7 +115,7 @@ seen and ended from the others.
 | `gui/api.py` | One function per endpoint, over existing code |
 | `gui/auth.py` | The one login (PBKDF2) and in-memory sessions |
 | `gui/plans.py` | Plan, block and orbit files: one list, one set of names, save, trash, Edit and Ship |
-| `gui/runs.py` | The recorder's CSVs, parts stitched into one run |
+| `gui/runs.py` | The recorder's runs: list them, read a run's series |
 | `static/app.js` | Tabs, status and control, plots |
 | `static/editor.js` | The plan editor and the orbit's live panel |
 | `static/plantext.js` | Plan text as lines: header lines, loops, missing orbit elements (pure, tested under Node) |
@@ -205,7 +205,7 @@ sweep, so one orbit feeds both the bench and the models.
 **Next, in order:**
 
 1. **Environment profile.** Orbit file + spacecraft model → `orbit.thermal.pipeline` →
-   per-face environment temperature over one orbit, written as a recorder-format CSV,
+   per-face environment temperature over one orbit, written in the recorder's format,
    so the Plots tab shows it with no new code. View, flux and environment temperature
    run on a base install (numpy); the transient solver needs scipy. Open: how the
    spacecraft is described (a file with its own grammar, like the orbit?).
@@ -226,7 +226,7 @@ draws it.
 Pick a recorded run and its variables; one chart per unit; zoom, pan, hover; Kelvin
 shown as Celsius on request; follow a run live; save PNG or CSV. Live plots lag by the
 record cadence (30 s for `tvac`); faster would need the host to keep recent values in
-memory, which is deferred. Older CSV layouts in `outputs/` are not listed rather than
+memory, which is deferred. Older layouts in `outputs/` are not listed rather than
 guessed.
 
 ## Speed
@@ -238,7 +238,7 @@ request (`/api/plan/lines`); one status poll serves every tab (every second on S
 and Chamber, every two elsewhere) and a tab switch retires the old loop; follow-live
 and the orbit panel wait for each reply before the next. `test/test_gui_speed.py`
 guards the first two. Left as they are, cheap enough today: the Status cards and the
-Chamber drawing are rebuilt each second; follow-live re-reads the whole CSV every 5 s
+Chamber drawing are rebuilt each second; follow-live re-reads the whole run as each row is due
 (an incremental read when runs grow long); the plans list checks every file each time
 it is asked for (on opening a view or after a save).
 

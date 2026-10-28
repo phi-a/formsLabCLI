@@ -6,14 +6,14 @@
         run.get("chamberP")                        # read it back (None if unset)
 
 A run is one execution of a plan. It is the shared state of that run: what
-rScripts publish, what the plan's `until` steps and the CSV read. Built on the
+rScripts publish, what the plan's `until` steps and the record read. Built on the
 standard library; it knows nothing about any instrument.
 
     log(message, level, component)       one line on stdout (the host's log)
     publish(name, value, unit)           set a named value; creates it on first use
     get(name) / variable(name)           its value / the `Scalar` (value and unit)
     names()                              every published name, in creation order
-    record(value=30, unit="seconds")     set the CSV cadence; `record()` emits a row
+    record(value=30, unit="seconds")     set the record's cadence; `record()` writes a row
     time.clock() / time.timestamp        wall-clock
 
 A value keeps the unit it was first published in; publishing it in another unit
@@ -22,8 +22,9 @@ sun angle) are published like any other value, from a profile computed offline.
 """
 from __future__ import annotations
 
-import csv
-import io
+import json
+import math
+import re
 import sys
 import threading
 import time
@@ -31,7 +32,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from formslab.config import output_dir
-from formslab.console.safefile import atomic_write_text
 
 _LEVELS = {"DEBUG": 10, "INFO": 20, "WARNING": 30, "ERROR": 40, "CRITICAL": 50}
 _SECONDS = {"seconds": 1.0, "minutes": 60.0, "hours": 3600.0}
@@ -88,12 +88,12 @@ class _Clock:
 
 
 class _Recorder:
-    """Every variable to CSV at a wall-clock cadence.
+    """Every variable to JSON Lines at a wall-clock cadence.
 
-    ``<output>/<UTC start>.csv``, one file per run -- lab data is never
-    overwritten. Columns are ``index, timestamp, plan`` then ``<variable> [<unit>]``.
-    A variable appearing mid-run widens the file: it is rewritten, in one step,
-    with the new column, empty in the rows before it.
+    ``<output>/<plan>_<UTC start>.jsonl``, one file per run -- lab data is never
+    overwritten. Each row is one object: ``index, timestamp, plan`` then
+    ``"<variable> [<unit>]": value``. A variable appearing mid-run is a new key in
+    the rows after it; nothing written is rewritten. A failed reading (nan) is null.
     """
 
     def __init__(self, run: "Run", directory: Path | None) -> None:
@@ -102,7 +102,6 @@ class _Recorder:
         self._interval = None
         self._next = 0.0
         self._stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        self._header = None
         self._index = 0
         self.path: Path | None = None
 
@@ -131,28 +130,24 @@ class _Recorder:
         names = self._run.names()
         if not names:
             return False
-        header = ["index", "timestamp", "plan"] + [
-            f"{n} [{v.unit}]" if (v := self._run.variable(n)).unit else n for n in names]
-        if header != self._header:
-            self._widen(header)
-        row = [self._index, _utc_now(), self._run.name] + [self._run.variable(n).value for n in names]
-        with self.path.open("a", newline="", encoding="utf-8") as f:
-            csv.writer(f).writerow(row)
+        if self.path is None:
+            plan = re.sub(r"[^A-Za-z0-9_-]", "-", self._run.name) or "run"
+            self.path = Path(self._dir or output_dir()) / f"{plan}_{self._stamp}.jsonl"
+        row = {"index": self._index, "timestamp": _utc_now(), "plan": self._run.name}
+        for n in names:
+            v = self._run.variable(n)
+            row[f"{n} [{v.unit}]" if v.unit else n] = _cell(v.value)
+        with self.path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(row) + "\n")
         self._index += 1
         return True
 
-    def _widen(self, header: list[str]) -> None:
-        """The file with `header`, its earlier rows padded to that width."""
-        if self.path is None:
-            self.path = Path(self._dir or output_dir()) / f"{self._stamp}.csv"
-            rows = []
-        else:
-            with self.path.open(newline="", encoding="utf-8") as f:
-                rows = list(csv.reader(f))[1:]
-        text = io.StringIO()
-        csv.writer(text).writerows([header] + [r + [""] * (len(header) - len(r)) for r in rows])
-        atomic_write_text(self.path, text.getvalue())
-        self._header = header
+
+def _cell(value):
+    """A value as JSON holds it: a failed reading (nan, inf) is null."""
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    return value if value is None or isinstance(value, (bool, int, float, str)) else str(value)
 
 
 class Run:

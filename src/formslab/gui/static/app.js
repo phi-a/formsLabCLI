@@ -168,7 +168,7 @@
     const banner = $("#run-banner");
     banner.className = "banner " + (s.host ? "running" : "stopped");
     banner.textContent = s.host
-      ? `Running: plan ${s.host.plan} (pid ${s.host.pid}), since ${new Date(s.host.started).toLocaleString()}. CSV in ${s.host.output}`
+      ? `Running: plan ${s.host.plan} (pid ${s.host.pid}), since ${new Date(s.host.started).toLocaleString()}. Data in ${s.host.output}`
       : "No run is going." + (s.last_run ? ` Last run: plan ${s.last_run.plan}.` : "");
     if (s.cast_unreadable) banner.textContent += " The CAST file could not be read just now.";
     renderControls(s);
@@ -464,7 +464,7 @@
       ? `${r.unsupported.length} other file(s) in the output folder use an older format and are not listed.` : "";
     if (!r.runs.length) {
       state.run = null;
-      $("#run-info").textContent = "No recorded runs yet. Start a plan and its CSV appears here.";
+      $("#run-info").textContent = "No recorded runs yet. Start a plan and its data appears here.";
       buildVars(); drawAll();
       return;
     }

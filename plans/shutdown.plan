@@ -1,0 +1,38 @@
+# ============================================================
+# plan: shutdown -- at air with everything off, from wherever the chamber is
+# ============================================================
+# The one plan to run after any End, and at the end of a session. In order: the
+# cooler's, the article's and the camera's supplies off; both zones set to 25 °C
+# and turned on, so they move toward the vent window while the pumps stop; the
+# chamber sealed from the turbo and every pump stopped (seal chamber: the turbo
+# gets turbo_spindown_s to stop turning, backed meanwhile); air let in once both
+# zones are between 10 and 60 °C; both zones off. Every step reads first, so from
+# a chamber already at rest or at air it changes little and ends in minutes.
+#
+# Start: any state, with no run going (End first) and no controller fault.
+# End:   at atmosphere, the vent valve open, every other valve closed, both pumps
+#   off, both zones off with their setpoints at 25 °C, psu1 CH1 and CH2 and psu2
+#   CH1 off. The door may be opened.
+# Fails: a controller fault (clear it at the HMI, then run it again); a zone not
+#   between 10 and 60 °C within 4 hours (cooling from above 60 °C needs liquid
+#   nitrogen); the chamber not above 700 Torr within 10 minutes. Wherever it
+#   stops, End runs: the chamber stays sealed, the zones go off.
+#
+# Takes minutes from a rest; up to 4 hours from -150 °C at 1 °C/min. The zones'
+# ramp rates are left as the last test set them: an article may still be inside.
+
+load rLACO rPSU
+record every 5 s
+
+psu1 ch1 off
+psu1 ch2 off
+psu2 ch1 off
+hvc platen 25
+hvc shroud 25
+hvc platen on
+hvc shroud on
+seal chamber
+vent within 240 min
+hvc platen off
+hvc shroud off
+log at atmosphere, every pump, zone and supply off; the door may be opened
