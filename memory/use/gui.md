@@ -249,12 +249,14 @@ Older files in the output folder with other layouts are not listed.
 **Hardware.** Each entry of the hardware map (`~/.formslab/usbmap.json`), found
 or missing, and what is plugged in that the map does not name: the serial ports
 and VISA instruments this computer sees. An entry is found by what its map entry
-says, the sturdiest first: a serial number (follows the device to any port), a
-port name (`COM3`, `/dev/ttyUSB2`: changes with the order things are plugged
-in), a place on the USB tree (`1-4.3.1`), or a USB id when only one device has
-it. Two Picos are never told apart by guessing. To find which device is which,
-unplug it and press *Look again*: the page names what went. Nothing here opens a
-device, so it is safe during a run. `labcli hardware` prints the same.
+says, the sturdiest first: an `address` used as it is, a `serial` number (follows
+the device to any port), a `path`, its place on the USB tree (`1-2.3.2`, for an
+adapter with no serial), or its `usb` id when only one device has it. Two Picos
+are never told apart by guessing. The drivers find their ports the same way
+(`formslab.hardware`), so what the page says is what a run opens. A device not
+in the map shows its line for the map ("In the map as"). To find which device is
+which, unplug it and press *Look again*: the page names what went. Nothing here
+opens a device, so it is safe during a run. `labcli hardware` prints the same.
 
 ## What is not here yet
 

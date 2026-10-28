@@ -22,10 +22,9 @@ only ever energised by an explicit :meth:`enable_output` (or
 anything -- see :meth:`status` for why the two are deliberately separate.
 """
 
-import json
 from pathlib import Path
 
-from formslab.config import usbmap_path
+from formslab import hardware
 
 from formslab.devices.cryocooler import registers as regs
 from formslab.devices.cryocooler.config import (
@@ -36,12 +35,12 @@ from formslab.devices.cryocooler.config import (
     CRYO_DEFAULT_OUTPUT_VOLTAGE_V,
     CRYO_DEFAULT_RESISTANCE_OHMS,
 )
-from formslab.devices.cryocooler.pico_i2c import I2CTransportError, PicoI2C, resolve_serial_port
+from formslab.devices.cryocooler.pico_i2c import PicoI2C
 
 
 class CryoBoard:
     def __init__(self, label="cryo_board", config_path=None, transport=None):
-        self.config = self.get_config(label, config_path)
+        self.config = hardware.entry(label, config_path)
         self.label = label
         self.baudrate = int(self.config.get("baud", 115200))
         self.boot_wait = float(self.config.get("boot_wait", 2.0))
@@ -62,19 +61,6 @@ class CryoBoard:
             "resistance_code": None,
         }
 
-    @staticmethod
-    def get_config(name, path=None):
-        config_path = (
-            Path(path).resolve()
-            if path
-            else usbmap_path()
-        )
-        with config_path.open("r", encoding="utf-8") as handle:
-            config = json.load(handle)
-        if name not in config:
-            raise ValueError(f"Device '{name}' not found in USB map")
-        return config[name]
-
     def _firmware_path(self):
         path = Path(self.firmware_file)
         if not path.is_absolute():
@@ -82,18 +68,6 @@ class CryoBoard:
         if not path.exists():
             raise FileNotFoundError(f"Firmware file not found: {path}")
         return path
-
-    def _resolve_device_path(self):
-        try:
-            return resolve_serial_port(
-                interface_id=self.config.get("interface_id") or self.config.get("port"),
-                vendor_id=self.config.get("vendor_id"),
-                product_id=self.config.get("product_id"),
-                serial_number=self.config.get("serial_number"),
-                explicit=self.config.get("port_windows"),
-            )
-        except I2CTransportError as exc:
-            raise RuntimeError(f"Could not resolve {self.label} interface: {exc}") from exc
 
     @staticmethod
     def _normalize_voltage(voltage):
@@ -119,7 +93,7 @@ class CryoBoard:
 
     def open(self):
         if self.transport is None:
-            self.device_path = self._resolve_device_path()
+            self.device_path = hardware.address(self.label, self.config)
             self.transport = PicoI2C(
                 self.device_path,
                 baudrate=self.baudrate,

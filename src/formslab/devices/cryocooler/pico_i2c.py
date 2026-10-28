@@ -21,7 +21,6 @@ installed.
 from __future__ import annotations
 
 import ast
-import sys
 import time
 from pathlib import Path
 
@@ -36,97 +35,6 @@ RESULT_PREFIX = "RESULT:"
 
 class I2CTransportError(RuntimeError):
     """Raised when the bridge itself fails -- not when a device is silent."""
-
-
-def resolve_serial_port(
-    interface_id=None,
-    vendor_id=None,
-    product_id=None,
-    serial_number=None,
-    explicit=None,
-):
-    """
-    Find the serial device node for the USB-I2C bridge.
-
-    Every path here either identifies the bridge positively or raises. It
-    never falls back to "the first serial port that looks about right":
-    writing converter registers over the wrong device node is worse than not
-    connecting at all.
-
-    Resolution order:
-
-    1. ``explicit`` -- a port named outright in the USB map (``port_windows``),
-       used unchanged.
-    2. Linux -- walk ``/sys/class/tty`` for the USB ``interface_id``, which
-       pins the bridge to a physical hub port.
-    3. Windows -- match USB vendor/product id through pyserial, narrowed by
-       ``serial_number`` when the map supplies one. Windows has no stable
-       by-path equivalent, so an ambiguous match raises and lists what it
-       found rather than picking one. This matters here: the RTD boards are
-       the same 2e8a:0005 Pico as the cryo bridge.
-    """
-    if explicit:
-        return str(explicit)
-
-    if sys.platform.startswith("win"):
-        return _resolve_windows(vendor_id, product_id, serial_number)
-
-    if not interface_id:
-        raise I2CTransportError("No USB interface id configured for the cryo bridge")
-    candidates = sorted(Path("/sys/class/tty").glob("ttyACM*"))
-    candidates += sorted(Path("/sys/class/tty").glob("ttyUSB*"))
-    for tty in candidates:
-        try:
-            if interface_id in str((tty / "device").resolve()):
-                return str(Path("/dev") / tty.name)
-        except OSError:
-            continue
-    raise I2CTransportError(f"Could not resolve USB-I2C bridge interface {interface_id}")
-
-
-def _resolve_windows(vendor_id, product_id, serial_number):
-    try:
-        from serial.tools import list_ports
-    except ImportError as exc:  # pragma: no cover - environment dependent
-        raise I2CTransportError(
-            "pyserial is required to resolve the cryo bridge on Windows; "
-            "install the 'lab' extra"
-        ) from exc
-
-    if vendor_id is None or product_id is None:
-        raise I2CTransportError(
-            "No vendor_id/product_id configured for the cryo bridge; Windows "
-            "cannot resolve it by hub path. Set 'port_windows' in usbmap.json."
-        )
-    want_vid = int(str(vendor_id), 16)
-    want_pid = int(str(product_id), 16)
-
-    matches = [
-        port
-        for port in list_ports.comports()
-        if port.vid == want_vid and port.pid == want_pid
-    ]
-    if serial_number:
-        matches = [
-            port
-            for port in matches
-            if (port.serial_number or "").upper() == str(serial_number).upper()
-        ]
-
-    if not matches:
-        detail = f"{want_vid:04x}:{want_pid:04x}"
-        if serial_number:
-            detail += f" serial {serial_number}"
-        raise I2CTransportError(f"No USB-I2C bridge found matching {detail}")
-    if len(matches) > 1:
-        found = ", ".join(
-            f"{port.device} (serial {port.serial_number})" for port in matches
-        )
-        raise I2CTransportError(
-            f"Several {want_vid:04x}:{want_pid:04x} devices are attached: {found}. "
-            "Pin the bridge with 'serial_number' or 'port_windows' in usbmap.json."
-        )
-    return matches[0].device
 
 
 class PicoI2C:

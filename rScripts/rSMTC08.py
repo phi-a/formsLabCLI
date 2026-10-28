@@ -7,8 +7,8 @@
 # with a log line; a board that fails to open or read is retried every
 # RETRY_INTERVAL s, and its channels read NaN meanwhile so the record shows the gap.
 #
-# On Windows the board's serial port comes from "resource_windows" (e.g. "COM7")
-# in its usbmap entry, on Linux from "resource" or the hub "port".
+# Each board's serial port is found from its usbmap entry by formslab.hardware
+# (labcli hardware shows which port that is).
 import math
 import os
 import time

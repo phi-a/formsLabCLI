@@ -47,42 +47,42 @@ Native USB PSUs use VISA automatically; no `FORMS_PSU_BACKEND` override is
 needed. A serial PSU uses pyserial by default and does not require NI-VISA.
 A native USB instrument may have no COM port.
 
-## 3. Identify ports and edit the live map
+## 3. Find your devices and edit the live map
 
-Run these from the checkout:
+With everything plugged in, run this from the checkout:
 
 ```powershell
-.\.venv\Scripts\python.exe -m serial.tools.list_ports -v
-.\.venv\Scripts\python.exe -c "from formslab.config import usbmap_path; print(usbmap_path())"
+.\.venv\Scripts\labcli.exe hardware
 ```
 
-The second command creates the map if absent and prints its path (normally
-`C:\Users\<you>\.formslab\usbmap.json`). Edit **that file**, not the packaged
+It prints the live map's path (normally `C:\Users\<you>\.formslab\usbmap.json`),
+each entry found or missing, and what is plugged in that the map does not name.
+The GUI's Hardware page shows the same. Edit **that file**, not the packaged
 default. Existing settings survive reinstalls. To use a different bench folder,
 set `$env:FORMSLAB_CONFIG_DIR = 'C:\Lab\bench-a'` before these commands and
 before launching the console.
 
-COM numbers belong to this computer and may change when USB connections move.
-Match devices using the serial numbers/descriptions in the port listing or
-Windows Device Manager; connect one at a time if necessary. Do not reuse the
-old computer's COM numbers or the shipped PSU serial number without checking.
+Each device not in the map comes with its line for the map, "in the map as".
+To tell two alike apart, unplug one and look again; the page's *Look again*
+names what went. Copy the line into the device's entry, keeping the rest:
 
-Change only the relevant fields, keeping the rest of each record:
+```json
+"psu1":       {"usb": "1ab1:0e11", "serial": "DP8B279M00280", "channels": {...}},
+"SMTC08_A":   {"usb": "1a86:7523", "path": "1-2.3.2", "baud": 9600},
+"cryo_board": {"usb": "2e8a:0005", "serial": "E66480454F333A2F", "i2c": {...}}
+```
 
-| Device record | Field to set on Windows | Example only |
-|---|---|---|
-| `psu1` / `psu2`, native USB | `resource_windows` | Full `USB0::…::INSTR` name from VISA |
-| `psu1` / `psu2`, serial adapter | `resource_windows` | `ASRLCOM12::INSTR` for COM12 (default pyserial driver) |
-| `SMTC08_A` | `resource_windows` | `COM8` |
-| `cryo_board` | `port_windows` | `COM10` |
+A `serial` finds the device on any port. An adapter without one, like the
+SMTC08's CH340, is found by its `path`, the place on the USB tree it is plugged
+in: plug it into the same socket each time. Each computer numbers its own hubs,
+so each computer keeps its own map. `"address": "COM3"` pins a port outright,
+for a port with no USB identity; COM numbers change as things are plugged in,
+so prefer a serial or a path. Set `enabled` to `false` on unused PSU records.
 
-Set `enabled` to `false` on unused PSU records. On Linux, PSU addresses use
-`resource`; temperature readers accept `/dev/tty…` paths. The cryo bridge uses
-its Linux `interface_id`; remove a Windows `port_windows` override when moving
-that map to Linux.
+A map in the old form (`resource`, `resource_windows`, `port_windows`,
+`interface_id`, `serial_number`) is converted the first time it is read, using
+what is plugged in then; the old one stays beside it as `usbmap.json.old`.
 
-For the cryo bridge, you can instead set its USB `serial_number` and remove
-`port_windows` to discover its current Windows COM number automatically.
 The Pico needs MicroPython; the `[pico]` extra supplies mpremote, and the driver
 can deploy its bridge script on connection. Confirm `cryo_board.i2c` matches
 your wiring before using it.
@@ -90,8 +90,6 @@ your wiring before using it.
 If used, also update `PS` host/user/adapter/local IP for your PowerSwitch and
 set the environment variable named by `PS.password_env` (normally
 `FORMS_POWERSWITCH_PASSWORD`). See [PowerSwitch setup](../instruments/powerswitch.md).
-For sLTA, review `slta` MAC/IP fields and its separate host software. Linux
-USB reset/recovery also needs the actual hub locations, not the shipped ones.
 
 ## 4. Launch and check
 

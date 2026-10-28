@@ -132,10 +132,10 @@ def _hardware(out) -> int:
     other = [d for d in s["plugged"] if d["label"] is None]
     if other:
         loose = Table(title="Plugged in, not in the map", title_justify="left", box=None)
-        for col in ("where", "USB id", "serial number", "USB path", "what"):
+        for col in ("where", "what", "in the map as"):
             loose.add_column(col)
         for d in other:
-            loose.add_row(d["address"], d["usb"], d["serial"] or "(none)", d["path"], d["description"])
+            loose.add_row(d["address"], d["description"], d["entry"])
         out.print()
         out.print(loose)
     for err in s["errors"]:

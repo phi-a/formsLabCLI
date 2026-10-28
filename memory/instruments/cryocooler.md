@@ -138,7 +138,7 @@ full traceback once:
 |---|---|---|
 | the I2C clock line stayed low (ETIMEDOUT) | the board side has no power, so its pull-ups do not reach the Pico | the cable from psu1 CH1 to the board, the board's input; the supply's current |
 | nothing answered on the I2C bus (ENODEV) | the Pico's bus works but the chips are unpowered or not wired | the board's 3.3 V rail, the I2C harness (GP16/GP17) |
-| the Pico's serial port did not open | the bridge itself | the Pico's USB cable, its port in usbmap.json |
+| the Pico's serial port did not open | the bridge itself | the Pico's USB cable; `labcli hardware`: is `cryo_board` found? |
 
 The reason carries the supply's reading. **24 V with a few mA** means the supply is on
 but nothing is drawing from it: the board is not connected to that channel, or its

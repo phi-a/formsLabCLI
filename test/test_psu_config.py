@@ -18,15 +18,8 @@ def _write_map():
     path.write_text(
         json.dumps(
             {
-                "psu1": {
-                    "enabled": True,
-                    "resource": "ASRL/dev/psu1::INSTR",
-                    "resource_windows": "ASRLCOM3::INSTR",
-                },
-                "psu2": {
-                    "enabled": False,
-                    "resource": "ASRL/dev/psu2::INSTR",
-                },
+                "psu1": {"enabled": True, "address": "ASRLCOM3::INSTR"},
+                "psu2": {"enabled": False, "address": "ASRL/dev/psu2::INSTR"},
                 "PS": {"host": "192.0.2.1"},
             }
         ),
@@ -35,11 +28,16 @@ def _write_map():
     return path
 
 
-def test_psu_resource_selects_windows_mapping():
-    _write_map()
+def test_a_psu_opens_what_the_map_finds(monkeypatch):
+    from formslab.devices.dp832a import driver
 
-    assert psu_config.resource_for("psu1", platform="win32") == "ASRLCOM3::INSTR"
-    assert psu_config.resource_for("psu1", platform="linux") == "ASRL/dev/psu1::INSTR"
+    _write_map()
+    opened = []
+    monkeypatch.setattr(driver, "driver_for_resource", lambda r: opened.append(r) or (lambda r: object()))
+    psu = driver.PSU("psu1")                      # building one finds nothing yet: unplugged is fine
+    assert opened == []
+    psu.connect()
+    assert opened == ["ASRLCOM3::INSTR"]
 
 
 def test_disabled_psu_is_not_exposed():

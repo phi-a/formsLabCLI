@@ -124,7 +124,7 @@ def setup_windows(
     )
     if inspect.returncode != 0:
         print(f"[error] Network adapter {config.adapter!r} was not found.")
-        print("        Update lab/usbmap.json -> PS.adapter with the dedicated adapter name.")
+        print("        Update ~/.formslab/usbmap.json -> PS.adapter with the dedicated adapter name.")
         return False
 
     command = windows_setup_command(config)
@@ -156,7 +156,7 @@ def setup_linux(
     inspect = _run(["ip", "link", "show", "dev", config.adapter], runner=runner)
     if inspect.returncode != 0:
         print(f"[error] Network interface {config.adapter!r} was not found.")
-        print("        Update lab/usbmap.json -> PS.adapter with the dedicated interface name.")
+        print("        Update ~/.formslab/usbmap.json -> PS.adapter with the dedicated interface name.")
         return False
 
     commands = [

@@ -446,8 +446,8 @@
           e.status + (e.address && added(now.get(e.address)) ? " new" : ""))));
     const loose = s.plugged.filter((d) => !d.label);
     $("#hw-loose").replaceChildren(...(loose.length
-      ? [head(["Where", "USB id", "Serial number", "USB path", "What"]), ...loose.map((d) =>
-          row([d.address, d.usb, d.serial || "(none)", d.path, d.description], added(d) ? "new" : ""))]
+      ? [head(["Where", "What", "In the map as"]), ...loose.map((d) =>
+          row([d.address, d.description, d.entry], added(d) ? "new" : ""))]
       : [row(["Nothing: every device this computer sees is in the map."], "")]));
   }
   $("#hw-again").addEventListener("click", loadHardware);

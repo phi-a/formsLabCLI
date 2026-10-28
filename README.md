@@ -29,8 +29,8 @@ labcli                    # start it
 Keep each computer's settings and files separate from the shared code:
 
 - Edit the live hardware map at `%USERPROFILE%\.formslab\usbmap.json` on
-  Windows (`~/.formslab/usbmap.json` on Linux). This holds your COM ports and
-  device addresses. Do not edit `src/formslab/defaults/usbmap.json`; it is a
+  Windows (`~/.formslab/usbmap.json` on Linux). This says how to find each
+  device on this computer. Do not edit `src/formslab/defaults/usbmap.json`; it is a
   shared template. The live map is created only when missing and is not
   replaced by an update.
 - Keep personal data and custom files in `outputs/` (ignored by Git), or
@@ -149,9 +149,9 @@ thing is:
 | config | live `usbmap.json`, CTRL command table, CAST device state, and in `.run/` the running host's lock, event log and `host.log` | `$FORMSLAB_CONFIG_DIR` (default `~/.formslab`) |
 | output | run records (JSON Lines), captured frames, instrument logs | `$FORMSLAB_OUTPUT_DIR` (default `<cwd>/outputs`) |
 
-`usbmap.json` is the hardware map: instrument VISA addresses and USB VID/PIDs,
-hub locations, the PowerSwitch host, and the cryo board's I2C pins and firmware
-version. It differs per bench, so it ships as a default in
+`usbmap.json` is the hardware map: how to find each USB device (its USB id
+and serial number, or its place on the USB tree), the PowerSwitch host, and the
+cryo board's I2C pins and firmware file. It differs per bench, so it ships as a default in
 `src/formslab/defaults/` and is copied into the config directory the first time
 a driver asks for it — edit the copy, and an upgrade will not overwrite it. The
 PowerSwitch password is read from the environment variable named by its
@@ -249,7 +249,6 @@ chosen for you:
 |---|---|---|
 | VISA backend | NI-VISA | pyvisa-py (installed by `pip install -e .`) |
 | USB transport | NI-VISA's USB driver | pyusb + libusb |
-| PSU resource | `resource_windows` in `usbmap.json` | `resource` in `usbmap.json` |
 
 `pyvisa` picks the backend itself: NI-VISA when its library is found, pyvisa-py
 otherwise. To force one, set `PYVISA_LIBRARY` (`@ivi` or `@py`). A Rigol on
@@ -271,6 +270,7 @@ lsusb -d 1ab1:0e11          # the Rigol shows up (vendor:product)
 ```
 
 The operator also needs permission to open the USB device, usually a udev rule
-for `1ab1:0e11`. Each supply's resource string contains its serial number, e.g.
-`USB0::6833::3601::DP8B224001812::0::INSTR`, so map it in that Pi's **local**
-`~/.formslab/usbmap.json` rather than the shipped defaults.
+for `1ab1:0e11`. Each supply is found by its serial number,
+`"usb": "1ab1:0e11", "serial": "DP8B224001812"`, in that Pi's **local**
+`~/.formslab/usbmap.json` rather than the shipped defaults; `labcli hardware`
+shows the line for each device plugged in.

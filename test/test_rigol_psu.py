@@ -30,7 +30,7 @@ def test_usb_and_lan_resources_use_visa(resource):
     assert driver_for_resource(resource) is RigolDriverVISA
 
 
-@pytest.mark.parametrize("resource", ["ASRLCOM3::INSTR", "ASRL/dev/psu1::INSTR", "/dev/ttyUSB0"])
+@pytest.mark.parametrize("resource", ["ASRLCOM3::INSTR", "ASRL/dev/psu1::INSTR", "/dev/ttyUSB0", "COM5"])
 def test_rs232_resources_use_pyserial(resource):
     assert driver_for_resource(resource) is RigolDriverSerial
 
@@ -43,7 +43,8 @@ def test_backend_override_sends_rs232_through_visa(monkeypatch):
 
 @pytest.mark.parametrize(
     "resource, path",
-    [("ASRLCOM3::INSTR", "COM3"), ("ASRL/dev/psu2::INSTR", "/dev/psu2"), ("/dev/ttyUSB0", "/dev/ttyUSB0")],
+    [("ASRLCOM3::INSTR", "COM3"), ("ASRL/dev/psu2::INSTR", "/dev/psu2"), ("/dev/ttyUSB0", "/dev/ttyUSB0"),
+     ("COM5", "COM5")],
 )
 def test_serial_driver_finds_the_port_on_either_os(resource, path):
     assert RigolDriverSerial._parse_device_path(resource) == path

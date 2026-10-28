@@ -1,14 +1,7 @@
-
 from pymodbus.client import ModbusSerialClient
-from pathlib import Path
 import inspect
-import sys
 
-from formslab.config import usbmap_path
-import subprocess
-import os
-import time
-import json
+from formslab import hardware
 
 # pymodbus 3.10 renamed the per-request unit keyword from `slave` to
 # `device_id`; the dependency is unpinned, so ask the installed version.
@@ -42,23 +35,10 @@ class SMTC08:
         0=B, 1=E, 2=J, 3=K, 4=N, 5=R, 6=S, 7=T (default recommended: 7 for Type T)
     """
 
-    def __init__(self, label="SMTC08", slave=1, config_path=None, port=None):
-        self.hubmap = self.get_config(label, config_path)
-
-        # Resolve port: explicit override, then 'resource_windows' on Windows,
-        # then 'resource', then the udev 'port' fragment
-        if port is None and sys.platform == "win32":
-            port = self.hubmap.get("resource_windows")
-        port = port or self.hubmap.get("resource")
-        if port and (port.startswith("/dev/") or
-                     (port.upper().startswith("COM") and port[3:].isdigit())):
-            self.port = port
-        else:
-            port_fragment = self.hubmap.get("port")
-            if port_fragment:
-                self.port = self.resolve_usb_port_path(port_fragment)
-            else:
-                raise RuntimeError(f"✗ No 'resource' or 'port' defined in usbmap for {label}")
+    def __init__(self, label="SMTC08", slave=1, port=None):
+        # The port named, or the one `formslab.hardware` finds for the map entry
+        self.hubmap = hardware.entry(label)
+        self.port = port or hardware.address(label, self.hubmap)
 
         baudrate = self.hubmap.get("baud", 9600)
         self.slave = slave
@@ -73,24 +53,6 @@ class SMTC08:
         if not self.client.connect():
             raise IOError(f"Could not connect to port {self.port}")
         
-    @staticmethod
-    def get_config(name, path=None):
-        if path is None:
-            path = usbmap_path()
-        else:
-            path = Path(path).resolve()
-
-        if not path.exists():
-            raise FileNotFoundError(f"USB map not found: {path}")
-        
-        with path.open("r") as f:
-            config = json.load(f)
-        
-        if name not in config:
-            raise ValueError(f"Device '{name}' not found in USB map.")
-        
-        return config[name]
-
     def _read_input(self, address, count):
         return self.client.read_input_registers(
             address=address, count=count, **{_UNIT_KW: self.slave})
@@ -172,76 +134,6 @@ class SMTC08:
         """Close MODBUS connection."""
         self.client.close()
 
-    def resolve_usb_port_path(self, port_fragment):
-        import subprocess
-        from pathlib import Path
-        candidates = list(Path("/dev").glob("ttyUSB*")) + list(Path("/dev").glob("ttyACM*"))
-        for dev in candidates:
-            try:
-                path = subprocess.check_output(["udevadm", "info", "-q", "path", "-n", str(dev)], text=True)
-                if port_fragment in path:
-                    return str(dev)
-            except Exception:
-                continue
-        raise RuntimeError(f"✗ Could not resolve port fragment '{port_fragment}' to a /dev/ttyXXX")
-
-    
-    def usbreset(self):
-        """
-        Reset the USB device using the method in usbmap.json and re-establish MODBUS connection.
-        """
-        # Linux only: both methods need root tools (uhubctl, the ftdi_sio sysfs).
-        method = self.hubmap.get("recovery_method", "hubpower")
-
-        if method == "hubpower":
-            self._reset_by_hub()
-        elif method == "rebind":
-            self._reset_by_rebind()
-        else:
-            raise RuntimeError(f"✗ Unknown recovery method '{method}' (hubpower or rebind)")
-
-        # Post-reset recovery
-        print("⏳ Waiting for device to reinitialize...")
-        time.sleep(5)
-
-        print("↻ Reconnecting MODBUS client...")
-        self.client.connect()
-
-        # Validate connection with retry loop
-        for attempt in range(5):
-            result = self._read_input(0, 1)
-            if not result.isError():
-                print(f"✅ Reconnected successfully on attempt {attempt+1}")
-                return
-            else:
-                print(f"Retry {attempt+1}: No response (waiting 2s)")
-                time.sleep(2)
-
-        raise IOError("✗ Failed to re-establish MODBUS communication after USB reset")
-
-
-    def _reset_by_rebind(self):
-        interface = self.hubmap.get("interface_id")
-        if not interface:
-            raise RuntimeError("✗ Missing 'interface_id' for rebind")
-        print(f"→ Rebinding FTDI driver on {interface}")
-        subprocess.run(["sudo", "tee", "/sys/bus/usb/drivers/ftdi_sio/unbind"],
-                       input=(interface + "\n").encode(), check=True)
-        time.sleep(1)
-        subprocess.run(["sudo", "tee", "/sys/bus/usb/drivers/ftdi_sio/bind"],
-                       input=(interface + "\n").encode(), check=True)
-        time.sleep(1)
-        
-    def _reset_by_hub(self):
-        loc = self.hubmap.get("hub_location")
-        port = self.hubmap.get("hub_port")
-        if not loc or not port:
-            raise RuntimeError("✗ Missing 'hub_location' or 'hub_port'")
-        print(f"→ Power cycling hub port {port} on {loc}")
-        subprocess.run(["uhubctl", "-l", loc, "-p", str(port), "-a", "off"], check=True)
-        time.sleep(2)
-        subprocess.run(["uhubctl", "-l", loc, "-p", str(port), "-a", "on"], check=True)
-        time.sleep(2)
 
 if __name__ == "__main__":
     smtc = SMTC08("SMTC08_A")

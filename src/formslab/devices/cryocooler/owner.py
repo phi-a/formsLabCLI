@@ -92,7 +92,7 @@ def diagnose(exc, supply: dict) -> str:
     elif "ENODEV" in text or "Errno 19" in text or "EIO" in text or "Errno 5" in text:
         why = "nothing answered on the I2C bus (ENODEV): the board's chips are unpowered or not connected"
     elif "could not open port" in text or "FileNotFoundError" in text or "PermissionError" in text:
-        why = "the Pico's serial port did not open: is it plugged in, and its port right in usbmap.json?"
+        why = "the Pico's serial port did not open: is it plugged in? labcli hardware shows what is"
     else:
         last = next((ln for ln in reversed(text.strip().splitlines()) if ln.strip()), type(exc).__name__)
         why = f"{type(exc).__name__}: {last.strip()}"

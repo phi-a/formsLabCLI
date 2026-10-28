@@ -20,7 +20,7 @@ import re
 import threading
 import time
 
-from formslab.devices.dp832a.config import resource_for
+from formslab import hardware
 
 CHANNELS = (1, 2, 3)
 
@@ -200,11 +200,11 @@ class RigolDriverSerial(RigolDriver):
 
         ASRLCOM3::INSTR        ->  COM3
         ASRL/dev/psu2::INSTR   ->  /dev/psu2
-        /dev/ttyUSB0           ->  /dev/ttyUSB0
+        /dev/ttyUSB0, COM3     ->  themselves
         """
         if resource.startswith("ASRL") and "::" in resource:
             return resource[4:resource.index("::")]
-        if resource.startswith("/dev/"):
+        if resource.startswith("/dev/") or re.fullmatch(r"COM\d+", resource, re.I):
             return resource
         raise ValueError(f"Cannot parse device path from: {resource!r}")
 
@@ -265,7 +265,6 @@ class PSU:
 
     def __init__(self, label):
         self.label = label
-        self.resource = label if "::" in label else resource_for(label)
         self.driver = None
         self.state = {}
         self.limits = {}          # each channel's protection, as last read (`protection`)
@@ -296,7 +295,9 @@ class PSU:
     def connect(self):
         if self.driver is not None:
             self.disconnect()
-        self.driver = driver_for_resource(self.resource)(self.resource)
+        # Found again each time: a serial port may have a new name since
+        resource = self.label if "::" in self.label else hardware.address(self.label)
+        self.driver = driver_for_resource(resource)(resource)
         self._last_channel = None
 
     def disconnect(self):
