@@ -73,21 +73,20 @@ def test_scan_lists_a_run_with_its_columns(tmp_path):
     found = runs.scan([tmp_path])
     assert found["unsupported"] == []
     [run] = found["runs"]
-    assert run["id"] == "tvac_20261004T120000Z" and run["name"] == "tvac"
+    assert run["id"] == "20261004T120000Z" and run["name"] == "tvac"
     assert run["columns"] == [{"name": "TC01", "unit": "K"}, {"name": "chamberP", "unit": "Torr"},
                               {"name": "PSU1_CH1_ON", "unit": ""}]
     assert run["started"] == 1791115200.0                      # 2026-10-04T12:00:00Z
 
 
-def test_a_run_that_grew_a_variable_is_one_run_of_stitched_parts(tmp_path):
-    write_run(tmp_path, header=("TC01 [K]",), rows=[["2026-10-04T12:00:00Z", "293"], ["2026-10-04T12:00:10Z", "294"]])
-    write_run(tmp_path, part=1, header=("TC01 [K]", "chamberP [Torr]"),
-              rows=[["2026-10-04T12:00:20Z", "295", "5.5"]])
+def test_a_variable_that_appeared_mid_run_is_a_gap_before_it(tmp_path):
+    write_run(tmp_path, header=("TC01 [K]", "chamberP [Torr]"),
+              rows=[["2026-10-04T12:00:00Z", "293", ""], ["2026-10-04T12:00:10Z", "294", ""],
+                    ["2026-10-04T12:00:20Z", "295", "5.5"]])
     [run] = runs.scan([tmp_path])["runs"]
-    assert len(run["parts"]) == 2 and [c["name"] for c in run["columns"]] == ["TC01", "chamberP"]
     out = runs.series({**run, "_dir": str(tmp_path)})
     assert out["series"]["TC01"] == [293.0, 294.0, 295.0]
-    assert out["series"]["chamberP"] == [None, None, 5.5]            # absent in the first part
+    assert out["series"]["chamberP"] == [None, None, 5.5]
     assert out["units"] == {"TC01": "K", "chamberP": "Torr"} and out["rows"] == 3
 
 
@@ -96,7 +95,13 @@ def test_a_failed_reading_is_a_gap_not_a_number(tmp_path):
     run = {**runs.scan([tmp_path])["runs"][0], "_dir": str(tmp_path)}
     out = runs.series(run, ["TC01", "nope"])
     assert out["series"] == {"TC01": [293.15, 294.15, None]}           # nan -> None; unknown name ignored
-    assert out["t"][1] - out["t"][0] == 10.0
+    assert out["t"][1] - out["t"][0] == 10.0 and out["every_s"] == 10.0   # the recorder's cadence
+
+
+def test_one_row_has_no_cadence_yet(tmp_path):
+    write_run(tmp_path, rows=[["2026-10-04T12:00:00Z", "293", "760", "0"]])
+    run = {**runs.scan([tmp_path])["runs"][0], "_dir": str(tmp_path)}
+    assert runs.series(run)["every_s"] is None
 
 
 def test_a_half_written_last_row_is_not_shown(tmp_path):
@@ -111,10 +116,12 @@ def test_other_files_are_listed_as_unsupported_not_guessed_at(tmp_path):
     write_run(tmp_path)
     (tmp_path / "pumpdown_20261001T143932Z.csv").write_text("utc,elapsed_s,pressure_Torr\n", encoding="utf-8")
     (tmp_path / "notes.csv").write_text("a,b\n1,2\n", encoding="utf-8")
-    (tmp_path / "empty_20261004T130000Z.csv").write_text("", encoding="utf-8")
+    (tmp_path / "20261004T130000Z.csv").write_text("", encoding="utf-8")
+    (tmp_path / "tvac_20261003T120000Z.csv").write_text("index,timestamp,TC01 [K]\n", encoding="utf-8")
     found = runs.scan([tmp_path])
-    assert [r["id"] for r in found["runs"]] == ["tvac_20261004T120000Z"]
-    assert found["unsupported"] == ["empty_20261004T130000Z.csv", "notes.csv", "pumpdown_20261001T143932Z.csv"]
+    assert [r["id"] for r in found["runs"]] == ["20261004T120000Z"]
+    assert found["unsupported"] == ["20261004T130000Z.csv", "notes.csv", "pumpdown_20261001T143932Z.csv",
+                                    "tvac_20261003T120000Z.csv"]          # empty; not ours; the old layout
 
 
 def test_long_runs_are_thinned_but_keep_their_last_row(tmp_path):
@@ -129,8 +136,8 @@ def test_long_runs_are_thinned_but_keep_their_last_row(tmp_path):
 
 def test_a_run_is_found_by_scanning_never_by_building_a_path(tmp_path):
     write_run(tmp_path)
-    assert runs.find([tmp_path], "tvac_20261004T120000Z")["_dir"] == str(tmp_path)
-    for bad in ("../tvac_20261004T120000Z", "..\\x", "tvac_20261004T120000Z.csv", "nope", ""):
+    assert runs.find([tmp_path], "20261004T120000Z")["_dir"] == str(tmp_path)
+    for bad in ("../20261004T120000Z", "..\\x", "20261004T120000Z.csv", "nope", ""):
         assert runs.find([tmp_path], bad) is None
 
 

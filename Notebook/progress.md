@@ -142,7 +142,6 @@ From the GUI's open questions ([gui.md](gui.md)) and recent reviews:
   enable it in the live map before an sLTA run (docs/ARCHITECTURE.md, Known conflicts).
 - **No replay of a FORMS profile** yet: orbit timing reaches the bench through rOrbit,
   but no plan step follows a temperature profile.
-- **Plots lag** by the record cadence (30 s for `tvac`).
 - **The models' sweep is one orbit at its epoch**, two-body within it; J2 moves the
   orbit between dates (`Orbit(elements.at(t))`), not within one sweep.
 

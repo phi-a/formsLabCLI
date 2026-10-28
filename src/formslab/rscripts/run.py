@@ -23,6 +23,7 @@ sun angle) are published like any other value, from a profile computed offline.
 from __future__ import annotations
 
 import csv
+import io
 import sys
 import threading
 import time
@@ -30,6 +31,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from formslab.config import output_dir
+from formslab.console.safefile import atomic_write_text
 
 _LEVELS = {"DEBUG": 10, "INFO": 20, "WARNING": 30, "ERROR": 40, "CRITICAL": 50}
 _SECONDS = {"seconds": 1.0, "minutes": 60.0, "hours": 3600.0}
@@ -88,10 +90,10 @@ class _Clock:
 class _Recorder:
     """Every variable to CSV at a wall-clock cadence.
 
-    ``<output>/<name>_<UTC start>.csv``, one file per run -- lab data is never
-    overwritten. Columns are ``index, timestamp`` then ``<variable> [<unit>]``.
-    A variable appearing mid-run starts a new file (``_1``, ``_2``...) rather
-    than misaligning columns.
+    ``<output>/<UTC start>.csv``, one file per run -- lab data is never
+    overwritten. Columns are ``index, timestamp, plan`` then ``<variable> [<unit>]``.
+    A variable appearing mid-run widens the file: it is rewritten, in one step,
+    with the new column, empty in the rows before it.
     """
 
     def __init__(self, run: "Run", directory: Path | None) -> None:
@@ -100,7 +102,6 @@ class _Recorder:
         self._interval = None
         self._next = 0.0
         self._stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        self._part = 0
         self._header = None
         self._index = 0
         self.path: Path | None = None
@@ -130,22 +131,28 @@ class _Recorder:
         names = self._run.names()
         if not names:
             return False
-        header = ["index", "timestamp"] + [
+        header = ["index", "timestamp", "plan"] + [
             f"{n} [{v.unit}]" if (v := self._run.variable(n)).unit else n for n in names]
         if header != self._header:
-            if self._header is not None:
-                self._part += 1
-            self._header, self._index = header, 0
-            directory = self._dir or output_dir()
-            suffix = f"_{self._part}" if self._part else ""
-            self.path = Path(directory) / f"{self._run.name}_{self._stamp}{suffix}.csv"
-            with self.path.open("w", newline="", encoding="utf-8") as f:
-                csv.writer(f).writerow(header)
-        row = [self._index, _utc_now()] + [self._run.variable(n).value for n in names]
+            self._widen(header)
+        row = [self._index, _utc_now(), self._run.name] + [self._run.variable(n).value for n in names]
         with self.path.open("a", newline="", encoding="utf-8") as f:
             csv.writer(f).writerow(row)
         self._index += 1
         return True
+
+    def _widen(self, header: list[str]) -> None:
+        """The file with `header`, its earlier rows padded to that width."""
+        if self.path is None:
+            self.path = Path(self._dir or output_dir()) / f"{self._stamp}.csv"
+            rows = []
+        else:
+            with self.path.open(newline="", encoding="utf-8") as f:
+                rows = list(csv.reader(f))[1:]
+        text = io.StringIO()
+        csv.writer(text).writerows([header] + [r + [""] * (len(header) - len(r)) for r in rows])
+        atomic_write_text(self.path, text.getvalue())
+        self._header = header
 
 
 class Run:

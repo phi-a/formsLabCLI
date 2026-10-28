@@ -195,11 +195,18 @@ def list_runs() -> dict:
 
 
 def run_series(run_id: str, variables: list[str] | None, max_points: int = runs.MAX_POINTS) -> dict | None:
+    """The run's series, and `next_s`: how long until its recorder's next row is due
+    (a second after it, so the row is written), by this machine's clock, which
+    stamped the rows. A run whose next row is overdue (it has ended) is asked for
+    again one cadence later."""
     run = runs.find(run_dirs(), run_id)
     if run is None:
         return None
-    return {"id": run_id, "name": run["name"], "started": run["started"],
-            **runs.series(run, variables, max(10, min(int(max_points), 20000)))}
+    out = runs.series(run, variables, max(10, min(int(max_points), 20000)))
+    next_s = every = out["every_s"]
+    if every and (due := out["t"][-1] + every + 1.0 - time.time()) > 0:
+        next_s = due
+    return {"id": run_id, "name": run["name"], "started": run["started"], **out, "next_s": next_s}
 
 
 # --- control --------------------------------------------------------------------------

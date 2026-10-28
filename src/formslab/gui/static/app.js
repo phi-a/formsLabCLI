@@ -137,7 +137,7 @@
     $("#view-plots").hidden = view !== "plots";
     stopTimers();
     if (view === "status") state.plansLoaded = false;      // plans may have been saved since
-    if (view === "plots") { loadRuns(); if ($("#live").checked) followLive(); }
+    if (view === "plots") loadRuns();
     if (view === "plans" && window.App.editor) window.App.editor.open();
     poll();
   }
@@ -434,7 +434,8 @@
       return;
     }
     sel.value = r.runs.some((x) => x.id === keep) ? keep : r.runs[0].id;
-    if (!state.run || state.run.id !== sel.value) runChanged(); else state.run = r.runs.find((x) => x.id === sel.value);
+    if (!state.run || state.run.id !== sel.value) runChanged();
+    else { state.run = r.runs.find((x) => x.id === sel.value); loadSeries(); }
   }
 
   function defaultSelection(run) {
@@ -449,7 +450,7 @@
     state.x0 = state.x1 = null;
     state.selected = state.run ? defaultSelection(state.run) : new Set();
     $("#run-info").textContent = state.run
-      ? `${state.run.columns.length} variables, ${(state.run.bytes / 1024).toFixed(0)} KB, ${state.run.parts.length} file(s)` : "";
+      ? `${state.run.columns.length} variables, ${(state.run.bytes / 1024).toFixed(0)} KB` : "";
     buildVars();
     loadSeries();
   }
@@ -484,6 +485,7 @@
 
   let seriesSeq = 0;
   async function loadSeries() {
+    clearTimeout(state.plotTimer);
     if (!state.run || !state.selected.size) { state.data = null; drawAll(); return; }
     const names = [...state.selected].map(encodeURIComponent).join(",");
     const mine = ++seriesSeq;
@@ -491,19 +493,18 @@
       const data = await api(`/api/runs/${encodeURIComponent(state.run.id)}?vars=${names}&max=2000`);
       if (mine !== seriesSeq) return;                      // a newer request has been sent since
       state.data = data;
-    } catch (e) { return; }
-    drawAll();
+      drawAll();
+    } catch (e) {                                          // the last data stays on the page
+    } finally { if (mine === seriesSeq) followLive(); }
   }
 
-  // Follow the run live: every 5 s, the next request only once the last is back.
+  // Follow the run live: ask again when its recorder's next row is due (`next_s`, from
+  // the server), so the plot keeps the plan's `record every` pace.
   function followLive() {
     clearTimeout(state.plotTimer);
-    async function tick() {
-      if (state.view !== "plots" || !$("#live").checked) return;
-      if (!document.hidden) await loadSeries();
-      if (state.view === "plots" && $("#live").checked) state.plotTimer = setTimeout(tick, 5000);
-    }
-    state.plotTimer = setTimeout(tick, 5000);
+    if (state.view !== "plots" || !$("#live").checked) return;
+    const wait = (state.data && state.data.next_s) || 5;
+    state.plotTimer = setTimeout(() => (document.hidden ? followLive() : loadSeries()), wait * 1000);
   }
 
   function groupsOf(data) {
@@ -592,10 +593,7 @@
   $("#var-filter").addEventListener("input", buildVars);
   $("#tempunit").addEventListener("change", () => { state.tempUnit = $("#tempunit").value; drawAll(); });
   $("#reset").addEventListener("click", () => { state.x0 = state.x1 = null; drawAll(); });
-  $("#live").addEventListener("change", () => {
-    clearTimeout(state.plotTimer);
-    if ($("#live").checked) followLive();
-  });
+  $("#live").addEventListener("change", loadSeries);
   window.addEventListener("resize", redraw);
 
   function download(name, blob) {

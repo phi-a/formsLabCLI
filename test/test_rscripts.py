@@ -6,6 +6,7 @@ machine with only formsLabCLI installed.
 """
 import csv
 import json
+import re
 import sys
 
 import pytest
@@ -167,18 +168,20 @@ def test_record_writes_every_variable_at_its_cadence(run, clock, monkeypatch):
     run.record(force=True)
 
     rows = list(csv.reader(run.record.path.open(encoding="utf-8")))
-    assert rows[0] == ["index", "timestamp", "platenT [K]"]
-    assert [r[0] for r in rows[1:]] == ["0", "1"]
-    assert run.record.path.name.startswith("T_")
+    assert rows[0] == ["index", "timestamp", "plan", "platenT [K]"]
+    assert [r[0] for r in rows[1:]] == ["0", "1"] and {r[2] for r in rows[1:]} == {"T"}
+    assert re.fullmatch(r"\d{8}T\d{6}Z\.csv", run.record.path.name)       # the run's UTC start
 
 
-def test_a_new_variable_starts_a_new_file(run):
+def test_a_new_variable_widens_the_same_file(run):
     run.publish("a", 1)
     run.record(force=True)
     first = run.record.path
     run.publish("b", 2)
     run.record(force=True)
-    assert run.record.path != first and run.record.path.stem.endswith("_1")
+    rows = list(csv.reader(first.open(encoding="utf-8")))
+    assert run.record.path == first and list(first.parent.glob("*.csv")) == [first]
+    assert [r[:1] + r[2:] for r in rows] == [["index", "plan", "a", "b"], ["0", "T", "1", ""], ["1", "T", "1", "2"]]
 
 
 def test_recording_off_writes_nothing(run):
@@ -266,7 +269,7 @@ def test_tvac_plan_runs_until_end(chamber, tmp_path, monkeypatch):
     timer.join()
 
     assert ReadStatus("hvc")["connected"] is True
-    assert list(config.output_dir().glob("tvac_*.csv"))
+    assert list(config.output_dir().glob("*.csv"))
     assert not sequence.lock_path().exists()
     events = [json.loads(line) for line in
               sequence.events_path().read_text(encoding="utf-8").splitlines()]

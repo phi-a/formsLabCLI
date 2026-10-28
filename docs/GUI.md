@@ -232,12 +232,13 @@ Start list: a plan runs it.
 
 **Plots.** Pick a recorded run and any of its variables; each unit gets its own
 chart. Wheel zooms, drag pans, double-click resets, hovering reads values.
-Kelvin variables can be shown in Celsius. *Follow the run live* refreshes every
-5 s (the recorder writes a row every `record every ...`, 30 s for `tvac`).
+Kelvin variables can be shown in Celsius. *Follow the run live* refreshes as each
+new row is recorded, at the plan's `record every ...` (30 s for `tvac`).
 PNG saves the charts, CSV saves the selected variables.
 
-Runs are the CSVs the host's recorder writes (`<plan>_<UTC>.csv`; a variable
-that appears mid-run continues in `_1`, `_2` and is stitched into one run).
+Runs are the CSVs the host's recorder writes: one file per run, named by when it
+started (`20261028T143000Z.csv`), with the plan's name in its `plan` column. A
+variable that appears mid-run is a new column, empty in the rows before it.
 Older files in the output folder with other layouts are not listed.
 
 ## What is not here yet

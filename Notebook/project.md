@@ -56,7 +56,7 @@ written for the first of them (docs/WRITING.md).
  labcli console ─┐                         ┌─ sequence host (one per run) ─┐
  labcli <cmd>  ──┼── ctrl file ─────────▶  │ plan steps, one per tick      │
  labcli gui    ──┘── CAST file  ◀───────▶  │ rScripts ─▶ devices/ drivers  │──▶ instruments
-                     (requests, status)    │ recorder ─▶ <plan>_<UTC>.csv  │
+                     (requests, status)    │ recorder ─▶ <UTC>.csv         │
                                            └───────────────────────────────┘
 ```
 

@@ -7,7 +7,7 @@ which rScripts own the instruments, then what to do, in order.
 # PSU1 CH1 on for a minute while the thermocouples record.
 # load: the routines that own the instruments (first line).
 load rPSU rSMTC08
-# record: a CSV of every value, outputs/<plan>_<UTC>.csv (default every 10 s).
+# record: a CSV of every value, outputs/<UTC>.csv (default every 10 s).
 record every 2 s
 
 # A command is the same words as the cast tab.

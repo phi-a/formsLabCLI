@@ -121,13 +121,13 @@ def test_the_log_tail_is_the_end_of_the_host_log():
 def test_runs_are_found_in_the_output_folder_and_in_the_hosts_folder(tmp_path, monkeypatch):
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
-    write_run(config.output_dir(), name="here")
-    write_run(elsewhere, name="there")
+    write_run(config.output_dir(), plan="here")
+    write_run(elsewhere, plan="there", stamp="20261004T130000Z")
     monkeypatch.setattr(api, "read_lock", lambda: {**HOST, "output": str(elsewhere)})
     monkeypatch.setattr(api, "host", lambda: None)
     assert {r["name"] for r in api.list_runs()["runs"]} == {"here", "there"}
-    assert api.run_series("there_20261004T120000Z", ["TC01"])["series"]["TC01"][0] == 293.15
-    assert api.run_series("nope_20261004T120000Z", None) is None
+    assert api.run_series("20261004T130000Z", ["TC01"])["series"]["TC01"][0] == 293.15
+    assert api.run_series("20261004T140000Z", None) is None
 
 
 # --- the server ------------------------------------------------------------------------------
@@ -148,7 +148,7 @@ def test_the_page_and_its_assets_are_served_without_a_login(monkeypatch):
 def test_the_api_needs_a_login(monkeypatch):
     with running_server(monkeypatch) as server:
         c = Client(server)
-        for path in ("/api/status", "/api/runs", "/api/me", "/api/runs/tvac_20261004T120000Z"):
+        for path in ("/api/status", "/api/runs", "/api/me", "/api/runs/20261004T120000Z"):
             assert c.json("GET", path)[0] == 401, path
         assert c.json("POST", "/api/logout", {})[0] == 401
         c.cookie = "fl_session=not-a-session"
@@ -205,16 +205,24 @@ def test_an_unexpected_host_header_is_refused(monkeypatch):
         assert c.call("GET", "/", headers={"Host": f"127.0.0.1:{c.port}"})[0].status == 200
 
 
+def test_a_live_plot_asks_again_when_the_next_row_is_due(monkeypatch):
+    write_run(config.output_dir())                                   # rows every 10 s, the last at 12:00:20
+    last = api.runs.series(api.runs.find(api.run_dirs(), "20261004T120000Z"))["t"][-1]
+    monkeypatch.setattr(api.time, "time", lambda: last + 4)
+    assert api.run_series("20261004T120000Z", ["TC01"])["next_s"] == pytest.approx(7)   # due in 6, +1
+    monkeypatch.setattr(api.time, "time", lambda: last + 60)         # overdue: the run has ended
+    assert api.run_series("20261004T120000Z", ["TC01"])["next_s"] == 10
+
 def test_runs_and_series_over_http_with_gaps_as_null(monkeypatch):
     with running_server(monkeypatch) as server:
         write_run(config.output_dir())
         c = Client(server).login()
         code, listing = c.json("GET", "/api/runs")
-        assert code == 200 and listing["runs"][0]["id"] == "tvac_20261004T120000Z"
-        code, body = c.json("GET", "/api/runs/tvac_20261004T120000Z?vars=TC01,chamberP&max=500")
+        assert code == 200 and listing["runs"][0]["id"] == "20261004T120000Z"
+        code, body = c.json("GET", "/api/runs/20261004T120000Z?vars=TC01,chamberP&max=500")
         assert code == 200 and body["series"]["TC01"] == [293.15, 294.15, None]    # nan is null, valid JSON
         assert body["units"]["chamberP"] == "Torr"
-        assert c.json("GET", "/api/runs/tvac_20261004T120000Z?vars=")[1]["series"] == {}
+        assert c.json("GET", "/api/runs/20261004T120000Z?vars=")[1]["series"] == {}
         assert c.json("GET", "/api/runs/nope_20261004T120000Z")[0] == 404
         assert c.json("GET", "/api/runs/..%2f..%2fcastfile")[0] == 400
 
@@ -281,7 +289,7 @@ def test_every_endpoint_works_with_every_instrument_door_shut(monkeypatch):
             m.setattr(socket.socket, "connect", only_loopback)
             m.setattr(subprocess, "Popen", shut)
             for path in ("/", "/api/me", "/api/status", "/api/status?log=500", "/api/runs",
-                         "/api/runs/tvac_20261004T120000Z?vars=TC01", "/static/app.js"):
+                         "/api/runs/20261004T120000Z?vars=TC01", "/static/app.js"):
                 assert c.call("GET", path)[0].status == 200, path
 
 

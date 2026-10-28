@@ -11,18 +11,18 @@ from formslab.gui.server import make_server
 USER, PASSWORD = "tester", "pw-for-tests"
 
 
-def write_run(directory: Path, name="tvac", stamp="20261004T120000Z", part=None,
+def write_run(directory: Path, plan="tvac", stamp="20261004T120000Z",
               header=("TC01 [K]", "chamberP [Torr]", "PSU1_CH1_ON"), rows=None) -> Path:
-    """A recorder CSV: index,timestamp,<columns>. `rows` are lists of cell strings."""
-    suffix = f"_{part}" if part is not None else ""
-    path = Path(directory) / f"{name}_{stamp}{suffix}.csv"
+    """A recorder CSV: index,timestamp,plan,<columns>. `rows` are lists of cell
+    strings, the timestamp then the values."""
+    path = Path(directory) / f"{stamp}.csv"
     rows = rows if rows is not None else [
         ["2026-10-04T12:00:00.000Z", "293.15", "760", "0"],
         ["2026-10-04T12:00:10.000Z", "294.15", "700", "1"],
         ["2026-10-04T12:00:20.000Z", "nan", "650", "1"],
     ]
-    lines = ["index,timestamp," + ",".join(header)]
-    lines += [f"{i}," + ",".join(r) for i, r in enumerate(rows)]
+    lines = ["index,timestamp,plan," + ",".join(header)]
+    lines += [f"{i},{r[0]},{plan}," + ",".join(r[1:]) for i, r in enumerate(rows)]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return path
 

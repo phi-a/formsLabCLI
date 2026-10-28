@@ -482,7 +482,7 @@ def test_host_runs_the_first_plan_and_leaves_psu1_off(bench, monkeypatch):
                           "ended": None}
     from formslab.config import output_dir
     headers = [next(csv.reader(p.open(encoding="utf-8")))
-               for p in sorted(output_dir().glob("psu1_smtc08_first_*.csv"))]
+               for p in sorted(output_dir().glob("*.csv"))]
     assert "TC01 [K]" in headers[-1] and "PSU1_CH1_V [V]" in headers[-1]
 
 
