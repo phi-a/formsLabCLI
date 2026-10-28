@@ -71,6 +71,12 @@ def walk(steps, scripts, published: dict):
     out: list = []
     volatile: dict = {}            # device -> the states `when` rules may set it to, at any time
     anything = []                  # a `when` that may change every device (a cycle operation)
+    reported = {}                  # a published on/off value -> the device state it reports
+    for label, module in labels.items():
+        for rule in R.rules_for(module, label):
+            for c in rule.requires:
+                if c.kind == "device" and c.variable:
+                    reported[c.variable.lower()] = c.name
 
     def forget(devices):
         """What is still known, given the rules armed so far: a state no rule may change."""
@@ -79,10 +85,14 @@ def walk(steps, scripts, published: dict):
         return {k: v for k, v in devices.items() if not volatile.get(k, set()) - {v[0]}}
 
     def guard(p):
-        """What a wait proves after it: a number past its limit. Not an on/off
-        value (no rule needs one), and not a wait that may have gone on without it."""
+        """What a wait proves after it: a number past its limit, or an on/off value.
+        Not a wait that may have gone on without it."""
+        if p.get("go_on"):
+            return []
+        if p["op"] in ("=", "!="):
+            return [(p["variable"].lower(), "is", p["value"] if p["op"] == "=" else not p["value"])]
         side = {"<": "below", "<=": "below", ">": "above", ">=": "above"}.get(p["op"])
-        if side is None or p.get("go_on"):
+        if side is None:
             return []
         own = units.get(p["variable"].lower())
         try:
@@ -115,7 +125,13 @@ def walk(steps, scripts, published: dict):
 
     def step(item, devices, guards, sink):
         n, seg = item
+        where = f"{origin_text(seg.origin)} at line {n}" if seg.origin else f"line {n}"
         if seg.verb == "until":
+            # A wait on a value that reports a device state settles that state, as a
+            # command would (`until TurboSpinning = false`: the turbo has stopped).
+            for v, s, g in guard(seg.params):
+                if s == "is" and (key := reported.get(v)):
+                    devices = {**devices, key: (g, where)}
             return devices, guards + guard(seg.params)
         if seg.verb == "hold":
             return devices, []
@@ -166,10 +182,10 @@ def walk(steps, scripts, published: dict):
                 for k, v in left.items():
                     volatile.setdefault(k, set()).add(v)
             return devices, guards
-        where = f"{origin_text(seg.origin)} at line {n}" if seg.origin else f"line {n}"
         if left is None:
             return {}, []
-        return {**devices, **{k: (v, where) for k, v in left.items()}}, []
+        after = {**devices, **{k: (v, where) for k, v in left.items()}}
+        return {k: s for k, s in after.items() if s[0] is not None}, []   # None: no longer known
 
     run(_tree(steps), {}, [], out)
     return out

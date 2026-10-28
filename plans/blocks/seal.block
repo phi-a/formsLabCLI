@@ -1,15 +1,15 @@
 # Seal the chamber and stop every pump
-# Closes the gate valve and turns the turbo pump off, then gives it 30 minutes to spin
-# down, the vacuum pump still backing it through the foreline. Its speed is not read,
-# so the 30 minutes is a time, not a check: confirm it against the turbo pump's manual
-# at the bench. Then closes the foreline and vacuum valves and stops the vacuum pump.
+# Closes the gate valve, turns the turbo pump off and waits for it to stop turning.
+# The controller does not report its speed, so formsLAB counts it as turning for
+# turbo_spindown_s after it was last on (tvac_bench.json; 30 minutes unless the
+# turbo's manual says otherwise), and the vacuum pump backs it through the foreline
+# meanwhile. Then closes the foreline and vacuum valves and stops the vacuum pump.
 # Put it after highvac and before vent.
 block seal chamber
 load rLACO
 
 hvc gate close
 hvc turbo off
-until TurboPump = false within 1 min
-hold 30 min
+until TurboSpinning = false
 hvc foreline close
 hvc stop

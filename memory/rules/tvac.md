@@ -14,18 +14,28 @@ in words. Part names are the HMI's ([writing](../design/writing.md)).
 
 | Command | Controller needs | formsLAB also needs |
 |---|---|---|
-| `hvc rough open` (Vacuum valve) | vacuum pump on 10 s; vent, fill, foreline and gate valves closed | turbo off; chamber at or above the 0.01 Torr crossover |
+| `hvc rough open` (Vacuum valve) | vacuum pump on 10 s; vent, fill, foreline and gate valves closed | turbo stopped; chamber at or above the 0.01 Torr crossover |
 | `hvc vent open`, `hvc fill open` | gate and vacuum valves closed; the vent window | platen and shroud each 10 to 60 °C |
 | `hvc foreline open` | vacuum pump on 10 s; vacuum valve closed | |
-| `hvc foreline close` | | turbo off |
+| `hvc foreline close` | | turbo stopped |
 | `hvc turbo on` | foreline open; foreline at or below 0.2 Torr (lost above 0.5) | |
 | `hvc gate open` | chamber below the crossover; turbo on; foreline open | |
-| `hvc pump off` | vacuum and foreline valves closed | turbo off |
+| `hvc pump off` | vacuum and foreline valves closed | turbo stopped |
 | anything during a fault | | only what makes it safer (see [safety](safety.md), Faults) |
 
 The two rules only formsLAB holds are the ones that protect against oil and a
 starved turbo: no roughing below the crossover, and no foreline closed under a
 spinning turbo. Neither is in the controller's list.
+
+**Turbo stopped** means off, and `turbo_spindown_s` past since it was last on
+(`tvac_bench.json` `limits`; 30 minutes until the turbo's manual says otherwise).
+The controller reports the turbo on or off, not its speed, and the rotor coasts for
+minutes after `turbo off`, needing its backing all the while. So formsLAB keeps the
+time it last saw the turbo on (`.run/turbo_on.json`, written by rLACO during a run
+and by the monitor between runs) and publishes `TurboSpinning`. `hvc turbo off`
+alone settles nothing; a plan waits `until TurboSpinning = false` before it closes
+the foreline, as `begin`, `highvac` and `seal` do. The status page shows *Turbo
+pump turning*.
 
 The vacuum pump must run 10 s before the controller lets the vacuum valve open.
 The `pumpdown` block waits 15 s.
@@ -57,6 +67,10 @@ order is LACO's (LACO p. 23-24):
    foreline, then open the gate, in that order.
 5. Let the turbo pump the chamber down. Keep the foreline open while the turbo is on.
 6. Before venting, close the gate. The turbo may keep running behind it.
+7. To stop it: gate closed, `turbo off`, wait for it to stop turning, then the
+   foreline closed and `hvc stop` (`seal chamber`). LACO's own procedure leaves the
+   turbo running between tests, behind the closed gate; whether this bench does is
+   open ([progress](../progress.md), Waiting on a decision).
 
 formsLAB's rules hold step 3 differently: they refuse the vacuum valve while the
 turbo runs and the foreline while the vacuum valve is open, so a formsLAB plan

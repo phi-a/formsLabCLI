@@ -66,7 +66,8 @@ def test_a_guard_in_kelvin_counts():
 
 
 def test_stop_and_cycle_operations():
-    stopped = parse_plan(plan("hvc stop", "hvc turbo off", "hvc foreline close", "hvc pump off"))
+    stopped = parse_plan(plan("hvc stop", "hvc turbo off", "until TurboSpinning = false",
+                              "hvc foreline close", "hvc pump off"))
     assert stopped.warnings == ()
     with pytest.raises(PlanError, match="Needs Vacuum valve closed"):
         parse_plan(plan("hvc rough open", "hvc foreline open"))
@@ -106,7 +107,7 @@ def test_effects():
 
 SEALED = {"connected": True, "fault_severity": "N", "pressure": 4.4, "platen C": 20.0, "shroud C": 21.0,
           "rough": False, "vent": False, "fill": False, "foreline": False, "gate": False,
-          "pump": True, "turbo": False}
+          "pump": True, "turbo": False, "turbo_spinning": False}
 
 
 def blocks(**status):
@@ -157,13 +158,13 @@ def test_an_owned_channel_is_refused_while_its_owner_reports():
 
 
 def test_the_turbo_keeps_its_backing():
-    with pytest.raises(PlanError, match="Needs Turbo pump off"):
+    with pytest.raises(PlanError, match="Needs Turbo pump stopped"):
         parse_plan(plan("hvc foreline open", "hvc turbo on", "hvc foreline close"))
-    with pytest.raises(PlanError, match="Needs Turbo pump off"):
+    with pytest.raises(PlanError, match="Needs Turbo pump stopped"):
         parse_plan(plan("hvc turbo on", "hvc rough open"))
-    spinning = blocks(turbo=True, foreline=True)
-    assert "Needs Turbo pump off." in rules.refusal("hvc", {"foreline": "close"}, blocks=spinning)
-    assert "Turbo pump off" in rules.refusal("hvc", {"rough": "open"}, blocks=spinning)
+    spinning = blocks(turbo=True, foreline=True, turbo_spinning=True)
+    assert "Needs Turbo pump stopped." in rules.refusal("hvc", {"foreline": "close"}, blocks=spinning)
+    assert "Turbo pump stopped" in rules.refusal("hvc", {"rough": "open"}, blocks=spinning)
     assert rules.refusal("hvc", {"foreline": "close"}, blocks=blocks()) is None
 
 
@@ -177,10 +178,11 @@ def test_reasons_are_whole_sentences():
 def test_roughing_is_refused_once_the_chamber_is_below_the_crossover():
     """Opening the roughing line to a chamber already at high vacuum can let
     roughing-pump oil flow back into it."""
-    sealed = dict(vent=False, fill=False, foreline=False, gate=False, turbo=False)
+    sealed = dict(vent=False, fill=False, foreline=False, gate=False, turbo=False, turbo_spinning=False)
     why = rules.refusal("hvc", {"rough": "open"}, blocks=blocks(pressure=0.001, **sealed))
     assert why.startswith("Needs Chamber pressure at least 0.01 Torr. Opening the roughing line")
     assert rules.refusal("hvc", {"rough": "open"}, blocks=blocks(pressure=743.0, **sealed)) is None
-    p = parse_plan(plan("hvc turbo off", "hvc vent close", "hvc fill close", "hvc foreline close",
-                        "hvc gate close", "until chamberP > 0.01 within 1 min", "hvc rough open"))
+    p = parse_plan(plan("hvc turbo off", "until TurboSpinning = false", "hvc vent close", "hvc fill close",
+                        "hvc foreline close", "hvc gate close", "until chamberP > 0.01 within 1 min",
+                        "hvc rough open"))
     assert p.warnings == ()

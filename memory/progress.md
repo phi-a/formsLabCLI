@@ -98,10 +98,18 @@ architecture are in [project](project.md); the GUI's plan is in [gui-design](des
   can be moved by a number (`{temperature-2}`), for GEVS's 2 °C plateau start.
   Decided: true GEVS, so the turbo path (1e-5 Torr), though it has never been run;
   the article powered from psu1 CH2, switched by the plan for the cold and hot
-  turn-ons. Found: `TurboPump` is the pump's on/off, not its speed, so `seal
-  chamber` gives the turbo a fixed 30 minutes before closing the foreline. Next at
-  the bench: run `highvac` then `seal chamber` alone, watched at the HMI (the
-  checklist in [gevs](use/gevs.md)).
+  turn-ons. Found: `TurboPump` is the pump's on/off, not its speed, and the
+  controller lets the foreline close under a coasting turbo; so did formsLAB's rule
+  (it asked for `turbo off`, which the toggle makes true at once). Fixed as a rule,
+  not a hold: the turbo counts as turning for `turbo_spindown_s` (30 min, a guess
+  until the turbo's manual is read) after it was last seen on, kept in
+  `.run/turbo_on.json` across hosts and by the monitor; rLACO publishes
+  `TurboSpinning`; the foreline, pump and roughing rules ask for it stopped;
+  `begin`, `highvac` and `seal chamber` wait `until TurboSpinning = false`
+  ([tvac](rules/tvac.md), Turbo stopped). Found in LACO's manual: its own procedure
+  leaves the turbo running between tests (Waiting on a decision, 11). Next at the
+  bench: run `highvac` then `seal chamber` alone, watched at the HMI (the checklist
+  in [gevs](use/gevs.md)).
 - **Next:** the environment profile, the first stage after orbit files
   ([gui-design](design/gui-design.md), section 4): orbit file + spacecraft model → per-face background
   temperature over an orbit → a recorder-format CSV in the Plots tab. It needs a way to
@@ -153,13 +161,19 @@ From the GUI's open questions ([gui-design](design/gui-design.md)) and recent re
    practice session ([session](use/session.md)) assumes an instructor starts every bench run.
 7. **Default temperature unit** in the GUI (Celsius today).
 8. **The controller's unread values** (heater output %, turbo speed %, foreline
-   pressure): worth finding?
+   pressure): worth finding? A readable turbo speed would replace the
+   `turbo_spindown_s` guess with the truth.
 9. **Setpoint limits:** `tvac_bench.json` allows the platen -180 to 200 °C and the
    shroud -180 to 120 °C, the controller's own limits; the chamber is rated -150 to
    150 °C and -150 to 120 °C (LACO p. 18). Narrow the profile to the rating? Until
    then the operator holds it ([safety](rules/safety.md), Heat).
 10. **The vacuum pump's power setting** must be *Always On* with a turbo (HVC p. 16).
    What is it set to now? To read on the HMI before the first turbo run.
+11. **Leave the turbo running between tests?** LACO's procedure does (LACO p. 23):
+   the gate valve isolates it to vent, the vacuum pump backs it through the foreline,
+   and it never spins down. `gevs_unit` stops it (`seal chamber`), as its header
+   promises every pump off. If the bench leaves it running, the plan ends with
+   `hvc gate close` and `vent`, and End's D6 case becomes the normal one.
 
 ## Known gaps
 

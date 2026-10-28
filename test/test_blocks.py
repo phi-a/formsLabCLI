@@ -183,7 +183,7 @@ def test_the_help_card_for_a_call_lists_its_steps_and_every_prerequisite():
     assert card["help"] == "Rough the chamber down to a pressure, then seal it"
     assert card["steps"][0] == "hvc vent close" and "until chamberP < {pressure} within 20 min" in card["steps"]
     texts = {c["text"] for r in info["rules"] for c in r["conditions"]}
-    assert {"Gate valve closed", "Turbo pump off", "Chamber pressure at least 0.01 Torr"} <= texts
+    assert {"Gate valve closed", "Turbo pump stopped", "Chamber pressure at least 0.01 Torr"} <= texts
 
 
 # --- end to end ------------------------------------------------------------------------------

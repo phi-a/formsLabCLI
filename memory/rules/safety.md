@@ -66,7 +66,7 @@ These are the ones that protect people, the pumps or the chamber.
 | Vent or fill unless the vacuum and gate valves are closed and both zones are in the vent window | air rushes into a pump, or onto a hot or cold surface | Controller, formsLAB |
 | Open the vacuum valve to a chamber already below the 0.01 Torr crossover | roughing-pump oil can flow back into the chamber | formsLAB only |
 | Stop the vacuum pump with the vacuum or foreline valve open | oil is drawn into the chamber or turbo; `hvc stop` closes the valve first | Controller, formsLAB |
-| Close the foreline, or stop the vacuum pump, while the turbo pump runs | the foreline is a spinning turbo's only backing | Controller (the pump), formsLAB; End (D6) |
+| Close the foreline, or stop the vacuum pump, while the turbo pump runs or coasts after it is turned off | the foreline is a spinning turbo's only backing. The controller does not report the spin-down, so formsLAB counts the turbo as turning for `turbo_spindown_s` after it was last on ([tvac](tvac.md)) | Controller (the pump, while the turbo is on), formsLAB; End (D6) |
 | Expose a turbo at full speed to a pressure shock: open the vacuum or vent valve with the gate open to it | it can destroy the turbo | Controller (gate interlocks), formsLAB |
 
 ## Faults
@@ -114,6 +114,7 @@ checking what else uses them. ([hvc3500](../instruments/hvc3500.md), Network saf
 |---|---|
 | The setpoint limits in `tvac_bench.json` are wider than the chamber's rating | the operator keeps setpoints within the rating; the shipped plans do (`thermal_cycle` -20 to 60 °C) |
 | The turbo path (foreline, turbo, gate) has never been run | run it first on its own, watched at the HMI |
+| `turbo_spindown_s` (30 minutes) is a guess: the parts list names no turbo model | read the model off the pump and set the time from its manual; longer only delays `seal chamber`, shorter can starve the turbo |
 | Cooling has never been run through formsLabCLI | watch the first cold run at the HMI |
 | End has not been run on the real chamber | the bench checklist, [end](../design/end.md) section 9 |
 | End's confirmation times (15 s, 30 s) are estimates | adjust from the bench checklist |

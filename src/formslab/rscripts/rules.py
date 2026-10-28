@@ -44,10 +44,16 @@ class Cond:
     text: str = ""
     live: bool = False        # only checkable when sent (never while a plan is read)
     proof: str = ""           # a plan line that establishes it (`hvc rough close`)
+    variable: str = ""        # device: the published on/off value that reports it, if one does
 
 
-def device(name: str, on: bool, text: str, proof: str = "") -> Cond:
-    return Cond("device", name, bool(on), text, proof=proof)
+def device(name: str, on: bool, text: str, proof: str = "", *, variable: str = "") -> Cond:
+    """Part `name` on or off. `proof` is the command that sets it. `variable` names
+    the published on/off value that reports it when no command does (the turbo
+    coasting): a plan then settles it with `until <variable> = true|false`."""
+    if variable and not proof:
+        proof = f"until {variable} = {'true' if on else 'false'}"
+    return Cond("device", name, bool(on), text, proof=proof, variable=variable)
 
 
 def value(name: str, side: str, limit: float, unit: str | None = None, *, shown: str | None = None,

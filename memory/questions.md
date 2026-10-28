@@ -85,7 +85,9 @@ first on its own, watched at the HMI. ([tvac](rules/tvac.md), High vacuum)
 
 **Can a plan wait for the turbo to reach speed?**
 No: `TurboPump` is its on/off, not its speed, which is not read. A plan waits a fixed
-time. ([tvac](rules/tvac.md))
+time (`highvac` holds 5 minutes). It can wait for the turbo to **stop**: `until
+TurboSpinning = false`, which formsLAB reports from `turbo_spindown_s` after the
+turbo was last on, and which the foreline and pump rules require. ([tvac](rules/tvac.md))
 
 **Why does the pumpdown hold 15 s after the pump starts?**
 The controller opens the vacuum valve only after the pump has run 10 s.

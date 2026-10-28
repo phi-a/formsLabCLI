@@ -215,7 +215,8 @@ def run_going(monkeypatch):
     monkeypatch.setattr(castutils, "TAKE_S", 0.3)
     castutils.UpdateStatus("hvc", {"connected": True, "fault_severity": "N", "pressure": 700.0, "platen C": 20.0,
                                         "shroud C": 20.0, "rough": False, "vent": False, "fill": False,
-                                        "foreline": False, "gate": False, "pump": False, "turbo": False})   # the chamber has just reported: sealed, at rest, no fault
+                                        "foreline": False, "gate": False, "pump": False, "turbo": False,
+                                   "turbo_spinning": False})   # the chamber has just reported: sealed, at rest, no fault
 
 
 def test_the_tab_writes_the_request_and_says_what_became_of_it(run_going):

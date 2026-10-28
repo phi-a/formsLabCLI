@@ -62,6 +62,7 @@ def chamber(monkeypatch):
     with Simulator() as sim:
         profile = json.loads(config.default_path("tvac_bench.json").read_text(encoding="utf-8"))
         profile["connection"].update(host=sim.host, port=sim.port, timeout_s=2.0, poll_interval_s=0.5)
+        profile["limits"]["turbo_spindown_s"] = 2.0          # the turbo coasts 2 s, not 30 min
         (config.config_dir() / "tvac_bench.json").write_text(json.dumps(profile), encoding="utf-8")
         with sim.state.lock:
             sim.state.mode = "MANUAL"

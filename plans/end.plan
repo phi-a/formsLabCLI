@@ -39,9 +39,10 @@ until RoughValve = false within 15 s
 
 # 3. The pumps, with the chamber already sealed. The turbo spins down behind the
 #    closed gate valve. Its backing, the foreline valve and the roughing pump,
-#    stays until it has stopped, which the controller cannot report: hvc stop is
-#    refused while the turbo runs, the roughing pump keeps backing it, and the log
-#    says to finish at the HMI once the turbo has stopped.
+#    stays until it has stopped, which takes minutes (turbo_spindown_s), longer
+#    than End has: hvc stop is refused while the turbo runs, the roughing pump
+#    keeps backing it, and the log says to finish at the HMI once the turbo has
+#    stopped (the status page shows Turbo pump turning).
 hvc turbo off
 hvc stop
 until TurboPump = false within 15 s

@@ -283,7 +283,8 @@ def live_hvc():
     castutils.GenerateCleanCast()
     castutils.UpdateStatus("hvc", {"connected": True, "fault_severity": "N", "pressure": 700.0, "platen C": 20.0,
                                         "shroud C": 20.0, "rough": False, "vent": False, "fill": False,
-                                        "foreline": False, "gate": False, "pump": False, "turbo": False})
+                                        "foreline": False, "gate": False, "pump": False, "turbo": False,
+                                        "turbo_spinning": False})
 
 
 def test_a_command_is_sent_and_taken(client, host_up, owner):

@@ -1,6 +1,7 @@
 # Pump the chamber to high vacuum with the turbo
-# Closes the vent, fill and gate valves, turns the turbo pump off and closes the
-# foreline valve, starts the vacuum pump and waits 15 s, then
+# Closes the vent, fill and gate valves, turns the turbo pump off and waits for it
+# to stop turning (at once if it was off), closes the foreline valve, starts the
+# vacuum pump and waits 15 s, then
 # roughs the chamber to the 0.01 Torr crossover, for at most an hour. Closes the vacuum
 # valve, opens the foreline valve, starts the turbo pump and gives it 5 minutes to spin
 # up (its speed is not read). Checks the chamber is still at the crossover, opens the
@@ -15,6 +16,7 @@ hvc vent close
 hvc fill close
 hvc gate close
 hvc turbo off
+until TurboSpinning = false
 hvc foreline close
 hvc pump on
 hold 15 s

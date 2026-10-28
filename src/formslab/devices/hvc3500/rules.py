@@ -20,6 +20,12 @@ def on(p): return device(p, True, f"{PART_NAMES[p]} on", f"hvc {p} on")
 def off(p): return device(p, False, f"{PART_NAMES[p]} off", f"hvc {p} off")
 
 
+# The turbo pump off and done coasting: `turbo_spinning`, which rLACO reports from the
+# time it was last seen on (turbo.py), since the controller cannot. A plan settles it
+# with `until TurboSpinning = false`; `hvc turbo off` alone leaves it unknown.
+TURBO_STOPPED = device("turbo_spinning", False, "Turbo pump stopped", variable="TurboSpinning")
+
+
 def _safe(request: dict) -> bool:
     """A request that only makes the chamber safer: valves closed, `stop`, zones
     off, `closeall`, `reset`, `abort`. Allowed even with a fault."""
@@ -55,17 +61,18 @@ def laco_rules(profile: BenchProfile) -> list[Rule]:
         Rule("hvc", {"vent": True}, sealed, venting),
         Rule("hvc", {"fill": True}, sealed, venting),
         Rule("hvc", {"rough": True},
-             (off("turbo"), closed("vent"), closed("fill"), closed("foreline"), closed("gate")),
+             (TURBO_STOPPED, closed("vent"), closed("fill"), closed("foreline"), closed("gate")),
              "The vacuum pump must not pull on a chamber open to air or to the turbo side, and a "
-             "running turbo pump must not be left without its backing."),
-        Rule("hvc", {"pump": False}, (closed("rough"), closed("foreline"), off("turbo")),
+             "turbo pump still turning must not be left without its backing."),
+        Rule("hvc", {"pump": False}, (closed("rough"), closed("foreline"), TURBO_STOPPED),
              "Stopping the vacuum pump with a valve open to it lets air back in, so hvc stop "
-             "closes the vacuum valve first."),
+             "closes the vacuum valve first; a turbo pump still turning keeps the pump behind it."),
         Rule("hvc", {"foreline": True}, (closed("rough"),),
              "The vacuum pump serves either the chamber, through the vacuum valve, or the turbo "
              "pump, through the foreline valve, not both."),
-        Rule("hvc", {"foreline": False}, (off("turbo"),),
-             "The foreline valve is a running turbo pump's only backing, so the turbo stops first."),
+        Rule("hvc", {"foreline": False}, (TURBO_STOPPED,),
+             "The foreline valve is a turning turbo pump's only backing, and the turbo coasts for "
+             "minutes after it is turned off, so it stops first."),
         Rule("hvc", {"turbo": True}, (opened("foreline"),),
              "The turbo pump needs the vacuum pump behind it, through the foreline valve."),
         Rule("hvc", {"gate": True}, gate,
@@ -92,13 +99,15 @@ def laco_effects(request: dict) -> dict | None:
             v = _flag(request[name], ("open", "close") if name in VALVES else ("on", "off"))
             if v is not None:
                 out[name] = v
+                if name == "turbo":          # on: turning; off: coasting, for how long is not known
+                    out["turbo_spinning"] = True if v else None
     return out
 
 
 def laco_state(status: dict) -> dict:
     """rLACO's CAST block by rule names: devices as they are, `platenT`/`shroudT`
     in K (as published), `chamberP`, and the fault severity."""
-    s = {name: status.get(name) for name in (*VALVES, *PUMPS)}
+    s = {name: status.get(name) for name in (*VALVES, *PUMPS, "turbo_spinning")}
     s["chamberP"] = status.get("pressure")
     s["fault"] = status.get("fault_severity")
     for key, t in status.items():

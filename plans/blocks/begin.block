@@ -1,8 +1,9 @@
 # Check the chamber is at air and everything is off
 # Turns the platen and shroud off, closes every valve, turns the turbo pump off and
-# waits up to 30 s for the chamber to read more than 700 Torr. If it does not, the
-# plan stops before any pump starts. It leaves the vacuum pump as it is. Put it
-# first in a test that starts from ambient.
+# waits for it to stop turning (at once if it was off; up to turbo_spindown_s if it
+# was on, the foreline open meanwhile), then waits up to 30 s for the chamber to
+# read more than 700 Torr. If it does not, the plan stops before any pump starts. It
+# leaves the vacuum pump as it is. Put it first in a test that starts from ambient.
 block begin at ambient
 load rLACO
 
@@ -12,5 +13,6 @@ hvc vent close
 hvc fill close
 hvc gate close
 hvc turbo off
+until TurboSpinning = false
 hvc foreline close
 until chamberP > 700 within 30 s

@@ -201,14 +201,14 @@ Shipped blocks, which the bench's tests share:
 
 | call | does |
 |---|---|
-| `begin at ambient` | turns the zones and the turbo pump off, closes every valve, and stops the plan unless the chamber is above 700 Torr |
+| `begin at ambient` | turns the zones and the turbo pump off, waits for the turbo to stop turning, closes every valve, and stops the plan unless the chamber is above 700 Torr |
 | `pumpdown to <pressure> Torr` | roughs the chamber down to the pressure, 0.01 to 760 Torr, then seals it |
 | `vent within <minutes> min` | waits for the platen and shroud to be between 10 and 60 °C, then lets in air |
 | `warm to <temperature> C within <minutes> min` | sets both zones, 0 to 100 °C, turns them on and waits for both |
 | `cool to <temperature> C within <minutes> min` | the same, -150 to 30 °C; needs liquid nitrogen |
 | `plateau at <temperature> C within <minutes> min` | sets both zones, -150 to 120 °C, turns them on and waits for the platen to be within 2 °C, from above or below ([gevs](gevs.md)) |
 | `highvac to <pressure> Torr within <hours> h` | roughs to the 0.01 Torr crossover, starts the turbo pump, opens the gate valve and waits for the pressure; not yet run on this chamber |
-| `seal chamber` | closes the gate valve, turns the turbo pump off, gives it 30 minutes to spin down, then closes the foreline and vacuum valves and stops the vacuum pump |
+| `seal chamber` | closes the gate valve, turns the turbo pump off, waits for it to stop turning (`until TurboSpinning = false`), then closes the foreline and vacuum valves and stops the vacuum pump |
 | `k508n at <volts> V with <resistance> ohm` | sets the cryocooler board's supply (24 V, 1.0 A, protected at 24.5 V and 1.25 A, a line in the block), starts the board, sets the variable resistor, which sets the K508N's fixed-point temperature control, and the cooler voltage, 8.5 to 20 V, and turns it on; each step is answered, so a refusal stops the run ([cryocooler](../instruments/cryocooler.md)) |
 | `detector imaging` | turns on the camera's supply (psu2 CH1) and umbra captures, 600 s exposures of 10 samples; the camera then images each umbra of the orbit the run follows |
 
@@ -430,7 +430,9 @@ runs by itself: someone at the HMI may have stopped the host on purpose.
 The chamber's states the end script confirms are published for any plan:
 `VentValve`, `FillValve`, `GateValve`, `RoughValve`, `ForelineValve` (open),
 `VacuumPump`, `TurboPump` (on) and `HoldingTemperature` (either zone on), each
-`= true` or `= false`.
+`= true` or `= false`. So is `TurboSpinning`: the turbo pump on, or off for less
+than `turbo_spindown_s` since it was last on, which the rules on the foreline and
+the pumps wait for ([tvac](../rules/tvac.md), Turbo stopped).
 
 The host writes `~/.formslab/.run/sequence.events.jsonl` (one per machine,
 beside its lock and `host.log`): `sequence_started` (with

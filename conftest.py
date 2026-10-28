@@ -39,6 +39,8 @@ def _isolated_config_and_output(tmp_path_factory, monkeypatch):
                        str(tmp_path_factory.mktemp("formslab-config")))
     monkeypatch.setenv("FORMSLAB_OUTPUT_DIR",
                        str(tmp_path_factory.mktemp("formslab-output")))
+    from formslab.devices.hvc3500 import turbo
+    turbo.forget()                       # what the last test saw of the turbo pump
 
 
 @pytest.fixture(autouse=True)

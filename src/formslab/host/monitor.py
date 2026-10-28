@@ -132,7 +132,8 @@ class ChamberMonitor(threading.Thread):
         if status is None:                           # a run is starting: it is the run's now
             self._release()
             return
-        UpdateStatus(LABEL, status.as_cast())
+        from formslab.devices.hvc3500 import turbo
+        UpdateStatus(LABEL, turbo.annotate(status.as_cast(), self.laco.profile.limits))
         self.next_read = time.monotonic() + self.laco.profile.poll_interval_s
 
     def _claim(self) -> None:

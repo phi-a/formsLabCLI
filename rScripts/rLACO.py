@@ -27,6 +27,7 @@ from datetime import datetime, timezone
 
 from formslab.config import output_dir
 from formslab.console.cast.castutils import CommandPending, ReportResult, TakeCommand, UpdateStatus
+from formslab.devices.hvc3500 import turbo
 from formslab.devices.hvc3500.laco import LACO, OPERATIONS, PUMPS, VALVES, _flag
 from formslab.rscripts import C2K
 
@@ -235,7 +236,8 @@ def READINGS(label, status):
                            ("pressure_unit", None), ("fault_severity", "Fault severity"),
                            ("faults", "Faults")]),
         ("Valves", "valve", [(v, PART_NAMES[v]) for v in VALVES]),
-        ("Pumps", "pump", [(p, PART_NAMES[p]) for p in PUMPS]),
+        ("Pumps", "pump", [(p, PART_NAMES[p]) for p in PUMPS]
+                          + [("turbo_spinning", "Turbo pump turning", ("Yes", "No"))]),
         ("Zones", "zone", zones),
         ("Thermocouples", None, sensors),
         ("Pressure settings", "setting", [("vacuum_setpoint", f"Pressure setpoint ({unit})")]),
@@ -244,10 +246,11 @@ def READINGS(label, status):
 
 
 # The chamber's states as on/off values a plan can wait on: each valve (open),
-# each pump (on), and the controller's one flag for thermal control on either zone.
+# each pump (on), the turbo pump still turning after it is turned off (turbo.py),
+# and the controller's one flag for thermal control on either zone.
 STATES = {"VentValve": "vent", "FillValve": "fill", "GateValve": "gate", "RoughValve": "rough",
           "ForelineValve": "foreline", "VacuumPump": "pump", "TurboPump": "turbo",
-          "HoldingTemperature": "thermal_control"}
+          "TurboSpinning": "turbo_spinning", "HoldingTemperature": "thermal_control"}
 
 
 def VARIABLES():
@@ -359,7 +362,7 @@ def _read(run, laco) -> bool:
     if status.errors:
         run.log(f"HVC-3500 partial read: {status.errors}", level="WARNING", component=name)
     _publish(run, laco, status)
-    rg.cast = {**status.as_cast(), **_hold_status(laco)}
+    rg.cast = _turbo({**status.as_cast(), **_hold_status(laco)}, run, laco)
     _publish_states(run, rg.cast)
     UpdateStatus(LABEL, rg.cast)
     _log(run, status.as_record())
@@ -374,11 +377,17 @@ def _quick(run, laco):
     except (OSError, ValueError) as e:
         run.log(f"HVC-3500 quick read failed: {e}", level="WARNING", component=name)
         return
-    rg.cast = {**rg.cast, **q}
+    rg.cast = _turbo({**rg.cast, **q}, run, laco)
     _publish_states(run, rg.cast)
     UpdateStatus(LABEL, rg.cast)
     if q.get("pressure") is not None:
         run.publish("chamberP", q["pressure"], laco.profile.pressure_unit)
+
+
+def _turbo(cast, run, laco):
+    """`cast` with turbo_spinning: whether the turbo pump may still be turning."""
+    return turbo.annotate(cast, laco.profile.limits,
+                          warn=lambda m: run.log(m, level="WARNING", component=name))
 
 
 # --- a zone held at a thermocouple ---------------------------------------------------
