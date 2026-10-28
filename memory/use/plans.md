@@ -116,7 +116,7 @@ Some commands are only safe in some states, and the routine that owns them
 says which (`RULES`, rScripts/README.md). The chamber's, with limits from
 `tvac_bench.json`:
 
-Parts are named as on the chamber's screen (docs/WRITING.md): `rough` is the
+Parts are named as on the chamber's screen ([writing](../design/writing.md)): `rough` is the
 vacuum valve, `pump` the vacuum pump.
 
 | command | needs first |
@@ -172,7 +172,7 @@ hvc stop
 ```
 
 - The leading comments are its help: the first line the summary, the rest the
-  details (docs/WRITING.md).
+  details ([writing](../design/writing.md)).
 - The `block` line is its name and the words a plan writes to call it. Each input
   is a number, declared as the grammar declares one, or a thermocouple,
   `<name:temperature>`, and written `{name}` where a step uses it.
@@ -203,7 +203,7 @@ Shipped blocks, which the bench's tests share:
 | `vent within <minutes> min` | waits for the platen and shroud to be between 10 and 60 °C, then lets in air |
 | `warm to <temperature> C within <minutes> min` | sets both zones, 0 to 100 °C, turns them on and waits for both |
 | `cool to <temperature> C within <minutes> min` | the same, -150 to 30 °C; needs liquid nitrogen |
-| `k508n at <volts> V with <resistance> ohm` | sets the cryocooler board's supply (24 V, 1.0 A, protected at 24.5 V and 1.25 A, a line in the block), starts the board, sets the variable resistor, which sets the K508N's fixed-point temperature control, and the cooler voltage, 8.5 to 20 V, and turns it on; each step is answered, so a refusal stops the run (docs/CRYOCOOLER.md) |
+| `k508n at <volts> V with <resistance> ohm` | sets the cryocooler board's supply (24 V, 1.0 A, protected at 24.5 V and 1.25 A, a line in the block), starts the board, sets the variable resistor, which sets the K508N's fixed-point temperature control, and the cooler voltage, 8.5 to 20 V, and turns it on; each step is answered, so a refusal stops the run ([cryocooler](../instruments/cryocooler.md)) |
 | `detector imaging` | turns on the camera's supply (psu2 CH1) and umbra captures, 600 s exposures of 10 samples; the camera then images each umbra of the orbit the run follows |
 
 Preparing for darkness, a plan that follows an orbit, runs the cryocooler and waits,
@@ -347,9 +347,9 @@ each runs end to end against the simulated chamber (`test/test_shipped_plans.py`
 The rest of the suite reads its own, frozen set, in `test/fixtures/plans/`.
 
 Orbit content (`orbit.*`, `propagate`, `@procedure`) is refused: that is FORMS'
-part, done offline (see ARCHITECTURE.md). An orbit is described in its own file,
+part, done offline (see [architecture](../design/architecture.md)). An orbit is described in its own file,
 beside the plans; a plan follows one with rOrbit, `orbit follow <orbit>`
-(docs/ORBIT.md). A file in the old format
+([orbit](orbit.md)). A file in the old format
 (`sequence.operations = [...]`) is refused with a pointer here.
 
 ## Running
@@ -371,7 +371,7 @@ up a hold.
 
 ## Ending
 
-The whole design, its decisions, code map, tests and open items: docs/END.md.
+The whole design, its decisions, code map, tests and open items: [end](../design/end.md).
 
 A run cut short -- End in the GUI, `labcli end`, ctrl `end`, Ctrl+C, a failed
 step, a crash -- first runs the **end script**, `plans/end.plan`, with every

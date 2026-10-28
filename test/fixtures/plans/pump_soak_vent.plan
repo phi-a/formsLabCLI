@@ -1,7 +1,7 @@
 # ============================================================
 # plan: pump_soak_vent -- pump down, soak, bring back to air
 # ============================================================
-# Built from the shipped blocks (docs/SEQUENCE.md, Blocks): pump down to 5 Torr,
+# Built from the shipped blocks (memory/use/plans.md, Blocks): pump down to 5 Torr,
 # hold for 30 minutes, then vent, each temperature wait bounded by 60 minutes.
 
 load rLACO

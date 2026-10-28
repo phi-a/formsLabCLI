@@ -11,8 +11,13 @@ Loggers PowerSwitch, and the sLTA imaging chain.
 dependency. Its part is offline: it computes orbit-driven profiles (eclipse
 timing, temperatures), and formsLabCLI runs them on the bench.
 
-**New computer? Start with [the setup guide](docs/SETUP.md)** for Python,
+**New computer? Start with [the setup guide](memory/use/setup.md)** for Python,
 NI-VISA, finding the current COM ports, and editing your bench's hardware map.
+
+**Everything else is in [memory/](memory/README.md)**, an Obsidian vault: how to
+use it, how it is built and why, where the work stands, and the rules the bench
+runs by. Read [the safety rules](memory/rules/safety.md) before a first run on
+the real chamber.
 
 ```
 pip install -e .          # a working lab console
@@ -55,7 +60,7 @@ a double-click: `labcli.cmd` on Windows and `labcli.sh` on Linux and macOS.
 Both resolve the venv relative to the checkout and run from the repo root, so
 `outputs/` lands beside the code. The Windows one also switches the console to
 UTF-8, because the default OEM codepage mangles the box-drawing characters.
-`labgui.cmd` opens the GUI, formsLAB, as a desktop window on Windows (docs/GUI.md).
+`labgui.cmd` opens the GUI, formsLAB, as a desktop window on Windows (memory/use/gui.md).
 
 ## Tabs
 
@@ -124,14 +129,14 @@ src/formslab/
 ├── rscripts/    the rScripts runtime: loader, gates, the `Run` each script receives
 ├── sequence/    lab plans: test sequences, read and run
 ├── host/        the process that runs a plan
-├── gui/         the web GUI (`labcli gui`; docs/GUI.md)
-└── orbit/       orbit files and the orbit, view-factor and environment models (docs/ORBIT.md)
+├── gui/         the web GUI (`labcli gui`; memory/use/gui.md)
+└── orbit/       orbit files and the orbit, view-factor and environment models (memory/use/orbit.md)
 rScripts/        the routines that own the instruments during a run
 plans/           the bench's tests in folders (vacuum/ambient_to_rest.plan), blocks/, orbits/
 scripts/         launchers and standalone analysis tools
 ```
 
-How the pieces fit is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+How the pieces fit is in [memory/design/architecture.md](memory/design/architecture.md).
 
 ### Configuration and state
 
@@ -181,7 +186,7 @@ else runs against fakes and passes on a bare install with nothing plugged in.
 
 A lab plan is a hardware test sequence, one step per line: `load` names the
 rScripts that own the instruments, then commands (the cast tab's words),
-`hold`, `until` and `log`. See [docs/SEQUENCE.md](docs/SEQUENCE.md).
+`hold`, `until` and `log`. See [memory/use/plans.md](memory/use/plans.md).
 
 ```
 load rLACO
@@ -225,14 +230,14 @@ labcli end
 
 `labcli cast` refuses when no run is going (nothing would apply the command),
 and when the command's prerequisites are not met now (the rough valve open for
-a vent; see [docs/SEQUENCE.md](docs/SEQUENCE.md)). `labcli help` lists every
+a vent; see [memory/use/plans.md](memory/use/plans.md)). `labcli help` lists every
 command.
 
 `labcli gui` starts a small web GUI on this machine: every instrument's status,
 starting and ending runs, the command box, the chamber drawn as its own screen
 draws it, a plan editor with help for every step, and plots of recorded runs;
-see [docs/GUI.md](docs/GUI.md). A practice session for learning it on a simulated
-chamber is in [docs/SESSION.md](docs/SESSION.md).
+see [memory/use/gui.md](memory/use/gui.md). A practice session for learning it on a simulated
+chamber is in [memory/use/session.md](memory/use/session.md).
 
 ## Windows and Linux (Raspberry Pi)
 

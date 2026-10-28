@@ -3,7 +3,7 @@
 # ============================================================
 # The Sun lies in the plane (beta near 0 degrees), so every orbit has its
 # longest eclipse, about 35 minutes of 96: the cold case. Open it in the GUI's
-# Plans tab to see it propagated on the wall clock (docs/ORBIT.md).
+# Plans tab to see it propagated on the wall clock (memory/use/orbit.md).
 #
 # J2 turns the plane with the Sun, about a degree a day, so it keeps its local
 # time all year.

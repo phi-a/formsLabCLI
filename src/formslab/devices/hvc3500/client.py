@@ -1,6 +1,6 @@
 """TCP client for the HVC-3500 ASCII interface.
 
-Design rules (see docs/HVC3500.md):
+Design rules (see memory/instruments/hvc3500.md):
 - every transaction is logged with raw bytes and timestamps
 - nothing is retried automatically; a timeout raises and marks the socket dirty
 - setpoint writes are verified by reading back

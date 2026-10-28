@@ -281,7 +281,7 @@ button.danger-outline:hover { background: color-mix(in srgb, var(--bad) 10%, tra
 #plan-new, #orbit-new, #block-new { width: 100%; margin-top: 6px; }
 
 /* ---- parts: what a command is about, as a small engineering symbol in the instrument's
-   colour (docs/WRITING.md: never colour alone -- the part's name is in its title) ---- */
+   colour (memory/design/writing.md: never colour alone -- the part's name is in its title) ---- */
 .part-icon { display: inline-block; flex: none; width: 14px; height: 14px; vertical-align: -2px;
              background-color: var(--fam, var(--fam-other));
              -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat; }

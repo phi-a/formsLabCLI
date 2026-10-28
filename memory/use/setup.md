@@ -89,7 +89,7 @@ your wiring before using it.
 
 If used, also update `PS` host/user/adapter/local IP for your PowerSwitch and
 set the environment variable named by `PS.password_env` (normally
-`FORMS_POWERSWITCH_PASSWORD`). See [PowerSwitch setup](POWERSWITCH.md).
+`FORMS_POWERSWITCH_PASSWORD`). See [PowerSwitch setup](../instruments/powerswitch.md).
 For sLTA, review `slta` MAC/IP fields and its separate host software. Linux
 USB reset/recovery also needs the actual hub locations, not the shipped ones.
 

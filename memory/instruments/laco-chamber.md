@@ -1,10 +1,10 @@
 # The LACO TVAC chamber
 
 What the chamber is, as described on 2026-10-03, with the controller's own screen.
-Protocol and installed-controller facts are in `docs/HVC3500.md`; this note is the
+Protocol and installed-controller facts are in [hvc3500](hvc3500.md); this note is the
 physical picture the GUI's TVAC viewer follows.
 
-![HMI Manual screen](img/hmi-manual-screen.png)
+![HMI Manual screen](../img/hmi-manual-screen.png)
 
 *The controller's Manual screen (captured at 82.26 Torr, everything off).*
 

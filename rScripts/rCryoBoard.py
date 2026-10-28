@@ -1,6 +1,6 @@
 # --- rCryoBoard: the cryocooler control board (the K508N's drive) ---
 #
-# Owns the board through the Pico I2C bridge (docs/CRYOCOOLER.md): the converter's
+# Owns the board through the Pico I2C bridge (memory/instruments/cryocooler.md): the converter's
 # output enable and voltage (cryo on|off, cryo ccv) and the variable resistor
 # (cryo ccvres, cryo code), with its supply, psu1 CH1, asked of rPSU. Each request
 # on CAST "cryo" is answered: done once the board has applied it, or refused with

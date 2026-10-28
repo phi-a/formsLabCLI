@@ -190,7 +190,7 @@ def parse_plan(source: str, *, path: Path | None = None, steps_out: list | None 
 
     if "sequence.operations" in source:
         errors.append((0, "this is the old plan format (sequence.operations = [...]); "
-                          "a plan is now one step per line -- see docs/SEQUENCE.md"))
+                          "a plan is now one step per line -- see memory/use/plans.md"))
         done()
     lines = [(n, line.strip()) for n, line in enumerate(source.splitlines(), 1)]
     lines = [(n, t) for n, t in lines if t and not t.startswith("#")]

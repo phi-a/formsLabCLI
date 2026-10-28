@@ -45,7 +45,7 @@ RESULT_LABELS = (LABEL,)   # each request is answered: done, ok or refused with 
 def COMMANDS():
     """Every hvc command. Zone names and setpoint limits come from this bench's
     tvac_bench.json, so the list is built on use, not at import. Each help is a
-    summary line, then details (docs/WRITING.md)."""
+    summary line, then details (memory/design/writing.md)."""
     from formslab.devices.hvc3500 import load_profile
 
     profile = load_profile()

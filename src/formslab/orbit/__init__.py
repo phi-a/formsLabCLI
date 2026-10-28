@@ -14,7 +14,7 @@ in this list.
     visibility   inertial-target visibility arcs within eclipse (circular orbits)
     imaging      image-pass optimisation and scheduling (circular orbits)
 
-On top, ``file``: the `.orbit` file (docs/ORBIT.md), read into `Elements`, or by
+On top, ``file``: the `.orbit` file (memory/use/orbit.md), read into `Elements`, or by
 ``file.load`` into an `Orbit`. Nothing is imported here, so ``import
 formslab.orbit`` stays cheap.
 """

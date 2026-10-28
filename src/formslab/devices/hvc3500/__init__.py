@@ -2,7 +2,7 @@
 
 The controller's PLC owns interlocks, valve sequencing, thermal limits and
 recovery. This driver only sends documented ASCII commands and reads state
-back; it never reimplements sequencing. docs/HVC3500.md has the protocol and
+back; it never reimplements sequencing. memory/instruments/hvc3500.md has the protocol and
 its installed-firmware quirks. `python -m formslab.devices.hvc3500` is the
 commissioning tool (cli.py).
 

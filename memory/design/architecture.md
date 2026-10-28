@@ -27,7 +27,7 @@ hardware test sequences against them. Running those sequences is its central job
 | Grammar | `formslab.rscripts.grammar`, `cast` | The commands each routine declares, as data: parses a cast-tab line or a plan step, lists what can come next (completion, the GUI's dropdowns), and builds the help cards. |
 | Sequences | `formslab.sequence` | Lab plans, one step per line: which routines run, and the ordered steps of a test. Steps talk to routines through CAST, never to a driver. |
 | Host | `formslab.host` | One run of one plan. Lock, ctrl, pacing, recording, shutdown. |
-| Orbits | `formslab.orbit` | `.orbit` files (`file`: Keplerian elements, read with the same `Grammar`; the GUI opens them, and the rScript rOrbit follows one during a run, docs/ORBIT.md), and the models they feed, in layers: `propagate` (Kepler motion with J2 drift, the `Orbit` the models sweep), `geometry` (attitude, spacecraft), `viewfactor`, `thermal` (flux, environment temperature), `visibility` and `imaging`. numpy; the transient solver needs scipy and the plots matplotlib (the `orbit` extra). |
+| Orbits | `formslab.orbit` | `.orbit` files (`file`: Keplerian elements, read with the same `Grammar`; the GUI opens them, and the rScript rOrbit follows one during a run, [orbit](../use/orbit.md)), and the models they feed, in layers: `propagate` (Kepler motion with J2 drift, the `Orbit` the models sweep), `geometry` (attitude, spacecraft), `viewfactor`, `thermal` (flux, environment temperature), `visibility` and `imaging`. numpy; the transient solver needs scipy and the plots matplotlib (the `orbit` extra). |
 | Console | `formslab.console`, `formslab.app` | The operator: start and stop runs, watch and command instruments. |
 
 CAST (`castfile.json`) is the bus between them: a request block per instrument
@@ -84,7 +84,7 @@ grammar (`test/test_orbit_layout.py`).
 - **One controller connection:** the HVC-3500 takes one TCP client. While a
   host runs rLACO, `scripts/vent_test.py` and `scripts/pumpdown.py` cannot
   connect; use the cast tab or the `laco_*` plans. Between runs, formsLAB's chamber
-  monitor holds it (docs/GUI.md, Between runs): start the GUI with `--no-monitor`
+  monitor holds it ([gui](../use/gui.md), Between runs): start the GUI with `--no-monitor`
   to use the scripts. A host waits for the monitor to let go before it starts.
 - **Owned supply channels:** `usbmap.json` records what each channel feeds and
   which rScript drives it (`"channels"`; shipped: PSU1 CH1 → cryocooler board,

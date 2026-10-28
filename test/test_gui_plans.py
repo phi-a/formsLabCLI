@@ -295,8 +295,8 @@ def test_a_started_plan_can_be_one_you_saved(client, monkeypatch):
 
 def test_the_example_in_the_plan_docs_is_a_plan_that_checks_clean():
     """A docs example the parser rejects (an inline # on a load line, say) teaches
-    the wrong thing; the first block in docs/SEQUENCE.md must be a working plan."""
-    docs = (Path(__file__).resolve().parents[1] / "docs" / "SEQUENCE.md").read_text(encoding="utf-8")
+    the wrong thing; the first block in memory/use/plans.md must be a working plan."""
+    docs = (Path(__file__).resolve().parents[1] / "memory" / "use" / "plans.md").read_text(encoding="utf-8")
     block = docs.split("```")[1]
     assert block.lstrip().startswith("# PSU1 CH1") and "load rPSU rSMTC08" in block
     assert check_text(block) == []

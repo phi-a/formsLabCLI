@@ -46,7 +46,7 @@ pattern syntax):
 
 An on/off value has the unit `bool` (published as 1 or 0), so a plan waits on it with
 `= true` or `= false`; every other value is a number, compared with `<`, `<=`, `>`, `>=`
-(docs/SEQUENCE.md, Conditions).
+(memory/use/plans.md, Conditions).
 
 Either list may be a function returning it, when it depends on the bench (rLACO
 reads its zones from `tvac_bench.json`). Importing a routine must not touch
@@ -67,7 +67,7 @@ A routine may also say what must be true before a command is sent
     def READINGS(label, status): ...   # its status block in named groups, for the status page
 
 Plans are checked against them when read, and every command when it is sent
-(docs/SEQUENCE.md, Prerequisites).
+(memory/use/plans.md, Prerequisites).
 
 The cast tab turns `hvc vent open` into `{"vent": "open"}` and writes it to the
 CAST `hvc` block; rLACO, running in the host, applies it. The same words in a
@@ -78,18 +78,18 @@ trailing `?` (`hvc platen ?`) lists what can come next.
 
 | rScript | Owns | CAST label | Publishes |
 |---|---|---|---|
-| `rLACO` | LACO chamber via `devices.laco.LACO` (HVC-3500): every controller command | `hvc` | `chamberP`, `<zone>T`, `target_<zone>`, `<zone>_effSP`, `HVC_<sensor>` (K); the valves, pumps and thermal control as on/off (`VentValve`, `VacuumPump`, `HoldingTemperature`, ...); `outputs/LACO.jsonl`. Holds a zone at a thermocouple: `hvc platen 40 at TC01` (docs/SEQUENCE.md) |
+| `rLACO` | LACO chamber via `devices.laco.LACO` (HVC-3500): every controller command | `hvc` | `chamberP`, `<zone>T`, `target_<zone>`, `<zone>_effSP`, `HVC_<sensor>` (K); the valves, pumps and thermal control as on/off (`VentValve`, `VacuumPump`, `HoldingTemperature`, ...); `outputs/LACO.jsonl`. Holds a zone at a thermocouple: `hvc platen 40 at TC01` (memory/use/plans.md) |
 | `rSMTC08` | SMTC08 thermocouple boards A (TC01-08), B (TC09-16) | `tc` (read-only) | `TC01`..`TC16` (K) |
 | `rPSU` | Rigol DP832A supplies psu1/psu2 (enabled ones only) | `psu1`, `psu2` | `PSU1_CH<n>_V/_I/_ON` |
 | `rCryoBoard` | cryocooler control board (Pico I2C), the K508N's drive, and its PSU1 CH1 supply | `cryo` | `CRYO_LINK`, `CRYO_ON`, `CRYO_OK` (on/off), `CRYO_CCV`, `CRYO_SUPPLY_V` (V), `CRYO_RES` (ohm); answers each request |
 | `rSLTA` | sLTA camera, powered from PSU2 CH1; a capture in progress is stopped at shutdown | `slta` | status on CAST |
-| `rOrbit` | no hardware: an orbit file, followed on the wall clock or from its epoch (docs/ORBIT.md) | `orbit` | `InUmbra`, `UmbraDuration`, `UmbraTimeRemaining`, `NextUmbra` (s), `OrbitBeta` (deg), `OrbitAltitude` (km) |
+| `rOrbit` | no hardware: an orbit file, followed on the wall clock or from its epoch (memory/use/orbit.md) | `orbit` | `InUmbra`, `UmbraDuration`, `UmbraTimeRemaining`, `NextUmbra` (s), `OrbitBeta` (deg), `OrbitAltitude` (km) |
 
 `run tvac` runs `plans/tvac.plan`, which loads rLACO, rSMTC08 and rPSU and
 runs until ctrl `end`.
 
 A run cut short first runs the end script, `plans/end.plan`, with every routine
-live (docs/SEQUENCE.md, Ending); then each `rShutdown`, by dependency
+live (memory/use/plans.md, Ending); then each `rShutdown`, by dependency
 (`SHUTDOWN_BEFORE`), is the backstop. rLACO's ends pumping its run started (rough
 valve closed, pump off) and releases the controller, which takes one client at a
 time. rPSU turns off the channels its run switched on. Do not load two routines that own the same
@@ -101,4 +101,4 @@ rSLTA's automatic capture follows the `InUmbra`, `UmbraDuration` and
 rOrbit, or before its `orbit follow`, only forced captures (`slta image`) run.
 
 Test timelines (pumpdown, vent, soaks) are lab plans (`plans/`, see
-docs/SEQUENCE.md), not rScripts.
+memory/use/plans.md), not rScripts.

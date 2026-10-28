@@ -8,7 +8,7 @@
     config.py              operating policy: supply channel, setpoints, voltage band
     owner.py               what rCryoBoard needs: bring up the supply, own the board
 
-See docs/CRYOCOOLER.md.
+See memory/instruments/cryocooler.md.
 """
 from .board import CryoBoard
 

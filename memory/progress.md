@@ -3,13 +3,13 @@
 Where the work stands, what is next, and what is waiting on a decision. Update it
 when a pull request merges or a decision is made: change *Now*, add a line to
 *Done*, and move settled questions out of *Waiting on a decision*. Intent and
-architecture are in [project.md](project.md); the GUI's plan is in [gui.md](gui.md).
+architecture are in [project](project.md); the GUI's plan is in [gui-design](design/gui-design.md).
 
 ## Now (2026-10-05)
 
 - **On main:** everything through PR #12, merged 2026-10-15 (the plans renamed and
   sorted, the cryocooler by hand, End for a killed host, supply protection read
-  back). **Next:** the End bench checklist (docs/END.md, section 9), on the bench
+  back). **Next:** the End bench checklist ([end](design/end.md), section 9), on the bench
   computer with someone at the HMI; End was rehearsed on the GUI demo 2026-10-15.
 - **Focus (2026-10-09): plans and blocks for darkness thermal testing.** First step
   done: the two plans tested on the bench renamed `ambient_to_rest` (was
@@ -25,7 +25,7 @@ architecture are in [project.md](project.md); the GUI's plan is in [gui.md](gui.
   on, not a ramp), `cryo on` re-arms a tripped output, and `CRYO_FAULT` records a
   trip. host.log keeps the last run's as host.log.1. **Open:** after the trip the
   cooler drew a steady 0.10 A instead of 0.47 A, also in the next run: at its fixed
-  point, or its controller holding off? To check at the bench (docs/CRYOCOOLER.md).
+  point, or its controller holding off? To check at the bench ([cryocooler](instruments/cryocooler.md)).
 - **In progress:** the bench's official tests, and a practice session for students.
   `plans/` holds the blocks (`begin`, `pumpdown`, `vent`, `warm`, `cool`, `k508n`,
   `detector`) and the plans (`tvac`, `ambient_to_rest`, `rest_to_ambient`, `warm_soak`,
@@ -33,16 +33,16 @@ architecture are in [project.md](project.md); the GUI's plan is in [gui.md](gui.
   a header: start, end, what fails it. All run end to end against the simulated chamber
   (`test/test_shipped_plans.py`). `ambient_to_rest` and `rest_to_ambient` have run on the
   bench and work; the others have not. Warming and cooling have
-  not been run through formsLabCLI. The session is docs/SESSION.md, on the GUI demo. The old
+  not been run through formsLabCLI. The session is [session](use/session.md), on the GUI demo. The old
   plans, blocks and orbits are the suite's fixtures (`test/fixtures/plans/`). Tests that run
   with an orbit come next.
 - **Also in progress:** holding a zone at a thermocouple, `hvc platen 40 at TC01`
-  (docs/SEQUENCE.md). rLACO moves the zone's setpoint once a minute by a gain times
+  ([plans](use/plans.md)). rLACO moves the zone's setpoint once a minute by a gain times
   the difference, within a band; the controller's own loop is unchanged. Tested against
   the simulator (T5 stands in for an article); the gain (0.05 per minute) and band (15 °C)
   are guesses until it is run on the bench.
 - **Also in progress:** rules beside the steps, `when <condition> then <command>`
-  (docs/SEQUENCE.md, Rules), because a linear plan cannot guard the chamber or act on
+  ([plans](use/plans.md), Rules), because a linear plan cannot guard the chamber or act on
   the orbit while it waits on something else. Decided 2026-10-07: a rule watches to the
   end of the run, also while paused; acts at once if its condition already holds, then
   on each change to true; a refused command stops the run. Stage 1 (engine, checks,
@@ -76,10 +76,10 @@ architecture are in [project.md](project.md); the GUI's plan is in [gui.md](gui.
   GUI resends End for 150 s. rPSU reads OVP/OCP back and warns when not as set.
   Decided: End does not send `hvc abort`; the manual says it faults the controller
   and runs the recipe's home steps, which may open valves. Next for recipes: find
-  at the bench what the controller reports while one runs (docs/END.md, Open items).
+  at the bench what the controller reports while one runs ([end](design/end.md), Open items).
   **2026-10-15:** rPSU keeps the channels it switched on in `.run/psu_on.json`, so a
   killed run's channels go off at the next host's end.
-  **2026-10-20:** Fast End (docs/END.md, D11), asked for because there was no way to
+  **2026-10-20:** Fast End ([end](design/end.md), D11), asked for because there was no way to
   stop waiting on a slow End: the same steps, in order, each command sent once
   taken, the confirmations skipped; also while an End is going. GUI *Fast End*,
   `end fast` in the console and `labcli end fast`. Decided: it is not a "freeze"
@@ -88,14 +88,25 @@ architecture are in [project.md](project.md); the GUI's plan is in [gui.md](gui.
   stays the name of the project and the console.
   **2026-10-22:** the chamber stays live between runs, asked for to watch it after
   End. The formsLAB server reads it, read-only, and hands the controller to a
-  starting host (`formslab.host.monitor`, docs/GUI.md, Between runs). Decided:
+  starting host (`formslab.host.monitor`, [gui](use/gui.md), Between runs). Decided:
   the monitor lives in the GUI server, so it reads only while formsLAB is open;
   only the chamber, not the thermocouples or supplies; `--no-monitor` frees the
   controller for `scripts/`. Not yet run against the real controller.
 - **Next:** the environment profile, the first stage after orbit files
-  ([gui.md](gui.md), section 4): orbit file + spacecraft model → per-face background
+  ([gui-design](design/gui-design.md), section 4): orbit file + spacecraft model → per-face background
   temperature over an orbit → a recorder-format CSV in the Plots tab. It needs a way to
   describe the spacecraft first.
+- **2026-10-28: the memory vault.** Asked for because the Notebook had stopped
+  being the second memory: `Notebook/` and `docs/` are now one Obsidian vault,
+  `memory/` ([README](README.md)), the canon for what formsLabCLI is, how to use
+  it, why, and where it stands. New: the rule sets in `rules/` ([safety](rules/safety.md),
+  [tvac](rules/tvac.md), [hvc](rules/hvc.md), [recipes](rules/recipes.md)), each
+  rule saying who holds it (controller, formsLAB, operator) and its source, from
+  the LACO and HVC manuals and the code; and [questions](questions.md). Found while
+  writing them: the setpoint limits are wider than the chamber's rating (Waiting,
+  9). Decided: plain relative markdown links, so it reads the same on GitHub;
+  code comments point into `memory/`. Left to do: `docs/GEVS.md` moves to
+  `memory/use/gevs.md` once the GEVS work is committed.
 
 ## Done
 
@@ -109,16 +120,16 @@ architecture are in [project.md](project.md); the GUI's plan is in [gui.md](gui.
 | 2026-10-02 | | One `tvac` mode, which is a plan; rScripts declare their cast commands; one thread per rScript; faster PSU reads |
 | 2026-10-03 | #6 | `devices/` one folder per instrument; `.plan` files, one step per line; rScripts get a `Run`; the command grammar as data; `labcli <command>`; `formslab.orbit` added (orbit, view-factor and environment models); the GUI planned here |
 | 2026-10-04 | | Shared files safe between processes; the GUI: login, status, plots, run control, the plan editor, the chamber view, the demo; commands declare their prerequisites (`RULES`), checked in plans and when sent; help cards |
-| 2026-10-05 | #7 | One writing standard (docs/WRITING.md); part symbols in commands, cards and the chamber view; orbit files in the Plans tab with a live panel; one orbit stack (orbit files drive the models, numpy in base); roughing refused below the crossover; blocks; Edit and Ship; CI fixed on Windows |
+| 2026-10-05 | #7 | One writing standard ([writing](design/writing.md)); part symbols in commands, cards and the chamber view; orbit files in the Plans tab with a live panel; one orbit stack (orbit files drive the models, numpy in base); roughing refused below the crossover; blocks; Edit and Ship; CI fixed on Windows |
 | 2026-10-05 | #8 | rOrbit: a plan follows an orbit file and waits for its umbra; *Use in a plan* |
 | 2026-10-05 | #9 | J2 drift, so sun-synchronous orbits keep their local time; one umbra reading for the panel and rOrbit; a wait on an orbit value before an orbit is chosen is refused; loops (`repeat … end`); conditions (`< <= > >=`, `= true`, `within`, `or go on`; `above`, `below`, `timeout` retired); rename; list symbols; CI runs the orbit extra |
 | 2026-10-06 | #10 | The Notebook: the project's intent, architecture and progress |
 | 2026-10-09 | #11 | Plans for the bench and a student session; rules (`when … then`), units, holds at a thermocouple; the K508N; a readable End (the end script); the cryocooler board as it really is |
-| 2026-10-15 | #12 | The two tested plans renamed, `plans/` in folders; the cryocooler by hand (no false "not live", a tripped output turns on again); End for a killed host (`--end`, *Run End now*); End resent for 150 s; supply protection read back; docs/END.md |
+| 2026-10-15 | #12 | The two tested plans renamed, `plans/` in folders; the cryocooler by hand (no false "not live", a tripped output turns on again); End for a killed host (`--end`, *Run End now*); End resent for 150 s; supply protection read back; [end](design/end.md) |
 
 ## Waiting on a decision
 
-From the GUI's open questions ([gui.md](gui.md)) and recent reviews:
+From the GUI's open questions ([gui-design](design/gui-design.md)) and recent reviews:
 
 1. **The spacecraft model:** how it is written (a file with its own grammar, like an
    orbit?). Blocks the environment profile.
@@ -129,17 +140,23 @@ From the GUI's open questions ([gui.md](gui.md)) and recent reviews:
 4. **`labcli check` for `.orbit` files:** the GUI checks them; the console does not yet.
 5. **The umbra strip in dark mode:** its contrast is low.
 6. **Students starting runs** from the GUI, or only writing plans and watching. The
-   practice session (docs/SESSION.md) assumes an instructor starts every bench run.
+   practice session ([session](use/session.md)) assumes an instructor starts every bench run.
 7. **Default temperature unit** in the GUI (Celsius today).
 8. **The controller's unread values** (heater output %, turbo speed %, foreline
    pressure): worth finding?
+9. **Setpoint limits:** `tvac_bench.json` allows the platen -180 to 200 °C and the
+   shroud -180 to 120 °C, the controller's own limits; the chamber is rated -150 to
+   150 °C and -150 to 120 °C (LACO p. 18). Narrow the profile to the rating? Until
+   then the operator holds it ([safety](rules/safety.md), Heat).
+10. **The vacuum pump's power setting** must be *Always On* with a turbo (HVC p. 16).
+   What is it set to now? To read on the HMI before the first turbo run.
 
 ## Known gaps
 
 - **The turbo path has never been run** on the chamber (crossover, foreline,
-  gate valve): [tvac-chamber.md](tvac-chamber.md).
+  gate valve): [laco-chamber](instruments/laco-chamber.md).
 - **PSU2** is disabled in the shipped hardware map, but rSLTA powers the camera from it;
-  enable it in the live map before an sLTA run (docs/ARCHITECTURE.md, Known conflicts).
+  enable it in the live map before an sLTA run ([architecture](design/architecture.md), Known conflicts).
 - **No replay of a FORMS profile** yet: orbit timing reaches the bench through rOrbit,
   but no plan step follows a temperature profile.
 - **Plots lag** by the record cadence (30 s for `tvac`).
@@ -153,5 +170,5 @@ From the GUI's open questions ([gui.md](gui.md)) and recent reviews:
 - Two Claude Code sessions have worked in parallel, the second in a separate worktree
   (`formsLabCLI-blocks`) for blocks, loops and conditions; its commits were
   fast-forwarded onto `cleanup`.
-- Docs say what exists and change with the code; this notebook says why, and what is
-  next.
+- The vault (`memory/`) changes with the code, in the same pull request: what
+  exists, how to use it, why, and what is next ([README](README.md), Keeping it).

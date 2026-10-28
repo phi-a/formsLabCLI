@@ -121,7 +121,7 @@ def test_the_script_is_valid_and_never_uses_innerhtml():
 
 
 def test_the_views_names_are_the_servers_names():
-    """One name per part (docs/WRITING.md): the names the view draws before it has
+    """One name per part (memory/design/writing.md): the names the view draws before it has
     the server's are the same table, laco.PART_NAMES."""
     from formslab.devices.hvc3500.laco import PART_NAMES
     assert run_js({}, "T.NAMES") == PART_NAMES

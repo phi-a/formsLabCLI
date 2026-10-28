@@ -7,7 +7,7 @@ the real one.
 
 ## Before the session
 
-Each student, on their own computer (the setup is in SETUP.md):
+Each student, on their own computer (the setup is in [setup](setup.md)):
 
 ```
 python scripts/gui_demo.py
@@ -159,5 +159,5 @@ is stopped and the Vacuum valve closed.
   asking. It names the part, the state it needs and the line that changed it.
 - The shipped tests are the bench's. Students use *Save as...* to change one, never
   *Edit* or *Ship*: those move the file out of, or into, the checkout's `plans/`.
-- Whether students may start runs on the bench is still open (Notebook/progress.md).
+- Whether students may start runs on the bench is still open ([progress](../progress.md)).
   This guide assumes they may not.
