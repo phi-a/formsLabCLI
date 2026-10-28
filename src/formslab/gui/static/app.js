@@ -315,7 +315,15 @@
     box.replaceChildren(el("span", {}, lines.join(" ")));
     const ok = el("button", { type: "button" }, "Dismiss");
     ok.addEventListener("click", () => { try { localStorage.setItem("ended-seen", e.when); } catch (err) { /* no storage */ } box.hidden = true; });
-    box.append(ok);
+    // The shutdown plan: from wherever the chamber was left to at air with everything off.
+    const down = el("button", { type: "button" }, "Run shutdown");
+    down.addEventListener("click", () => {
+      if (!window.confirm("Run shutdown: supplies off, both zones to 25 °C, the turbo stopped and the pumps "
+        + "off, air let in once the zones are between 10 and 60 °C, zones off. Minutes from a rest; "
+        + "up to 4 hours from -150 °C.")) return;
+      act("/api/run", { plan: "shutdown" }, "Shutdown");
+    });
+    box.append(ok, down);
     box.hidden = false;
   }
 

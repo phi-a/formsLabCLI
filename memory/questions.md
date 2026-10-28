@@ -17,8 +17,15 @@ into the chamber. Only formsLAB holds this rule; the controller would allow it.
 
 **Why was `hvc stop` refused?**
 The turbo is running, or the foreline is open: the vacuum pump is the turbo's
-backing. Turn the turbo off and let it stop first; End leaves this for the HMI.
-([end](design/end.md), D6)
+backing. Turn the turbo off and let it stop first (`until TurboSpinning = false`);
+End leaves this to the `shutdown` plan. ([end](design/end.md), D6)
+
+**How do I shut the chamber down?**
+Run `shutdown` (the console's `run shutdown`, `labcli run shutdown`, or *Run
+shutdown* in the GUI's ended banner). From any state it turns the supplies off,
+warms or cools both zones to 25 °C, stops the turbo and the pumps, lets air in once
+the zones are between 10 and 60 °C, and turns the zones off. Run it after any End
+and at the end of a session; End a run first if one is going. ([plans](use/plans.md))
 
 **Why is every command refused except closing things?**
 The controller has a fault (severity F). Only closing valves, `stop`, zones off,

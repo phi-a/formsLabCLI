@@ -110,6 +110,15 @@ architecture are in [project](project.md); the GUI's plan is in [gui-design](des
   leaves the turbo running between tests (Waiting on a decision, 11). Next at the
   bench: run `highvac` then `seal chamber` alone, watched at the HMI (the checklist
   in [gevs](use/gevs.md)).
+  **2026-10-28, later: `shutdown`**, asked for as the proper system shutdown:
+  one plan from any state (turbo on, a rough rest, at air, cold or hot, an End
+  that left the backing) to at air with every pump, zone and supply off. Supplies
+  off first, zones to 25 °C and on (they move while the turbo spins down), `seal
+  chamber`, `vent within 240 min`, zones off. It is what End's "finish at the HMI"
+  meant: the chamber line now ends "run shutdown to finish" and the GUI's ended
+  banner has *Run shutdown*. Decided: `rest_to_ambient` stays, for a rough rest
+  only. Open at the bench: whether the controller accepts `zone on` at atmosphere
+  ([safety](rules/safety.md), Open).
 - **Next:** the environment profile, the first stage after orbit files
   ([gui-design](design/gui-design.md), section 4): orbit file + spacecraft model → per-face background
   temperature over an orbit → a run in the recorder's format, in the Plots tab. It needs a way to

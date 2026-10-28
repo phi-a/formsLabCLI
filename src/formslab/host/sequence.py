@@ -321,7 +321,11 @@ def _chamber_left() -> str | None:
     parts.append("pump " + ("on" if s.get("pump") else "off"))
     parts.append("turbo " + ("on" if s.get("turbo") else "off"))
     parts.append("zones off" if not s.get("thermal_control") else "a zone still holding temperature")
-    return "Chamber left: " + ", ".join(parts)
+    left = "Chamber left: " + ", ".join(parts)
+    # A pump on (the turbo's backing, D6) or a zone holding: the shutdown plan finishes it.
+    if s.get("pump") or s.get("turbo") or s.get("thermal_control"):
+        left += "; run shutdown to finish"
+    return left
 
 
 def _end(run, plan, how: str) -> dict:

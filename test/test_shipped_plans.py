@@ -16,7 +16,7 @@ from formslab.host import sequence
 from formslab.sequence import block as blockfile
 from formslab.sequence import SequenceError, load_plan, plan as planfile
 from formslab.sequence.plan import find_plan, review
-from test_lab_sequence import bench  # noqa: F401 (fixture: rPSU and rSMTC08 on fakes)
+from test_lab_sequence import FakePSU, bench  # noqa: F401 (fixture: rPSU and rSMTC08 on fakes)
 
 SHIPPED = Path(__file__).resolve().parents[1] / "plans"
 PATHS = {p.stem: p for p in [*SHIPPED.rglob("*.plan"), *SHIPPED.rglob("*.block")]}   # in any folder
@@ -164,8 +164,9 @@ def test_shutdown_ends_at_air_with_everything_off_from_anywhere(chamber, quick, 
             chamber.state.zone_setpoint[z] = state["zones"]
             chamber.state.zone_active[z] = True
             chamber.state.temps[control_sensor(z)] = state["zones"]
-    bench["psu1"].on(1)
-    bench["psu1"].on(2)
+    psu1 = bench.setdefault("psu1", FakePSU("psu1"))       # rPSU opens this one, and finds CH1 and CH2 on
+    psu1.on(1)
+    psu1.on(2)
     run("shutdown")
     s = chamber.state
     assert s.pressure >= 700 and s.devices["OV"] is True
