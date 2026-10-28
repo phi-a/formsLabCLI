@@ -29,6 +29,7 @@
         <button data-view="tvac">Chamber</button>
         <button data-view="plans">Plans</button>
         <button data-view="plots">Plots</button>
+        <button data-view="hardware">Hardware</button>
       </nav>
       <span class="spacer"></span>
       <button id="end" class="danger" hidden title="Stop the run; every instrument's shutdown runs">End run</button>
@@ -142,6 +143,21 @@
             <p class="note">Pick variables on the left. Wheel zooms, drag pans, double-click resets.</p>
           </section>
         </div>
+      </section>
+
+      <section id="view-hardware" hidden>
+        <div class="controls">
+          <button id="hw-again" title="Unplug a device and look again: it is the one that went">Look again</button>
+          <span id="hw-info" class="note" role="status"></span>
+        </div>
+        <div id="hw-gone" class="banner" role="status" hidden></div>
+        <h2>The hardware map</h2>
+        <div class="hw"><table id="hw-map"></table></div>
+        <h2>Plugged in, not in the map</h2>
+        <div class="hw"><table id="hw-loose"></table></div>
+        <p class="note">Serial ports and VISA instruments this computer sees. Nothing here opens a device,
+          so it is safe while a run is going. A serial number finds a device on any port; a port name
+          changes with the order things are plugged in.</p>
       </section>
     </main>
   </div>

@@ -13,6 +13,7 @@
     labcli cast <label> <words>     a command to an instrument, e.g. cast hvc platen 20;
                                     waits until the rScript that owns it takes it
     labcli cast <label> <words> ?   what can come next ('?' quoted in bash/zsh)
+    labcli hardware                 what is plugged in, beside the hardware map
     labcli gui [--port N] [--listen]  the web GUI on this machine (http://localhost:8080/)
     labcli gui --set-login          set the GUI's user name and password
 
@@ -48,6 +49,8 @@ def main(argv: list[str]) -> int:
     if verb == "gui":
         from formslab.gui.server import main as gui_main
         return gui_main(args)
+    if verb == "hardware":
+        return _hardware(out)
 
     from formslab.console.cast import castcli
     from formslab.console.ctrl import ctrlcli
@@ -107,6 +110,36 @@ def _log(out, args) -> int:
         out.print("✗ no host log yet (it starts with the first `run`)", markup=False)
         return 1
     out.print("\n".join(lines[-n:]), markup=False)
+    return 0
+
+
+def _hardware(out) -> int:
+    """The hardware map's entries, each found or not, then what is plugged in
+    that the map does not name. Opens nothing, so it is safe during a run."""
+    from rich.table import Table
+
+    from formslab import hardware
+
+    s = hardware.survey()
+    mapped = Table(title=f"The hardware map, {s['map']}", title_justify="left", box=None)
+    for col in ("name", "", "where", "found by", "the map says"):
+        mapped.add_column(col)
+    for e in s["entries"]:
+        mark = {"found": "[green]found[/]", "missing": "[yellow]missing[/]"}.get(e["status"], e["status"])
+        mapped.add_row(e["label"] + ("" if e["enabled"] else " (off)"), mark, e["address"] or "",
+                       e["by"] or "", e["wants"] or "nothing to find it by")
+    out.print(mapped)
+    other = [d for d in s["plugged"] if d["label"] is None]
+    if other:
+        loose = Table(title="Plugged in, not in the map", title_justify="left", box=None)
+        for col in ("where", "USB id", "serial number", "USB path", "what"):
+            loose.add_column(col)
+        for d in other:
+            loose.add_row(d["address"], d["usb"], d["serial"] or "(none)", d["path"], d["description"])
+        out.print()
+        out.print(loose)
+    for err in s["errors"]:
+        out.print(f"✗ could not list {err}", markup=False)
     return 0
 
 

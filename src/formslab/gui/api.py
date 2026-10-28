@@ -209,6 +209,12 @@ def run_series(run_id: str, variables: list[str] | None, max_points: int = runs.
     return {"id": run_id, "name": run["name"], "started": run["started"], **out, "next_s": next_s}
 
 
+def hardware() -> dict:
+    """What is plugged in, beside the hardware map (`formslab.hardware`). Opens nothing."""
+    from formslab import hardware as survey
+    return survey.survey()
+
+
 # --- control --------------------------------------------------------------------------
 
 def current_action() -> str | None:

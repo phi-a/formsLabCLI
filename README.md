@@ -225,6 +225,7 @@ labcli cast hvc platen 20           # waits until the chamber has done it, or sa
 labcli cast hvc platen '?'          # what can come next
 labcli status hvc                   # one instrument's readings
 labcli log 50                       # the host's output
+labcli hardware                     # what is plugged in, beside the hardware map
 labcli end
 ```
 

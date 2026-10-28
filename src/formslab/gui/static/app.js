@@ -106,7 +106,7 @@
     $("#app").hidden = false;
     $("#who").textContent = user;
     const wanted = location.hash.slice(1);
-    show(["plots", "plans", "tvac"].includes(wanted) ? wanted : "status");
+    show(["plots", "plans", "tvac", "hardware"].includes(wanted) ? wanted : "status");
   }
 
   $("#login-form").addEventListener("submit", async (ev) => {
@@ -135,9 +135,11 @@
     $("#view-plans").hidden = view !== "plans";
     $("#view-tvac").hidden = view !== "tvac";
     $("#view-plots").hidden = view !== "plots";
+    $("#view-hardware").hidden = view !== "hardware";
     stopTimers();
     if (view === "status") state.plansLoaded = false;      // plans may have been saved since
     if (view === "plots") loadRuns();
+    if (view === "hardware") loadHardware();
     if (view === "plans" && window.App.editor) window.App.editor.open();
     poll();
   }
@@ -408,6 +410,39 @@
   }
 
   $("#tvac-unit").addEventListener("change", poll);
+
+  // --- hardware ----------------------------------------------------------------------
+
+  // What is plugged in, beside the hardware map: read when the page opens and on Look
+  // again. A device that went since the last look is named, so unplugging one says
+  // which it is.
+  let hwSeen = null;
+  async function loadHardware() {
+    $("#hw-info").textContent = "Looking...";
+    let s;
+    try { s = await api("/api/hardware"); } catch (e) { $("#hw-info").textContent = e.message; return; }
+    $("#hw-info").textContent = s.map + (s.errors.length ? ` · could not list ${s.errors.join("; ")}` : "");
+    const now = new Map(s.plugged.map((d) => [d.address, d]));
+    const gone = hwSeen ? [...hwSeen.values()].filter((d) => !now.has(d.address)) : [];
+    $("#hw-gone").hidden = !gone.length;
+    $("#hw-gone").textContent = "Gone since the last look: " + gone.map((d) =>
+      `${d.address}${d.label ? ` (${d.label})` : ""}, ${d.usb}${d.serial ? " " + d.serial : ""}`).join("; ");
+    const added = (d) => hwSeen && !hwSeen.has(d.address);
+    hwSeen = now;
+    const row = (cells, cls, tag = "td") => {
+      const tr = el("tr", { class: cls }); for (const c of cells) tr.append(el(tag, {}, c)); return tr;
+    };
+    const head = (cells) => row(cells, "", "th");
+    $("#hw-map").replaceChildren(head(["Name", "", "Where", "Found by", "The map says"]), ...s.entries.map((e) =>
+      row([e.label + (e.enabled ? "" : " (off)"), e.status, e.address || "", e.by || "", e.wants || "nothing to find it by"],
+          e.status + (e.address && added(now.get(e.address)) ? " new" : ""))));
+    const loose = s.plugged.filter((d) => !d.label);
+    $("#hw-loose").replaceChildren(...(loose.length
+      ? [head(["Where", "USB id", "Serial number", "USB path", "What"]), ...loose.map((d) =>
+          row([d.address, d.usb, d.serial || "(none)", d.path, d.description], added(d) ? "new" : ""))]
+      : [row(["Nothing: every device this computer sees is in the map."], "")]));
+  }
+  $("#hw-again").addEventListener("click", loadHardware);
 
   // --- plots -------------------------------------------------------------------------
 

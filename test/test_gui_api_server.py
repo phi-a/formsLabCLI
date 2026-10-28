@@ -148,7 +148,7 @@ def test_the_page_and_its_assets_are_served_without_a_login(monkeypatch):
 def test_the_api_needs_a_login(monkeypatch):
     with running_server(monkeypatch) as server:
         c = Client(server)
-        for path in ("/api/status", "/api/runs", "/api/me", "/api/runs/20261004T120000Z"):
+        for path in ("/api/status", "/api/runs", "/api/me", "/api/runs/20261004T120000Z", "/api/hardware"):
             assert c.json("GET", path)[0] == 401, path
         assert c.json("POST", "/api/logout", {})[0] == 401
         c.cookie = "fl_session=not-a-session"

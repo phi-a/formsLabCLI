@@ -149,6 +149,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"options": api.complete((arg("words") or "").split())})
         if path == "/api/runs":
             return self._json(200, api.list_runs())
+        if path == "/api/hardware":
+            return self._json(200, api.hardware())
         if path.startswith("/api/runs/"):
             run_id = path[len("/api/runs/"):]
             if not _NAME.match(run_id):
