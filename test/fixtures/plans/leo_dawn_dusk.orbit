@@ -4,7 +4,7 @@
 # The plane faces the Sun (beta near 90 degrees), so the satellite is in
 # sunlight the whole orbit: the hot case. Around the June solstice the Sun
 # leaves the plane's normal far enough for short eclipses (about 20 minutes). Open it in the GUI's Plans tab to see
-# it propagated on the wall clock (docs/ORBIT.md).
+# it propagated on the wall clock (memory/use/orbit.md).
 #
 # J2 turns the plane with the Sun, about a degree a day, so it keeps its local
 # time all year.

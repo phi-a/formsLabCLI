@@ -1,6 +1,6 @@
 """Blocks: named, reusable groups of plan steps, called from a plan by name.
 
-A block is a `.block` file beside the plans (the same folders, docs/SEQUENCE.md):
+A block is a `.block` file beside the plans (the same folders, memory/use/plans.md):
 
     # Rough the chamber down to a pressure, then seal it
     # Closes the vent, fill and gate valves, starts the vacuum pump ...
@@ -13,7 +13,7 @@ A block is a `.block` file beside the plans (the same folders, docs/SEQUENCE.md)
     hvc stop
 
 - The leading comments describe it: the first is the summary, the rest the
-  details (docs/WRITING.md).
+  details (memory/design/writing.md).
 - The `block` line names it and is the pattern a plan writes to call it, each
   input a number slot in the grammar's own syntax, or `<name:temperature>`, a
   thermocouple. A call writes each number with its unit (`pumpdown to 3 Torr`)

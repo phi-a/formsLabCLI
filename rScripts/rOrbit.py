@@ -1,6 +1,6 @@
 # --- rOrbit: an orbit file, followed during a run ---
 #
-# Publishes where the satellite of an orbit file (docs/ORBIT.md) is, once a
+# Publishes where the satellite of an orbit file (memory/use/orbit.md) is, once a
 # second: whether it is in the Earth's umbra, how long that umbra lasts and how
 # much of it is left, how long until the next one, the beta angle and the
 # altitude. rSLTA's umbra captures read InUmbra, UmbraDuration and

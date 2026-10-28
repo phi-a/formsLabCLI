@@ -3,7 +3,7 @@
 # ============================================================
 # Eight cycles between -30 and 60 °C under high vacuum, as NASA's General
 # Environmental Verification Standard asks of a unit (GSFC-STD-7000B, 2.6.3;
-# docs/GEVS.md). The article sits on the platen, powered from psu1 CH2.
+# memory/use/gevs.md). The article sits on the platen, powered from psu1 CH2.
 #
 # The numbers, and where they come from:
 #   -30 and 60 °C   the article's allowable flight range, -20 to 50 °C, plus 10 °C

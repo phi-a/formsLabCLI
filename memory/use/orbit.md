@@ -5,7 +5,7 @@ element per line. The GUI's Plans tab opens it beside the plans and shows the
 satellite where it is now, propagated on the wall clock. A plan can follow it
 during a run (In a run, below). It is the first part of the environment tool,
 which will go on to the satellite's view factors and background temperatures
-(Notebook/gui.md).
+([gui-design](../design/gui-design.md)).
 
 ```
 # orbit: leo_noon -- sun-synchronous, 550 km, noon to midnight

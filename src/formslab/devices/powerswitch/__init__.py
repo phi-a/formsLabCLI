@@ -5,7 +5,7 @@ the lab PC needs to reach it.
                   and the command line
     __main__.py   python -m formslab.devices.powerswitch status | on | off | cycle | setup
 
-The PSU tab runs the command line (`ps` target); see docs/POWERSWITCH.md.
+The PSU tab runs the command line (`ps` target); see memory/instruments/powerswitch.md.
 """
 from .driver import (
     PowerSwitchConfig, check_reachability, cycle, load_config, main, setup_network, switch,

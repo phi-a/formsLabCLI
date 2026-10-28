@@ -24,7 +24,7 @@ answer the scan; the converter cannot be commanded to produce an output until
 roughly 20 V. A good scan and a dead output is a power symptom, not a bus one.
 
 It prints what the supply delivers and the scan's verdict first, and stops there
-when the bus is silent; a failure prints what it means (docs/CRYOCOOLER.md, When
+when the bus is silent; a failure prints what it means (memory/instruments/cryocooler.md, When
 the board does not start).
 """
 

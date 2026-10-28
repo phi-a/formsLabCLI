@@ -2,9 +2,9 @@
 
 Updated 2026-10-05. Started 2026-10-03 as the plan for the GUI; Stages 0-4 are now
 built and in use, and the space-environment view has its first part (orbit files).
-How to use it is in docs/GUI.md; this note records what it is for, why it is built
+How to use it is in [gui](../use/gui.md); this note records what it is for, why it is built
 the way it is, and what is still to decide. Progress across the project is in
-[progress.md](progress.md).
+[progress](../progress.md).
 
 ## What it is for
 
@@ -166,7 +166,7 @@ with its readings grouped by part (Valves, Pumps, Zones, ...).
 ### 3. Chamber
 
 The controller's Manual screen redrawn live, so operators see the picture they already
-know ([tvac-chamber.md](tvac-chamber.md) has the screenshot). What each item is in our
+know ([laco-chamber](../instruments/laco-chamber.md) has the screenshot). What each item is in our
 software:
 
 | On the screen | Our name / source | Read? |
@@ -192,7 +192,7 @@ live observation.
 **Goal:** simulate the satellite's background temperatures in orbit, and in time drive
 the chamber with them. This is the work still ahead, in stages, each to get its own plan.
 
-**Built (2026-10-05): orbit files.** A `.orbit` file (docs/ORBIT.md) holds one Keplerian
+**Built (2026-10-05): orbit files.** A `.orbit` file ([orbit](../use/orbit.md)) holds one Keplerian
 element per line in its own grammar and colour (deep blue). It opens in the Plans
 editor with a live panel beside it: sunlit or in umbra and when that changes, beta
 angle, altitude, speed, and the coming orbit as a strip. Motion is Kepler with J2

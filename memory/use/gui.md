@@ -53,26 +53,26 @@ goes), one card per instrument, and the end of the host log. From here:
   *Pause* and *Resume* hold and continue the plan's steps.
 - *End run* is in the header on every tab while a run is going. The dialog lists
   what will happen, in order: the end script's steps for the routines this plan
-  loaded (docs/SEQUENCE.md, Ending: the cooler's and the camera's supplies off,
+  loaded ([plans](plans.md), Ending: the cooler's and the camera's supplies off,
   the chamber's zones off, its valves closed and confirmed, its pumps stopped),
   then each instrument's shutdown. The request is sent again every few seconds
   until the host is gone; the GUI never kills the host. *Fast End*, beside it,
   sends the same steps in the same order without waiting to confirm each one,
   for when an End is waiting on something slow; it can be pressed while an End
-  is going, and its banner says to check the chamber at the HMI (docs/END.md,
+  is going, and its banner says to check the chamber at the HMI ([end](../design/end.md),
   Fast End). Afterwards a banner says
   how the run ended and how the chamber was left (`Chamber left: sealed, 3.2 Torr,
   pump off, turbo off, zones off`), red with what the end script could not do when
   there was anything; *Dismiss* hides it in this browser.
 - A run whose host was killed (a crash, Task Manager, a power cut) shows a red
   banner: it stopped without its end. *Run End now* runs that end from a fresh
-  host, with the same dialog (docs/END.md, A host that was killed).
+  host, with the same dialog ([end](../design/end.md), A host that was killed).
 - The command box takes the cast tab's words (`hvc platen 20`, `psu1 ch1 on`).
   The buttons under it are what the instruments' own grammar allows next, with
   limits and units; click one or type. A bad command is refused with what would
   fit and a "did you mean". A command is refused too when no run is going or the
   instrument is not live, since nothing would take it, or when its prerequisites
-  are not met now (the rough valve open for a vent; docs/SEQUENCE.md). It reports
+  are not met now (the rough valve open for a vent; [plans](plans.md)). It reports
   what became of it: taken, done, or refused with the chamber's reason.
 - Under the box, a help card for what you are typing: what the command does, what
   each input means, and what it needs first, each marked from the chamber's last
@@ -147,12 +147,12 @@ Pick a plan on the left (a green page before its name); a plan you open is shown
   fine changes;
 - a finished step offers what may still follow it (`or go on` after a wait's time) in a
   small … box, shown on the row you are on;
-- a loop (docs/SEQUENCE.md, Loops) is a `repeat` row and an `end` row, each with a
+- a loop ([plans](plans.md), Loops) is a `repeat` row and an `end` row, each with a
   circular arrow. Choosing `repeat` adds its `end`, with an empty step between them;
   `end` is offered only inside an open loop; deleting either deletes both and keeps
   the steps between them. The rows inside are set in, with a bar for each loop around
   them, and the file is saved with those steps two spaces in;
-- a rule (`when … then …`, docs/SEQUENCE.md, Rules) is drawn as two steps on one row:
+- a rule (`when … then …`, [plans](plans.md), Rules) is drawn as two steps on one row:
   the condition in the step colour, then the command after `then` in its own
   instrument's colour, with its part's symbol;
 - a wait's `within` says, when you point at it, what happens when its time runs out;
@@ -211,7 +211,7 @@ until they are fixed. A saved plan appears in the Start list on the Status tab. 
 the plan that is running) moves the file to `~/.formslab/plans/.trash`, where it
 is kept with the time it was deleted; move it back to restore it.
 
-Orbit files (`.orbit`, docs/ORBIT.md) are in the same list, with an ellipse before
+Orbit files (`.orbit`, [orbit](orbit.md)) are in the same list, with an ellipse before
 the name, and open in the same editor: one Keplerian element per line, drawn in
 the orbit's colour (deep blue), each with a symbol for what it describes (size and
 shape, the plane, the place on the orbit, time). The step chooser offers only the
@@ -220,9 +220,9 @@ a second: sunlit or in umbra and when that changes, beta angle, altitude, speed,
 and the coming orbit as a strip. *New orbit* starts one. An orbit is never in the
 Start list: a plan follows it. The panel says how (`load rOrbit`, then `orbit
 follow <orbit>`), and *Use in a plan* makes a plan that follows the orbit and
-waits for its umbra (docs/ORBIT.md, In a run).
+waits for its umbra ([orbit](orbit.md), In a run).
 
-A **block** (docs/SEQUENCE.md, Blocks) is listed with a purple square and opens in
+A **block** ([plans](plans.md), Blocks) is listed with a purple square and opens in
 the same editor: its `block` line is the call, each `{input}` an amber value box.
 *New block* starts one; *Register as block* makes one from the open plan (its
 comments, `load` and steps; `record` is the calling plan's). In a plan, a call is
@@ -244,7 +244,7 @@ Older files in the output folder with other layouts are not listed.
 ## What is not here yet
 
 The rest of the space-environment tool (view factors, environment temperature,
-a 3D view, the satellite in the chamber) is planned (`Notebook/gui.md`); the
+a 3D view, the satellite in the chamber) is planned ([gui-design](../design/gui-design.md)); the
 orbit files above are its first part.
 
 ## Safeguards

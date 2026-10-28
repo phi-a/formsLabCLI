@@ -19,3 +19,7 @@ data/
 *.fz
 *.fits
 
+
+# The memory vault: Obsidian keeps its window layout and caches here.
+memory/.obsidian/*
+!memory/.obsidian/app.json

@@ -1,15 +1,15 @@
 # formsLabCLI: intent and architecture
 
 Updated 2026-10-05. What the project is for and how it is put together, kept short
-enough to read before starting any work. The detail is in docs/ARCHITECTURE.md (the
-layers), docs/SEQUENCE.md (plans), docs/GEVS.md (the standard test), docs/GUI.md and
-docs/ORBIT.md. Progress is in
-[progress.md](progress.md).
+enough to read before starting any work. The detail is in [architecture](design/architecture.md) (the
+layers), [plans](use/plans.md) (plans), [gevs](use/gevs.md) (the standard test), [gui](use/gui.md) and
+[orbit](use/orbit.md). Progress is in
+[progress](progress.md).
 
 ## What it is for
 
 formsLabCLI runs the thermal-vacuum bench at the University of Illinois: the LACO
-chamber ([tvac-chamber.md](tvac-chamber.md)) with its HVC-3500 controller, Rigol
+chamber ([laco-chamber](instruments/laco-chamber.md)) with its HVC-3500 controller, Rigol
 supplies, SMTC08 thermocouple readers, a cryocooler board, a PowerSwitch and the sLTA
 imaging chain. It is used from a terminal console, over SSH (`labcli <command>`) and
 from a web GUI.
@@ -21,16 +21,16 @@ a pumpdown, a soak, a vent, an imaging test in a simulated umbra.
 and a spacecraft model, work out the background temperatures each face sees, then
 drive the chamber to reproduce them while the satellite's own instruments run. The
 orbit files, rOrbit and the environment models in `formslab.orbit` are the first
-parts of that; the rest is staged in [gui.md](gui.md), section 4.
+parts of that; the rest is staged in [gui-design](design/gui-design.md), section 4.
 
 **Who uses it:** operators at the bench, often students who do not know the
 controller's protocol, and the engineers who write the tests. Every piece of text is
-written for the first of them (docs/WRITING.md).
+written for the first of them ([writing](design/writing.md)).
 
 ## Principles
 
 1. **Simple and elementary.** The author's lens is Maniacal Simplicity
-   (docs/WRITING.md): the clearest sufficient form. It applies to the code, the plan
+   ([writing](design/writing.md)): the clearest sufficient form. It applies to the code, the plan
    grammar and the text alike. A plan should read like the test it describes.
 2. **Everything is a plan.** Every run is a plan file, even manual operation (`tvac`).
    One host process runs one plan; the console and the GUI only start, watch and end it.
@@ -84,5 +84,5 @@ calls to blocks and loops. Three kinds of file share one name space on the plan 
 | The bench's tests (shipped plans) | `plans/` (read-only in the GUI; *Edit* takes one out to change it); the test suite's own in `test/fixtures/plans/` |
 | A computer's own files | `~/.formslab/`: `usbmap.json` (the hardware map), `plans/`, `gui.json`, `.run/` (the host's lock, events and log) |
 | Recorded runs | `outputs/` (ignored by git) |
-| Docs (what exists) | `docs/` and the READMEs |
-| Notebook (intent, decisions, progress) | here |
+| What it is, how to use it, why, the rules, where it stands | `memory/`, this vault ([README](README.md)) |
+| Each folder's own notes | the READMEs beside the code (`rScripts/`, `scripts/`, `plans/orbits/`) |

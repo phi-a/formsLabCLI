@@ -3,7 +3,7 @@
 What happens when a run is ended, why each step is there, where each piece lives in
 the code, how it is tested, and what is still open. It is the reference for
 changing how End behaves, or for building it again elsewhere. How to run plans is
-in SEQUENCE.md; the cryocooler board in CRYOCOOLER.md.
+in [plans](../use/plans.md); the cryocooler board in [cryocooler](../instruments/cryocooler.md).
 
 Status (2026-10-13): built and tested against the simulated chamber and a
 stand-in cryocooler board (PR #11). A run whose host was killed is now found and
@@ -408,7 +408,7 @@ read the banner, compare with the HMI's Manual screen.
    gate closed, turbo off, roughing pump and foreline still on, the banner saying
    to finish at the HMI.
 
-Record each result in `Notebook/progress.md`.
+Record each result in [progress](../progress.md).
 
 ## 10. Open items
 

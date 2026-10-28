@@ -1,4 +1,4 @@
-"""The application's text against docs/WRITING.md: what a machine can check. Plain
+"""The application's text against memory/design/writing.md: what a machine can check. Plain
 words and sentence case are for review; this catches what slips past review."""
 import re
 

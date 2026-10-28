@@ -61,8 +61,8 @@ The turbo path has never been run on this chamber. Run `highvac` and then
    chamber stays at the crossover meanwhile.
 3. Whether the gauge reads down to 1e-5 Torr.
 4. How long the turbo takes to spin down. `seal chamber` gives it 30 minutes before
-   it closes the foreline; its speed is not read (docs/END.md, D6).
+   it closes the foreline; its speed is not read ([end](../design/end.md), D6).
 5. Whether `hvc platen rate 1` limits the ramp to 1 °C/min on the controller.
 
 End after a turbo run leaves the vacuum pump backing the turbo through the open
-foreline, on purpose (docs/END.md, D6); finish at the HMI once it has stopped.
+foreline, on purpose ([end](../design/end.md), D6); finish at the HMI once it has stopped.
