@@ -255,6 +255,27 @@ def test_a_block_with_a_thermocouple_reads_on_its_own():
     assert review_block(CHILL) == ([], [])          # the caller chooses, and loads, the thermocouple
 
 
+BAND = ("# Wait for the platen to be within 2 C\nblock band at <temperature:number -150..120 C>\n"
+        "load rLACO\n\nuntil platenT >= {temperature-2} C\nuntil platenT <= {temperature+2.5} C\n")
+
+
+def test_a_number_input_moved_by_an_offset(blocks_dir):
+    from formslab.sequence.block import review as review_block
+    blocks_dir("band", BAND)
+    assert [s.label for s in parse_plan(plan("band at -30 C")).sequence.segments] == [
+        "band > until platenT >= -32 C", "band > until platenT <= -27.5 C"]
+    assert review_block(BAND) == ([], [])
+
+
+@pytest.mark.parametrize("text, message", [
+    (CHILL.replace("{sensor} <=", "{sensor+2} <="), "names a thermocouple; only a number input can be moved"),
+    (BAND.replace("{temperature-2}", "{temperature - 2}"), "an input is a whole word"),
+])
+def test_an_offset_is_on_a_number_and_one_word(text, message):
+    with pytest.raises(BlockError, match=message):
+        parse_block(text)
+
+
 def test_a_misnamed_draft_does_not_hide_the_block_rightly_named(blocks_dir):
     blocks_dir("chill", CHILL)
     blocks_dir("draft1", CHILL.replace("block chill", "block chill"))     # holds `block chill`, named draft1

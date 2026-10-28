@@ -1,0 +1,82 @@
+# ============================================================
+# plan: gevs_unit -- NASA GEVS thermal vacuum, unit level, protoflight
+# ============================================================
+# Eight cycles between -30 and 60 °C under high vacuum, as NASA's General
+# Environmental Verification Standard asks of a unit (GSFC-STD-7000B, 2.6.3;
+# docs/GEVS.md). The article sits on the platen, powered from psu1 CH2.
+#
+# The numbers, and where they come from:
+#   -30 and 60 °C   the article's allowable flight range, -20 to 50 °C, plus 10 °C
+#                   each way (protoflight; qualification is 15, acceptance 5).
+#                   Change the plateau, rule and guard lines together.
+#   1e-5 Torr       below it, gas conduction is negligible (2.6.2.4.4).
+#   1 °C/min        the fastest transition GEVS suggests (Table 2.6-1).
+#   2 °C            a plateau starts when the platen is within it (2.6.3.2.3).
+#   4 h, 2 h        each plateau with the article on, and each with it off.
+#   8 cycles        the unit level's share of the 12 before flight (Table 2.6-1).
+#   5 V, 1 A        the article's supply, protected at 5.5 V and 1.2 A: set yours.
+# The first cycle starts the article cold, then hot, each after 2 hours off
+# (2.6.3.3.1.5). The log says when to run the article's functional test.
+#
+# Start: ambient. The chamber at atmosphere with its door closed, the platen and
+#   shroud between 10 and 60 °C, liquid nitrogen supplied, the article on psu1 CH2.
+# End:   at atmosphere, the vent valve open. Both zones off, every pump off, the
+#   article's supply off.
+# Fails: the chamber is not at atmosphere at the start, does not reach 1e-5 Torr
+#   within 8 hours, the platen does not reach a plateau within 3 hours, or the
+#   chamber does not return to air.
+#
+# Takes about 4 days: 8 cycles of about 11 hours. The turbo pump path (highvac)
+# has not yet been run on this chamber: run highvac and seal chamber on their own,
+# watched at the HMI, before the first full test. Cooling uses liquid nitrogen
+# throughout; its exhaust must be vented outside the building.
+
+load rLACO rPSU rSMTC08
+record every 30 s
+
+when platenT > 65 C then hvc platen off
+when platenT < -35 C then hvc platen off
+
+begin at ambient
+psu1 ch2 off
+psu1 ch2 set 5.0 1.0
+psu1 ch2 protect 5.5 1.2
+hvc platen rate 1
+hvc shroud rate 1
+highvac to 0.00001 Torr within 8 h
+when chamberP > 0.0001 then log vacuum lost: above 1e-4 Torr
+
+# Cycle 1: cold start, then hot start
+plateau at -30 C within 180 min
+log cold soak with the article off
+hold 2 h
+psu1 ch2 on
+log cold turn-on: check the article, then run its functional test
+hold 4 h
+plateau at 60 C within 180 min
+psu1 ch2 off
+log hot soak with the article off
+hold 2 h
+psu1 ch2 on
+log hot turn-on: check the article, then run its functional test
+hold 4 h
+
+# Cycles 2 to 8, the article on throughout
+repeat 7 times
+  plateau at -30 C within 180 min
+  log cold plateau: run the article's functional test
+  hold 4 h
+  plateau at 60 C within 180 min
+  log hot plateau: run the article's functional test
+  hold 4 h
+end
+
+# Back to air, the platen held warmer than the shroud until the chamber is at air
+plateau at 30 C within 180 min
+hvc shroud 25
+psu1 ch2 off
+seal chamber
+vent within 60 min
+hvc platen off
+hvc shroud off
+log GEVS unit test done: 8 cycles, back at atmosphere

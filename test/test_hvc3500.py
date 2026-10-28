@@ -230,3 +230,14 @@ def test_pumpdown_model(sim):
         time.sleep(1.5)
         assert c.pressure() < 760.0
         assert c.pressure_rate() < 0
+
+
+def test_the_turbo_takes_the_chamber_below_the_roughing_setpoint(sim):
+    with sim.state.lock:
+        sim.state.pressure = 0.01
+        sim.state.vacuum_setpoint = 1.0
+    with client(sim) as c:
+        c.set_device("OT", True, confirm=True)
+        c.set_device("OG", True, confirm=True)
+        time.sleep(4.0)
+        assert c.pressure() < 1e-5

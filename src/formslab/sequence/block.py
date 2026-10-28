@@ -39,7 +39,7 @@ MAX_DEPTH = 8
 RESERVED = ("hold", "until", "log", "load", "record", "block", "repeat", "end", "when",
             "propagate", "call", "observe")
 _NAME = re.compile(r"^[a-z][a-z0-9_]*$")
-_INPUT = re.compile(r"^\{(\w+)\}$")
+_INPUT = re.compile(r"^\{(\w+)([+-]\d+(?:\.\d+)?)?\}$")   # {name}, or a number input moved: {name-2}
 _TOKEN = re.compile(r"<\s*\w[^>]*>|\S+")                   # as grammar._compile splits a pattern
 # A number input, as grammar._compile reads one; its unit is the group, if it has one.
 _UNIT = re.compile(r"^<\s*\w+\s*:\s*(?:number|integer)(?:\s+[-+\d.eE]*\.\.[-+\d.eE]*)?(?:\s+(\S+))?\s*>$")
@@ -49,6 +49,15 @@ _SENSOR = re.compile(r"^<\s*(\w+)\s*:\s*temperature\s*>$")   # a thermocouple in
 def _word(value) -> str:
     """An input's value as a plan word: a number as written, a thermocouple by name."""
     return value if isinstance(value, str) else f"{value:g}"
+
+
+def _fill(m, value) -> str:
+    """The word an {input} stands for: its value, moved by the offset written after its
+    name ({temperature-2}). A thermocouple is not moved: parse_block refuses that."""
+    try:
+        return _word(float(value) + float(m.group(2))) if m.group(2) else _word(value)
+    except ValueError:
+        return _word(value)
 
 
 class BlockError(ValueError):
@@ -100,7 +109,7 @@ class Block:
 
     def body(self, values: dict) -> list[tuple[int, list[str]]]:
         """Its steps with the inputs replaced by `values`."""
-        return [(n, [_word(values[m.group(1)]) if (m := _INPUT.match(w)) else w for w in words])
+        return [(n, [_fill(m, values[m.group(1)]) if (m := _INPUT.match(w)) else w for w in words])
                 for n, words in self.steps]
 
     def sample_values(self) -> dict[str, float]:
@@ -196,9 +205,13 @@ def parse_block(text: str, path: Path | None = None) -> Block:
                 if m.group(1) not in inputs:
                     raise BlockError(f"{{{m.group(1)}}} is not an input of this block; "
                                      f"its inputs are {', '.join(inputs) or 'none'}", n)
+                if m.group(2) and m.group(1) in sensors:
+                    raise BlockError(f"{w!r}: {m.group(1)} names a thermocouple; only a number "
+                                     "input can be moved, like {temperature-2}", n)
                 used.add(m.group(1))
             elif "{" in w or "}" in w:
-                raise BlockError(f"{w!r}: an input is a whole word, like {{pressure}}", n)
+                raise BlockError(f"{w!r}: an input is a whole word, like {{pressure}} or "
+                                 "{temperature-2}", n)
     if unused := [i for i in inputs if i not in used]:
         raise BlockError(f"input {unused[0]!r} is not used by any step", hn)
     summary = about[0] if about else ""
@@ -267,7 +280,7 @@ def as_plan(text: str) -> str:
         elif extra and words[:1] and words[0].lower() == "load" and extra not in words:
             out.append(line.rstrip() + " " + extra)           # the sample thermocouple's routine
         else:
-            out.append(" ".join(samples.get(m.group(1), "1") if (m := _INPUT.match(w)) else w
+            out.append(" ".join(_fill(m, samples.get(m.group(1), "1")) if (m := _INPUT.match(w)) else w
                                 for w in words) if words else line)
     return "\n".join(out) + "\n"
 

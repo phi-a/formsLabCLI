@@ -2,7 +2,8 @@
 
 Updated 2026-10-05. What the project is for and how it is put together, kept short
 enough to read before starting any work. The detail is in docs/ARCHITECTURE.md (the
-layers), docs/SEQUENCE.md (plans), docs/GUI.md and docs/ORBIT.md. Progress is in
+layers), docs/SEQUENCE.md (plans), docs/GEVS.md (the standard test), docs/GUI.md and
+docs/ORBIT.md. Progress is in
 [progress.md](progress.md).
 
 ## What it is for

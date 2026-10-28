@@ -1,0 +1,30 @@
+# Pump the chamber to high vacuum with the turbo
+# Closes the vent, fill and gate valves, turns the turbo pump off and closes the
+# foreline valve, starts the vacuum pump and waits 15 s, then
+# roughs the chamber to the 0.01 Torr crossover, for at most an hour. Closes the vacuum
+# valve, opens the foreline valve, starts the turbo pump and gives it 5 minutes to spin
+# up (its speed is not read). Checks the chamber is still at the crossover, opens the
+# gate valve and waits, for at most the hours given, for the pressure. The turbo pump,
+# the foreline and gate valves and the vacuum pump stay as they are until seal chamber
+# or the end of the run. This path has not yet been run on this chamber: watch the
+# first run at the HMI.
+block highvac to <pressure:number 0.0000001..0.01 Torr> within <hours:number 1..48 h>
+load rLACO
+
+hvc vent close
+hvc fill close
+hvc gate close
+hvc turbo off
+hvc foreline close
+hvc pump on
+hold 15 s
+until chamberP >= 0.01 within 30 s
+hvc rough open
+until chamberP <= 0.01 within 60 min
+hvc rough close
+hvc foreline open
+hvc turbo on
+hold 5 min
+until chamberP <= 0.01 within 1 min
+hvc gate open
+until chamberP < {pressure} within {hours} h

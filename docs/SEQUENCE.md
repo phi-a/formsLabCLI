@@ -176,6 +176,9 @@ hvc stop
 - The `block` line is its name and the words a plan writes to call it. Each input
   is a number, declared as the grammar declares one, or a thermocouple,
   `<name:temperature>`, and written `{name}` where a step uses it.
+- **A number input can be moved** by a number written after its name, in one word:
+  `until platenT >= {temperature-2} C` waits for 2 °C short of the input. A
+  thermocouple input cannot.
 - **A call writes each number with its unit**, the one the input declares:
   `pumpdown to 3 Torr`, `vent within 60 min`, `warm to 40 C within 60 min`. A
   thermocouple input is named in the call (`hold article to -40 C at TC01`),
@@ -203,6 +206,9 @@ Shipped blocks, which the bench's tests share:
 | `vent within <minutes> min` | waits for the platen and shroud to be between 10 and 60 °C, then lets in air |
 | `warm to <temperature> C within <minutes> min` | sets both zones, 0 to 100 °C, turns them on and waits for both |
 | `cool to <temperature> C within <minutes> min` | the same, -150 to 30 °C; needs liquid nitrogen |
+| `plateau at <temperature> C within <minutes> min` | sets both zones, -150 to 120 °C, turns them on and waits for the platen to be within 2 °C, from above or below (docs/GEVS.md) |
+| `highvac to <pressure> Torr within <hours> h` | roughs to the 0.01 Torr crossover, starts the turbo pump, opens the gate valve and waits for the pressure; not yet run on this chamber |
+| `seal chamber` | closes the gate valve, turns the turbo pump off, gives it 30 minutes to spin down, then closes the foreline and vacuum valves and stops the vacuum pump |
 | `k508n at <volts> V with <resistance> ohm` | sets the cryocooler board's supply (24 V, 1.0 A, protected at 24.5 V and 1.25 A, a line in the block), starts the board, sets the variable resistor, which sets the K508N's fixed-point temperature control, and the cooler voltage, 8.5 to 20 V, and turns it on; each step is answered, so a refusal stops the run (docs/CRYOCOOLER.md) |
 | `detector imaging` | turns on the camera's supply (psu2 CH1) and umbra captures, 600 s exposures of 10 samples; the camera then images each umbra of the orbit the run follows |
 
@@ -333,9 +339,10 @@ Shipped plans, the bench's tests, each built from the blocks above:
 | `rest_to_ambient` | lets air into a sealed chamber | 5 minutes |
 | `warm_soak` | pumps down, holds both zones at 40 °C for 30 minutes, returns to air | 1 h 40 min |
 | `thermal_cycle` | pumps down, takes both zones between 60 and -20 °C three times, returns to air | 2 h 30 min or more |
+| `gevs_unit` | NASA GEVS at the unit level: high vacuum, eight cycles between -30 and 60 °C with 4-hour plateaus, the article on psu1 CH2 started cold and hot, returns to air (docs/GEVS.md) | about 4 days |
 
 In `plans/` they are sorted into folders: `vacuum/` (`ambient_to_rest`,
-`rest_to_ambient`), `thermal/` (`warm_soak`, `thermal_cycle`) and `darkness/`, with
+`rest_to_ambient`), `thermal/` (`warm_soak`, `thermal_cycle`, `gevs_unit`) and `darkness/`, with
 the blocks in `blocks/` and orbit files in `orbits/`; `tvac` and `end` stay at the
 top. A folder only sorts the files. A file is found by its name in any of them, so
 moving one changes nothing. Keep each name once: of two files with one name, the

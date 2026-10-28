@@ -27,7 +27,8 @@
     "baud": 9600,
     "recovery_method": "hubpower",
     "channels": {
-      "1": {"feeds": "cryocooler board", "owner": "rCryoBoard"}
+      "1": {"feeds": "cryocooler board", "owner": "rCryoBoard"},
+      "2": {"feeds": "test article"}
     }
   },
 

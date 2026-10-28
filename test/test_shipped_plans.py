@@ -16,6 +16,7 @@ from formslab.host import sequence
 from formslab.sequence import block as blockfile
 from formslab.sequence import SequenceError, load_plan, plan as planfile
 from formslab.sequence.plan import find_plan, review
+from test_lab_sequence import bench  # noqa: F401 (fixture: rPSU and rSMTC08 on fakes)
 
 SHIPPED = Path(__file__).resolve().parents[1] / "plans"
 PATHS = {p.stem: p for p in [*SHIPPED.rglob("*.plan"), *SHIPPED.rglob("*.block")]}   # in any folder
@@ -31,8 +32,10 @@ def shipped(monkeypatch):
 
 
 def test_the_set_is_what_the_docs_name():
-    assert PLANS == ["Cryocooler", "ambient_to_rest", "end", "rest_to_ambient", "thermal_cycle", "tvac", "warm_soak"]
-    assert BLOCKS == ["begin", "cool", "detector", "k508n", "pumpdown", "vent", "warm"]
+    assert PLANS == ["Cryocooler", "ambient_to_rest", "end", "gevs_unit", "rest_to_ambient", "thermal_cycle",
+                     "tvac", "warm_soak"]
+    assert BLOCKS == ["begin", "cool", "detector", "highvac", "k508n", "plateau", "pumpdown", "seal", "vent",
+                      "warm"]
 
 
 @pytest.mark.parametrize("name", PLANS)
@@ -72,6 +75,19 @@ def quick(monkeypatch):
     def load(path):
         p = load_plan(path)
         segs = tuple(replace(s, params={**s.params, "seconds": 1.5}) if s.verb == "hold" else s
+                     for s in p.sequence.segments)
+        return replace(p, sequence=replace(p.sequence, segments=segs))
+    monkeypatch.setattr(sequence, "load_plan", load)
+
+
+@pytest.fixture
+def one_pass(quick, monkeypatch):
+    """Holds cut to 1.5 s, and each `repeat <n> times` to one pass."""
+    shortened = sequence.load_plan
+
+    def load(path):
+        p = shortened(path)
+        segs = tuple(replace(s, params={**s.params, "times": 1}) if s.verb == "repeat" and s.params["times"] else s
                      for s in p.sequence.segments)
         return replace(p, sequence=replace(p.sequence, segments=segs))
     monkeypatch.setattr(sequence, "load_plan", load)
@@ -119,6 +135,17 @@ def test_thermal_cycle_ends_at_air_with_the_zones_off(chamber, quick):
     assert s.pressure >= 700 and s.devices["OV"] is True
     assert not s.devices["OR"] and not s.devices["OP"]
     assert not any(s.zone_active.values())
+
+
+def test_gevs_unit_reaches_high_vacuum_and_ends_at_air_with_everything_off(chamber, one_pass, bench):
+    run("gevs_unit")                                    # its until chamberP < 1e-05 held, or it would raise
+    s = chamber.state
+    assert s.pressure >= 700 and s.devices["OV"] is True
+    assert not any(s.devices[c] for c in ("OR", "OF", "O4", "OG", "OP", "OT"))
+    assert not any(s.zone_active.values())
+    assert s.zone_rate[1] == s.zone_rate[2] == 1.0      # 1 °C/min
+    article = bench["psu1"].ch[2]
+    assert article["vset"] == 5.0 and article["on"] is False
 
 
 def test_preparing_for_darkness_reads_clean():

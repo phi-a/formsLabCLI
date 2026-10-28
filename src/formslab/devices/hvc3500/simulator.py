@@ -2,7 +2,8 @@
 
 Implements the documented command surface from manual appendix 9.1 with a
 small physical model: pressure decays toward the vacuum setpoint while the
-rough valve is open, temperatures drift toward active zone setpoints, and
+rough valve is open, and toward 1e-7 Torr while the gate is open with the turbo
+on, temperatures drift toward active zone setpoints, and
 valve/pump toggles take effect ~1 s after the reply (as documented).
 
 Knobs for exercising client robustness:
@@ -34,6 +35,10 @@ def control_sensor(zone: int) -> int:
 # and loses heat to a 22 °C room, so it settles short of the platen
 # (0.8 x platen + 4.4 °C), within seconds. A hold at HVC_T5 has an offset to remove.
 ARTICLE, ROOM_C, TO_PLATEN_S, TO_ROOM_S = 5, 22.0, 2.0, 8.0
+
+# With the gate open and the turbo on, pressure falls toward this, as it does toward
+# the vacuum setpoint through the roughing valve.
+TURBO_BASE_TORR = 1e-7
 
 
 class ControllerState:
@@ -75,8 +80,9 @@ class ControllerState:
             if now >= when:
                 self.devices[code] = not self.devices[code]
                 self.pending_toggles.remove((when, code))
-        if self.devices["OR"] and self.devices["OP"]:
-            target = max(self.vacuum_setpoint, 1e-6)
+        turbo = self.devices["OG"] and self.devices["OT"]
+        if turbo or (self.devices["OR"] and self.devices["OP"]):
+            target = TURBO_BASE_TORR if turbo else max(self.vacuum_setpoint, 1e-6)
             new = self.pressure * (0.1 ** dt) if self.pressure > target else target
             self.pressure_rate = (new - self.pressure) / dt if dt > 0 else self.pressure_rate
             self.pressure = new

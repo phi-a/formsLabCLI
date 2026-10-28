@@ -92,6 +92,16 @@ architecture are in [project.md](project.md); the GUI's plan is in [gui.md](gui.
   the monitor lives in the GUI server, so it reads only while formsLAB is open;
   only the chamber, not the thermocouples or supplies; `--no-monitor` frees the
   controller for `scripts/`. Not yet run against the real controller.
+  **2026-10-28:** a NASA GEVS thermal vacuum test, asked for as a standard recipe
+  for the chamber: `gevs_unit` (docs/GEVS.md), GSFC-STD-7000B at the unit level,
+  protoflight. New blocks `highvac`, `seal chamber` and `plateau`; a block input
+  can be moved by a number (`{temperature-2}`), for GEVS's 2 °C plateau start.
+  Decided: true GEVS, so the turbo path (1e-5 Torr), though it has never been run;
+  the article powered from psu1 CH2, switched by the plan for the cold and hot
+  turn-ons. Found: `TurboPump` is the pump's on/off, not its speed, so `seal
+  chamber` gives the turbo a fixed 30 minutes before closing the foreline. Next at
+  the bench: run `highvac` then `seal chamber` alone, watched at the HMI (the
+  checklist in docs/GEVS.md).
 - **Next:** the environment profile, the first stage after orbit files
   ([gui.md](gui.md), section 4): orbit file + spacecraft model → per-face background
   temperature over an orbit → a recorder-format CSV in the Plots tab. It needs a way to

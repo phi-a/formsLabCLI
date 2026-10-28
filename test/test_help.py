@@ -124,7 +124,7 @@ def test_the_chamber_readings_come_in_groups_with_the_screens_names():
 def test_supply_readings_are_grouped_by_channel_with_what_it_feeds():
     groups = cast.readings("psu1", {"1": {"on": True, "vset": 24.0}, "2": {"on": False}})
     assert _names(groups) == [("CH1 - cryocooler board", [("1 on", "Output", "On"), ("1 vset", "Set (V)", None)]),
-                              ("CH2", [("2 on", "Output", "Off")])]
+                              ("CH2 - test article", [("2 on", "Output", "Off")])]
 
 
 def test_other_owners():

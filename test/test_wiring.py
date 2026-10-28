@@ -23,7 +23,8 @@ def test_the_shipped_wiring():
     assert wiring.channel_of("rCryoBoard") == ("psu1", 1)
     assert wiring.channel_of("rSLTA") == ("psu2", 1)
     assert wiring.channel("psu1", 1) == {"feeds": "cryocooler board", "owner": "rCryoBoard"}
-    assert wiring.channel("PSU1", "2") == {}                      # a free channel
+    assert wiring.channel("PSU1", "2") == {"feeds": "test article"}   # labelled, but no owner: free
+    assert wiring.channel("PSU1", "3") == {}                      # a channel with no entry
     assert wiring.channel_of("rNobody") is None
 
 
