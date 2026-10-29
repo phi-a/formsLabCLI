@@ -65,7 +65,7 @@
 
   // --- login -------------------------------------------------------------------------
 
-  // One status poll for every tab: it keeps the header's End button right, and draws
+  // One status poll for every tab: it keeps the header's run buttons right, and draws
   // the Status or Chamber view when that is open (every second there, every two
   // elsewhere). Each call starts a new loop and retires the one before it (`gen`),
   // so a tab switch while a request is out never leaves two loops running.
@@ -79,9 +79,7 @@
         if (!document.hidden) {
           const s = await api("/api/status?log=" + (view === "status" ? 40 : 1));
           if (gen !== pollGen) return;                     // retired while it was out
-          $("#end").hidden = $("#end-fast").hidden = !s.host;
-          $("#end").disabled = Boolean(s.action);
-          $("#end-fast").disabled = Boolean(s.action) && s.action !== "ending";   // also to hurry an End along
+          renderHeader(s);
           renderEnded(s);
           if (view === "status") renderStatus(s);
           if (view === "tvac") renderTvac(s);
@@ -215,13 +213,18 @@
 
   const busy = (s) => Boolean(s.action);
 
-  function renderControls(s) {
+  // The header's run buttons, on every tab while a run is going: Pause, Resume,
+  // End run and Fast End.
+  function renderHeader(s) {
     const running = Boolean(s.host);
-    $("#start-box").hidden = running;
-    $("#run-box").hidden = !running;
-    $("#end").hidden = $("#end-fast").hidden = !running;
-    for (const id of ["#start", "#pause", "#resume", "#end"]) $(id).disabled = busy(s);
-    $("#end-fast").disabled = busy(s) && s.action !== "ending";
+    $("#run-box").hidden = $("#end").hidden = $("#end-fast").hidden = !running;
+    for (const id of ["#pause", "#resume", "#end"]) $(id).disabled = busy(s);
+    $("#end-fast").disabled = busy(s) && s.action !== "ending";   // also to hurry an End along
+  }
+
+  function renderControls(s) {
+    $("#start-box").hidden = Boolean(s.host);
+    $("#start").disabled = busy(s);
     const note = $("#action");
     if (s.action === "starting") { note.className = "note"; note.textContent = "Starting the run..."; }
     else if (s.action === "ending") { note.className = "note"; note.textContent = "Ending: the end script is running, then each instrument's shutdown..."; }

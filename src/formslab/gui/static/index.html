@@ -32,6 +32,10 @@
         <button data-view="hardware">Hardware</button>
       </nav>
       <span class="spacer"></span>
+      <span id="run-box" hidden>
+        <button id="pause" title="Hold the plan at its current step; its when rules keep watching">Pause</button>
+        <button id="resume" title="Continue the plan's steps">Resume</button>
+      </span>
       <button id="end" class="danger" hidden title="Stop the run; every instrument's shutdown runs">End run</button>
       <button id="end-fast" class="danger-outline" hidden title="End, sending each step without waiting to confirm it; also while an End is going">Fast End</button>
       <span id="who"></span>
@@ -45,10 +49,6 @@
           <span id="start-box" hidden>
             <select id="plan" aria-label="Plan to run"></select>
             <button id="start">Start run</button>
-          </span>
-          <span id="run-box" hidden>
-            <button id="pause">Pause</button>
-            <button id="resume">Resume</button>
           </span>
           <span id="action" class="note" role="status"></span>
           <div id="ended" class="banner" role="status" hidden></div>

@@ -50,8 +50,10 @@ last 8 hours and end when the server restarts. Logins and logouts are noted in
 goes), one card per instrument, and the end of the host log. From here:
 
 - *Start run* starts a plan from the list (the plans `labcli plans` shows).
-  *Pause* and *Resume* hold and continue the plan's steps.
-- *End run* is in the header on every tab while a run is going. The dialog lists
+- *Pause* and *Resume* are in the header on every tab while a run is going: they
+  hold and continue the plan's steps (its `when` rules keep watching while it is
+  held).
+- *End run* is beside them, in the header on every tab while a run is going. The dialog lists
   what will happen, in order: the end script's steps for the routines this plan
   loaded ([plans](plans.md), Ending: the cooler's and the camera's supplies off,
   the chamber's zones off, its valves closed and confirmed, its pumps stopped),
