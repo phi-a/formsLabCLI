@@ -126,10 +126,11 @@ def plans_command() -> CLIResult:
         result.append("\nBLOCKS (a plan calls them by name)\n", HEADER)
         from formslab.rscripts.grammar import Grammar
 
-        for b in usable.values():
-            usage = Grammar([(b.call, "", None)]).rows()[0][0]
+        usages = {name: Grammar([(b.call, "", None)]).rows()[0][0] for name, b in usable.items()}
+        width = max(30, *(len(u) + 2 for u in usages.values()))     # the longest call, then two spaces
+        for name, b in usable.items():
             result.append("  ■   ", INFO)
-            result.append(usage.ljust(30), INFO)
+            result.append(usages[name].ljust(width), INFO)
             result.append(b.summary + "\n", DIM)
         for name, why in broken.items():
             result.append(f"  ✗   {name.ljust(22)}", ERROR)
