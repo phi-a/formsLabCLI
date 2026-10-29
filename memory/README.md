@@ -22,7 +22,7 @@ editor.
 |---|---|
 | [rules/](rules/) | The rule sets: [safety](rules/safety.md), operating the chamber ([tvac](rules/tvac.md)), talking to the controller ([hvc](rules/hvc.md)), controller and test [recipes](rules/recipes.md) |
 | [use/](use/) | How to use it: [setup](use/setup.md), writing and running [plans](use/plans.md), the [gui](use/gui.md), the practice [session](use/session.md), [orbit](use/orbit.md) files, the NASA [gevs](use/gevs.md) test |
-| [instruments/](instruments/) | Each instrument as it is at this bench: the [laco-chamber](instruments/laco-chamber.md), its [hvc3500](instruments/hvc3500.md) controller, the [cryocooler](instruments/cryocooler.md) board, the [powerswitch](instruments/powerswitch.md) |
+| [instruments/](instruments/) | Each instrument as it is at this bench: the [laco-chamber](instruments/laco-chamber.md), its [hvc3500](instruments/hvc3500.md) controller, the [cryocooler](instruments/cryocooler.md) board, the [powerswitch](instruments/powerswitch.md), the wired [network](instruments/network.md) that joins them |
 | [design/](design/) | How it is built and why: [architecture](design/architecture.md), [end](design/end.md) (the End button), [gui-design](design/gui-design.md), [writing](design/writing.md) |
 | [sources/](sources/README.md) | The manuals and records the notes cite |
 | top level | [project](project.md) (intent and principles), [progress](progress.md) (where the work stands), [questions](questions.md) |

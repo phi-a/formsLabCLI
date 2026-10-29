@@ -90,6 +90,8 @@ your wiring before using it.
 If used, also update `PS` host/user/adapter/local IP for your PowerSwitch and
 set the environment variable named by `PS.password_env` (normally
 `FORMS_POWERSWITCH_PASSWORD`). See [PowerSwitch setup](../instruments/powerswitch.md).
+The chamber shares the PowerSwitch's switch on another subnet, so the same
+adapter also needs `10.1.2.50/24`: see [network](../instruments/network.md).
 
 ## 4. Launch and check
 

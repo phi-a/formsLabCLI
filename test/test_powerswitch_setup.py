@@ -41,7 +41,22 @@ def test_lab_config_owns_the_ps_device(tmp_path, monkeypatch):
     assert config.local_ip == "192.168.8.50"
 
 
-def test_windows_setup_is_persistent_and_has_no_gateway():
+def _windows_runner(calls, *, dhcp=False, addresses=(), found=True, apply_error=""):
+    """Fake Windows: the state query answers as an adapter would; changes are recorded."""
+    def runner(command, **kwargs):
+        calls.append(command)
+        if command[0] == "powershell":
+            if not found:
+                return _completed(command, returncode=1, stderr="No MSFT_NetIPInterface objects found")
+            state = {"dhcp": "Enabled" if dhcp else "Disabled", "addresses": list(addresses)}
+            return _completed(command, stdout=json.dumps(state))
+        if apply_error:
+            return _completed(command, returncode=1, stderr=apply_error)
+        return _completed(command)
+    return runner
+
+
+def test_windows_setup_adds_beside_the_other_addresses():
     config = powerswitch.PowerSwitchConfig(
         adapter="Dedicated Lab NIC",
         local_ip="192.168.8.50",
@@ -49,6 +64,26 @@ def test_windows_setup_is_persistent_and_has_no_gateway():
     )
 
     assert powerswitch.windows_setup_command(config) == [
+        "netsh",
+        "interface",
+        "ipv4",
+        "add",
+        "address",
+        "name=Dedicated Lab NIC",
+        "address=192.168.8.50",
+        "mask=255.255.255.0",
+        "store=persistent",
+    ]
+
+
+def test_windows_setup_on_dhcp_is_static_persistent_and_has_no_gateway():
+    config = powerswitch.PowerSwitchConfig(
+        adapter="Dedicated Lab NIC",
+        local_ip="192.168.8.50",
+        prefix_length=24,
+    )
+
+    assert powerswitch.windows_setup_command(config, dhcp=True) == [
         "netsh",
         "interface",
         "ipv4",
@@ -63,33 +98,71 @@ def test_windows_setup_is_persistent_and_has_no_gateway():
     ]
 
 
-def test_windows_dry_run_inspects_but_does_not_change_adapter(capsys):
+def test_windows_state_query_quotes_the_adapter_name():
+    command = powerswitch.windows_state_command("Bob's NIC")
+
+    assert command[0] == "powershell"
+    assert "-InterfaceAlias 'Bob''s NIC'" in command[-1]
+
+
+def test_windows_setup_keeps_the_chamber_address(capsys):
     calls = []
 
-    def runner(command, **kwargs):
-        calls.append(command)
-        return _completed(command)
+    ok = powerswitch.setup_windows(
+        powerswitch.PowerSwitchConfig(adapter="Ethernet 2", local_ip="192.168.0.50"),
+        runner=_windows_runner(calls, addresses=["10.1.2.50"]),
+    )
+
+    assert ok
+    assert calls[-1][3:5] == ["add", "address"]
+    assert "keeps 10.1.2.50" in capsys.readouterr().out
+
+
+def test_windows_setup_replaces_only_a_dhcp_address():
+    calls = []
+
+    ok = powerswitch.setup_windows(
+        powerswitch.PowerSwitchConfig(adapter="Ethernet 2"),
+        runner=_windows_runner(calls, dhcp=True, addresses=["169.254.1.2"]),
+    )
+
+    assert ok
+    assert calls[-1][3:5] == ["set", "address"]
+
+
+def test_windows_setup_with_the_address_present_changes_nothing(capsys):
+    calls = []
+
+    ok = powerswitch.setup_windows(
+        powerswitch.PowerSwitchConfig(adapter="Ethernet 2", local_ip="192.168.0.50"),
+        runner=_windows_runner(calls, addresses=["192.168.0.50", "10.1.2.50"]),
+    )
+
+    assert ok
+    assert [c[0] for c in calls] == ["powershell"]
+    assert "nothing to change" in capsys.readouterr().out
+
+
+def test_windows_dry_run_inspects_but_does_not_change_adapter(capsys):
+    calls = []
 
     ok = powerswitch.setup_windows(
         powerswitch.PowerSwitchConfig(adapter="Dedicated Lab NIC"),
         dry_run=True,
-        runner=runner,
+        runner=_windows_runner(calls),
     )
 
     assert ok
-    assert calls == [[
-        "netsh", "interface", "show", "interface", "name=Dedicated Lab NIC"
-    ]]
+    assert [c[0] for c in calls] == ["powershell"]
     assert "[dry-run]" in capsys.readouterr().out
 
 
 def test_windows_setup_refuses_an_unknown_adapter(capsys):
-    def runner(command, **kwargs):
-        return _completed(command, returncode=1, stderr="not found")
+    calls = []
 
     ok = powerswitch.setup_windows(
         powerswitch.PowerSwitchConfig(adapter="Not A Real Adapter"),
-        runner=runner,
+        runner=_windows_runner(calls, found=False),
     )
 
     assert not ok
@@ -101,15 +174,9 @@ def test_windows_setup_refuses_an_unknown_adapter(capsys):
 def test_setup_failure_explains_windows_elevation(capsys):
     calls = []
 
-    def runner(command, **kwargs):
-        calls.append(command)
-        if len(calls) == 1:
-            return _completed(command)
-        return _completed(command, returncode=1, stderr="Access is denied")
-
     ok = powerswitch.setup_windows(
         powerswitch.PowerSwitchConfig(adapter="Dedicated Lab NIC"),
-        runner=runner,
+        runner=_windows_runner(calls, apply_error="Access is denied"),
     )
 
     assert not ok

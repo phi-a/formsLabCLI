@@ -446,7 +446,7 @@ def help_panel():
     result.append("X", style=NUMBER)
     result.append("  Power cycle with custom delay (seconds)\n", style=TEXT)
     result.append("  --setup               ", style=LABEL)
-    result.append("Configure the registered PowerSwitch network adapter\n", style=TEXT)
+    result.append("Add the PowerSwitch address to its network adapter\n", style=TEXT)
     result.append("  --setup --dry-run     ", style=LABEL)
     result.append("Show the network change without applying it\n", style=TEXT)
     result.append("  --status              ", style=LABEL)

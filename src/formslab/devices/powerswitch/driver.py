@@ -75,19 +75,37 @@ def _netmask(prefix_length: int) -> str:
     return str(network.netmask)
 
 
-def windows_setup_command(config: PowerSwitchConfig) -> list[str]:
-    """Return the exact persistent Windows IPv4 command for ``config``."""
+def windows_setup_command(config: PowerSwitchConfig, *, dhcp: bool = False) -> list[str]:
+    """Return the exact persistent Windows IPv4 command for ``config``.
+
+    An adapter with static addresses gets this one added beside the rest: the
+    bench switch carries the chamber's subnet on the same adapter
+    (memory/instruments/network.md). Only a DHCP adapter, which has no static
+    address to lose, is switched to static with this one.
+    """
+    if dhcp:
+        return [
+            "netsh",
+            "interface",
+            "ipv4",
+            "set",
+            "address",
+            f"name={config.adapter}",
+            "source=static",
+            f"address={config.local_ip}",
+            f"mask={_netmask(config.prefix_length)}",
+            "gateway=none",
+            "store=persistent",
+        ]
     return [
         "netsh",
         "interface",
         "ipv4",
-        "set",
+        "add",
         "address",
         f"name={config.adapter}",
-        "source=static",
         f"address={config.local_ip}",
         f"mask={_netmask(config.prefix_length)}",
-        "gateway=none",
         "store=persistent",
     ]
 
@@ -111,27 +129,66 @@ def _print_process_failure(proc: subprocess.CompletedProcess) -> None:
     print(f"[error] {detail}")
 
 
+def windows_state_command(adapter: str) -> list[str]:
+    """Return the read-only command that reports ``adapter``'s IPv4 state as JSON."""
+    name = adapter.replace("'", "''")
+    script = (
+        f"$i = Get-NetIPInterface -InterfaceAlias '{name}' -AddressFamily IPv4 -ErrorAction Stop; "
+        f"$a = @(Get-NetIPAddress -InterfaceAlias '{name}' -AddressFamily IPv4 "
+        "-ErrorAction SilentlyContinue | ForEach-Object { $_.IPAddress }); "
+        "ConvertTo-Json -Compress @{dhcp = \"$($i.Dhcp)\"; addresses = $a}"
+    )
+    return ["powershell", "-NoProfile", "-NonInteractive", "-Command", script]
+
+
+def _windows_state(
+    adapter: str,
+    runner: Callable[..., subprocess.CompletedProcess],
+) -> tuple[bool, list[str]] | None:
+    """Return ``(dhcp, addresses)`` for ``adapter``, or None if it was not found."""
+    proc = _run(windows_state_command(adapter), runner=runner)
+    if proc.returncode != 0:
+        return None
+    try:
+        state = json.loads(proc.stdout)
+    except ValueError:
+        return None
+    addresses = state.get("addresses") or []
+    if isinstance(addresses, str):
+        addresses = [addresses]
+    return state.get("dhcp") == "Enabled", [str(a) for a in addresses]
+
+
 def setup_windows(
     config: PowerSwitchConfig,
     *,
     dry_run: bool = False,
     runner: Callable[..., subprocess.CompletedProcess] = subprocess.run,
 ) -> bool:
-    """Persist the dedicated PowerSwitch IPv4 address on Windows."""
-    inspect = _run(
-        ["netsh", "interface", "show", "interface", f"name={config.adapter}"],
-        runner=runner,
-    )
-    if inspect.returncode != 0:
+    """Persist the PowerSwitch IPv4 address on Windows, keeping the adapter's others."""
+    state = _windows_state(config.adapter, runner)
+    if state is None:
         print(f"[error] Network adapter {config.adapter!r} was not found.")
         print("        Update ~/.formslab/usbmap.json -> PS.adapter with the dedicated adapter name.")
         return False
+    dhcp, addresses = state
 
-    command = windows_setup_command(config)
-    print(
-        f"[setup] {config.label}: {config.adapter} -> "
-        f"{config.local_ip}/{config.prefix_length} (persistent, no gateway)"
-    )
+    if config.local_ip in addresses:
+        print(f"[ok] {config.adapter} already has {config.local_ip}; nothing to change.")
+        return True
+
+    command = windows_setup_command(config, dhcp=dhcp)
+    if dhcp:
+        print(
+            f"[setup] {config.label}: {config.adapter} -> "
+            f"{config.local_ip}/{config.prefix_length} (persistent, no gateway; DHCP off)"
+        )
+    else:
+        kept = ", ".join(addresses) or "none"
+        print(
+            f"[setup] {config.label}: {config.adapter} + "
+            f"{config.local_ip}/{config.prefix_length} (persistent, no gateway; keeps {kept})"
+        )
     if dry_run:
         print("[dry-run] " + subprocess.list2cmdline(command))
         return True

@@ -6,12 +6,12 @@ the live `usbmap.json` (`~/.formslab/usbmap.json`); outlet control and network s
 `src/formslab/devices/powerswitch/`; run it directly with
 `python -m formslab.devices.powerswitch status`.
 
-## Windows lab configuration
+## On the network
 
-The current new-lab record assigns the dedicated adapter `Ethernet 2` the
-static address `192.168.0.50/24`. The PowerSwitch is expected at
-`192.168.0.100`. The adapter has no default gateway, so it cannot take over the
-machine's normal Wi-Fi or Tailscale route.
+The PowerSwitch is at `192.168.0.100` (hardware address `7C-E1-FF-04-8E-54`),
+on the bench switch with the chamber controller. The computer reaches it from
+`192.168.0.50/24` on its adapter `Ethernet 2`, beside the chamber's
+`10.1.2.50/24`. The whole layout is in [network](network.md).
 
 From labcli:
 
@@ -23,11 +23,16 @@ From labcli:
 --status
 ```
 
-Windows network changes require an elevated terminal. Right-click the labcli
-CLI launcher and choose **Run as administrator** before `--setup`. The setup is
-persistent across reboots. A disconnected adapter can retain the configured
-address while reporting no usable link; connect and power the switch before
-expecting `--status` to succeed.
+`--setup` adds `192.168.0.50` to the adapter and keeps its other addresses, so
+the chamber's stays. With the address already there it changes nothing; only an
+adapter on DHCP, which holds no fixed address to lose, is switched to static.
+The address is persistent, with no gateway. `--setup --dry-run` shows the
+change without making it.
+
+Adding the address needs an elevated terminal: right-click the labcli CLI
+launcher and choose **Run as administrator** before `--setup`. A disconnected
+adapter can retain the configured address while reporting no usable link;
+connect and power the switch before expecting `--status` to succeed.
 
 ## Outlet control
 

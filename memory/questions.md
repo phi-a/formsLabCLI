@@ -79,6 +79,11 @@ Only on the HMI; it cannot be read over ASCII. If it changes, change
 The installed VNC session is view-only, probably a view-only password in LACO's
 application. Commands over ASCII are not affected. ([hvc3500](instruments/hvc3500.md))
 
+**The chamber or the PowerSwitch does not answer.**
+Both sit on one switch, on two subnets; the computer's `Ethernet 2` needs
+`10.1.2.50` and `192.168.0.50`. `Get-NetIPAddress -InterfaceAlias 'Ethernet 2'`
+shows which it has. ([network](instruments/network.md))
+
 **Which thermocouple is which?**
 Platen control T2, shroud control T3, the HMI's "t2" is T4, over-temperature
 channels T0 and T1, T5 to T13 live and unnamed. T14 and T15 read about 3 °C warm;

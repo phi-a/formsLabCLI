@@ -134,6 +134,11 @@ architecture are in [project](project.md); the GUI's plan is in [gui-design](des
   9). Decided: plain relative markdown links, so it reads the same on GitHub;
   code comments point into `memory/`. The GEVS note joined it as [gevs](use/gevs.md)
   when the two branches merged.
+- **2026-10-29: the bench network.** The PowerSwitch and the chamber now share a
+  Netgear switch on one cable to the computer, on two subnets, so `Ethernet 2`
+  holds `192.168.0.50` and `10.1.2.50`; both checked ([network](instruments/network.md)).
+  Fixed: the PowerSwitch's `--setup` replaced every address on the adapter, which
+  would have cut off the chamber; it now adds its own and keeps the rest.
 
 ## Done
 
