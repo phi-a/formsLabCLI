@@ -93,6 +93,11 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .tvac-tools select { width: auto; }
 #tvac-svg { width: 100%; max-width: 860px; height: auto; display: block; margin: 0 auto; border: 1px solid var(--line);
             border-radius: 8px; background: var(--bg); }
+/* Control: the run and the command box under the drawing, as wide as it and centred with it;
+   the host log folded beneath them */
+.control { max-width: 860px; margin: 14px auto 0; }
+#log-box summary { cursor: pointer; margin: 14px 0 6px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+#log-box summary:hover { color: var(--fg); }
 .sensors { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 4px 14px; font-size: 13px; }
 .sensors div { display: flex; justify-content: space-between; border-bottom: 1px solid var(--grid); padding: 2px 0; }
 .sensors span:first-child { color: var(--muted); }

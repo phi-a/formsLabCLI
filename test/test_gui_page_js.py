@@ -1,5 +1,5 @@
-"""The Status page's script (static/app.js), run under Node against a stand-in
-document: logged in, one status poll, and the page is filled. `node --check` finds
+"""The page's script (static/app.js), run under Node against a stand-in document:
+logged in, one status poll, and the Control and Status views are filled. `node --check` finds
 a syntax slip; this finds a reference slip, which the poll loop swallows (it tries
 again next second) and which leaves the page blank with nothing in the console
 either. Skipped where Node is not installed: the GUI itself needs only a browser."""
@@ -12,7 +12,7 @@ import pytest
 
 import formslab.gui
 
-APP = Path(formslab.gui.__file__).parent / "static" / "app.js"
+STATIC = Path(formslab.gui.__file__).parent / "static"
 NODE = shutil.which("node")
 pytestmark = pytest.mark.skipif(NODE is None, reason="node is not installed")
 
@@ -60,17 +60,19 @@ class El {
   addEventListener() {}
   querySelector() { return new El("x"); }
   querySelectorAll() { return []; }
-  focus() {} select() {} getContext() { return {}; }
+  focus() {} select() {} getContext() { return {}; } prepend() {}
 }
 const byId = new Map();
 globalThis.window = globalThis;
 globalThis.addEventListener = () => {};
 globalThis.document = {
-  hidden: false, title: "", body: new El("body"),
+  hidden: false, title: "", body: new El("body"), documentElement: new El("html"),
   querySelector: (sel) => { if (!byId.has(sel)) byId.set(sel, new El(sel)); return byId.get(sel); },
-  querySelectorAll: () => [], createElement: (tag) => new El(tag), addEventListener() {},
+  querySelectorAll: () => [], createElement: (tag) => new El(tag), createElementNS: (ns, tag) => new El(tag),
+  addEventListener() {},
 };
-globalThis.location = { hash: "" };
+globalThis.getComputedStyle = () => ({ getPropertyValue: () => "" });
+globalThis.location = { hash: %r };
 globalThis.localStorage = { getItem: () => null, setItem() {} };
 globalThis.confirm = () => false;
 const ANSWERS = %s;
@@ -84,6 +86,7 @@ globalThis.fetch = async (path) => {
 process.on("uncaughtException", (e) => { console.error(e.stack); process.exit(2); });
 process.on("unhandledRejection", (e) => { console.error(e && e.stack || e); process.exit(2); });
 
+globalThis.TvacView = require(%r);             // the chamber drawing, as the page has it
 require(%r);
 
 setTimeout(() => {
@@ -91,8 +94,10 @@ setTimeout(() => {
   const text = (e) => e.textContent + e.children.map(text).join("");
   console.log(JSON.stringify({
     asked,
-    app: !$("#app").hidden, login: $("#login").hidden,
-    banner: $("#run-banner").textContent,
+    app: !$("#app").hidden, login: $("#login").hidden, view: location.hash,
+    views: Object.fromEntries(["control", "status", "plans", "plots", "hardware"].map((v) => [v, !$("#view-" + v).hidden])),
+    banner: $("#run-banner").textContent, chamber: $("#tvac-banner").textContent,
+    drawn: $("#tvac-svg").children.length, sensors: $("#tvac-sensors").children.length,
     plans: $("#plan").children.map((o) => [o.attrs.value, o.textContent, o.disabled]),
     cards: $("#cards").children.map(text),
     log: $("#log").textContent,
@@ -104,20 +109,38 @@ setTimeout(() => {
 """
 
 
-@pytest.fixture(scope="module")
-def page():
+def load(hash_=""):
+    """The page opened at #<hash_> (none: the first view), after its first poll."""
     answers = {"/api/info": {"demo": False}, "/api/me": {"user": "tester", "demo": False},
                "/api/status": STATUS, "/api/plans": {"plans": PLANS}}
-    script = SCRIPT % (json.dumps(answers), str(APP))
+    script = SCRIPT % ("#" + hash_ if hash_ else "", json.dumps(answers), str(STATIC / "tvac.js"), str(STATIC / "app.js"))
     out = subprocess.run([NODE, "-e", script], capture_output=True, text=True, timeout=60)
     assert out.returncode == 0, out.stderr
     return json.loads(out.stdout)
 
 
-def test_the_page_logs_in_and_polls_the_status(page):
+@pytest.fixture(scope="module")
+def page():
+    return load()
+
+
+@pytest.fixture(scope="module")
+def status_page():
+    return load("status")
+
+
+def test_the_page_logs_in_opens_control_and_polls_the_status(page):
+    """Control is the first view: the chamber, and under it the run and the command box."""
     assert page["app"] and page["login"]
+    assert page["view"] == "control"
+    assert page["views"] == {"control": True, "status": False, "plans": False, "plots": False, "hardware": False}
     assert any(p.startswith("/api/status") for p in page["asked"])
     assert page["banner"].startswith("No run is going. Last run: plan DARKNESS.")
+
+
+def test_the_chamber_is_drawn_on_control(page):
+    assert page["chamber"].startswith("Chamber live") and "No run is going: formsLAB is only reading it" in page["chamber"]
+    assert page["drawn"] > 0 and page["sensors"] == 0                    # no thermocouples in this status
 
 
 def test_the_start_list_holds_every_plan_that_can_be_run_and_nothing_else(page):
@@ -134,11 +157,17 @@ def test_the_start_list_holds_every_plan_that_can_be_run_and_nothing_else(page):
     assert [disabled for _, _, disabled in page["plans"]] == [False, False, True]
 
 
-def test_every_instrument_has_a_card_and_the_log_is_shown(page):
-    hvc, psu1 = page["cards"]                                 # in the page's order: the chamber first
+def test_the_log_is_under_the_command_box_folded(page):
+    assert page["log"] == "12:00:00 host: run DARKNESS ended\n12:00:01 host: bye"
+    assert [p for p in page["asked"] if p.startswith("/api/status")] == ["/api/status?log=1"]   # folded: one line asked for
+
+
+def test_status_is_one_tile_per_instrument(status_page):
+    assert status_page["view"] == "status" and status_page["views"]["status"] and not status_page["views"]["control"]
+    hvc, psu1 = status_page["cards"]                          # in the page's order: the chamber first
     assert hvc.startswith("hvc") and "live" in hvc and "Valves" in hvc and "Closed" in hvc
     assert psu1.startswith("psu1") and "no run is going" in psu1 and "CH1 cooler" in psu1
-    assert page["log"] == "12:00:00 host: run DARKNESS ended\n12:00:01 host: bye"
+    assert not status_page["plans"]                                       # the Start list is Control's
 
 
 def test_with_no_run_going_start_is_offered_and_the_run_buttons_are_not(page):

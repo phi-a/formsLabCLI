@@ -38,21 +38,23 @@ takes minutes here, apart from its holds.
 
 ### 1. Look
 
-On **Status**, choose `tvac` in the Start list and press *Start run*. It runs until
-you end it. Then:
+On **Control**, choose `tvac` in the Start list under the chamber and press *Start
+run*. It runs until you end it. Then:
 
-- Find the chamber's card. Its readings are grouped: Valves, Pumps, Zones. What is
-  the Chamber pressure? Which valves are open?
-- Open **Chamber**. It is the controller's own Manual screen, live. Green is open or
-  on, red is closed or off. Switch the temperatures to Kelvin and back.
-- End the run with *End run* in the header, then look at **Chamber** again. It is
-  greyed, with the reason. A greyed number is the last one seen, not a reading.
+- Look at the chamber above the controls. It is the controller's own Manual screen,
+  live. Green is open or on, red is closed or off. Switch the temperatures to Kelvin
+  and back.
+- Open **Status** and find the chamber's tile. Its readings are grouped: Valves,
+  Pumps, Zones. What is the Chamber pressure? Which valves are open?
+- End the run with *End run* in the header, then look at **Control** again. The
+  chamber is greyed, with the reason. A greyed number is the last one seen, not a
+  reading.
 
 You can say what *live* means and why a greyed number is not to be trusted.
 
 ### 2. Command
 
-Start `tvac` again. In the command box on **Status**:
+Start `tvac` again. In the command box on **Control**, under the chamber:
 
 1. `hvc pump on`. Wait 10 seconds: the controller wants the Vacuum pump running that
    long before the Vacuum valve may open.
@@ -83,7 +85,7 @@ starts.
 
 ### 4. Run a test
 
-On **Status**, choose `ambient_to_rest` and *Start run*. Watch **Chamber**: the
+On **Control**, choose `ambient_to_rest` and *Start run*. Watch the chamber: the
 Vacuum pump starts, 15 seconds later the Vacuum valve opens, the pressure falls, and
 the test seals the chamber. Press *End run* only if something looks wrong.
 
@@ -110,7 +112,7 @@ vent within 60 min
 
 Save it as `my_first_test`. The step help card shows each prerequisite as ✓ (the
 plan establishes it), ✗ (the plan breaks it) or ? (checked when the step runs).
-Start it from **Status**.
+Start it from **Control**.
 
 Now break it on purpose. Add `hvc rough open` and then `hvc vent open` before the
 `vent` step. The second is red, and says the Vacuum valve must be closed and that
@@ -155,7 +157,7 @@ the chamber at air with every pump, zone and supply off, whatever the last test 
 ## For the instructor
 
 - Run a student's `my_first_test` yourself the first time and read the log
-  (**Status**, the end of the host log) with them.
+  (**Control**, *Host log* under the command box) with them.
 - A student who is stuck on a red step should read the sentence under it before
   asking. It names the part, the state it needs and the line that changed it.
 - The shipped tests are the bench's. Students use *Save as...* to change one, never

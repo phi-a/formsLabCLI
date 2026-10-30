@@ -66,8 +66,9 @@
   // --- login -------------------------------------------------------------------------
 
   // One status poll for every tab: it keeps the header's run buttons right, and draws
-  // the Status or Chamber view when that is open (every second there, every two
-  // elsewhere). Each call starts a new loop and retires the one before it (`gen`),
+  // the Control or Status view when that is open (every second there, every two
+  // elsewhere). The log's lines are asked for only where they are shown: on Control,
+  // with the log unfolded. Each call starts a new loop and retires the one before it (`gen`),
   // so a tab switch while a request is out never leaves two loops running.
   let pollGen = 0;
   function poll() {
@@ -77,15 +78,16 @@
       const view = state.view;
       try {
         if (!document.hidden) {
-          const s = await api("/api/status?log=" + (view === "status" ? 40 : 1));
+          const lines = view === "control" && $("#log-box").open ? 40 : 1;
+          const s = await api("/api/status?log=" + lines);
           if (gen !== pollGen) return;                     // retired while it was out
           renderHeader(s);
           renderEnded(s);
+          if (view === "control") { renderControl(s); renderTvac(s); }
           if (view === "status") renderStatus(s);
-          if (view === "tvac") renderTvac(s);
         }
       } catch (e) { /* the login screen takes over on a 401; otherwise try again */ }
-      if (gen === pollGen) state.timer = setTimeout(tick, view === "status" || view === "tvac" ? 1000 : 2000);
+      if (gen === pollGen) state.timer = setTimeout(tick, view === "control" || view === "status" ? 1000 : 2000);
     })();
   }
 
@@ -104,7 +106,7 @@
     $("#app").hidden = false;
     $("#who").textContent = user;
     const wanted = location.hash.slice(1);
-    show(["plots", "plans", "tvac", "hardware"].includes(wanted) ? wanted : "status");
+    show(["status", "plans", "plots", "hardware"].includes(wanted) ? wanted : "control");
   }
 
   $("#login-form").addEventListener("submit", async (ev) => {
@@ -129,13 +131,13 @@
     state.view = view;
     location.hash = view;
     for (const b of document.querySelectorAll("#nav button")) b.classList.toggle("active", b.dataset.view === view);
+    $("#view-control").hidden = view !== "control";
     $("#view-status").hidden = view !== "status";
     $("#view-plans").hidden = view !== "plans";
-    $("#view-tvac").hidden = view !== "tvac";
     $("#view-plots").hidden = view !== "plots";
     $("#view-hardware").hidden = view !== "hardware";
     stopTimers();
-    if (view === "status") state.plansLoaded = false;      // plans may have been saved since
+    if (view === "control") state.plansLoaded = false;     // plans may have been saved since
     if (view === "plots") loadRuns();
     if (view === "hardware") loadHardware();
     if (view === "plans" && window.App.editor) window.App.editor.open();
@@ -162,7 +164,9 @@
     return String(v);
   }
 
-  function renderStatus(s) {
+  // The run, under the chamber drawing: whether one is going, Start, the command
+  // box's note, and the host log, folded until it is wanted.
+  function renderControl(s) {
     const banner = $("#run-banner");
     banner.className = "banner " + (s.host ? "running" : "stopped");
     banner.textContent = s.host
@@ -170,7 +174,14 @@
       : "No run is going." + (s.last_run ? ` Last run: plan ${s.last_run.plan}.` : "");
     if (s.cast_unreadable) banner.textContent += " The CAST file could not be read just now.";
     renderControls(s);
+    const log = $("#log");
+    const atEnd = log.scrollTop + log.clientHeight >= log.scrollHeight - 8;
+    log.textContent = s.log.join("\n") || "(no host log yet)";
+    if (atEnd) log.scrollTop = log.scrollHeight;
+  }
 
+  // One tile per instrument, its readings in their owner's groups.
+  function renderStatus(s) {
     const cards = $("#cards");
     cards.replaceChildren();
     const labels = Object.keys(s.blocks);
@@ -203,10 +214,6 @@
       }
       cards.append(card);
     }
-    const log = $("#log");
-    const atEnd = log.scrollTop + log.clientHeight >= log.scrollHeight - 8;
-    log.textContent = s.log.join("\n") || "(no host log yet)";
-    if (atEnd) log.scrollTop = log.scrollHeight;
   }
 
   // --- control ---------------------------------------------------------------------
@@ -421,6 +428,7 @@
   }
 
   $("#tvac-unit").addEventListener("change", poll);
+  $("#log-box").addEventListener("toggle", () => { if ($("#log-box").open) poll(); });   // its lines now, not at the next poll
 
   // --- hardware ----------------------------------------------------------------------
 

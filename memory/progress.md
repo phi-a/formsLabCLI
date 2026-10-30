@@ -7,6 +7,12 @@ architecture are in [project](project.md); the GUI's plan is in [gui-design](des
 
 ## Now (2026-10-05)
 
+- **The GUI's first tab is Control (2026-10-30):** the chamber drawing, and under it, as
+  wide as it, the run and the command box, the host log folded beneath. Status is the
+  instruments' tiles alone. Decided so a command is sent with the picture it changes
+  in view ([gui](use/gui.md), [gui-design](design/gui-design.md)). Before it, a slip in
+  the page's script had left Status blank with nothing in the console; the page is now
+  driven under Node in `test/test_gui_page_js.py`.
 - **On main:** everything through PR #12, merged 2026-10-15 (the plans renamed and
   sorted, the cryocooler by hand, End for a killed host, supply protection read
   back). **Next:** the End bench checklist ([end](design/end.md), section 9), on the bench

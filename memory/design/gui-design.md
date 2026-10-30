@@ -14,9 +14,9 @@ night's run from another room. The GUI gives them the same lab as the console, o
 one web page:
 
 - **Plans:** write and check a test without knowing the grammar by heart.
-- **Status and control:** start, pause and end runs; send a command; see each
-  instrument's state and whether it is current.
-- **Chamber:** the chamber as its controller's own screen draws it, live.
+- **Control:** the chamber as its controller's own screen draws it, live, and under
+  it the run: start, pause and end; send a command; the host log.
+- **Status:** each instrument's state and whether it is current.
 - **Plots:** what a run recorded, while it runs or after.
 - **Space environment:** the orbit a test is meant to reproduce, and in time the
   satellite's background temperatures from it (section 4).
@@ -30,12 +30,12 @@ new way for the bench to go wrong.
    what fits; a step that breaks a prerequisite is red before anything runs. Repeated
    steps become a block; a cycle becomes a loop; an orbit file says which orbit the
    test follows.
-2. **Start it from Status.** A plan with problems is in the Start list, greyed, with
+2. **Start it from Control.** A plan with problems is in the Start list, greyed, with
    the reason; only one that can run can be started. The run is
    the same sequence host the console starts, in its own process.
-3. **Watch it in Chamber and Status.** Every value says whether it is current. A
-   command sent from the box goes through the same checks as a plan step and says
-   what became of it.
+3. **Watch it in Control and Status.** Every value says whether it is current. A
+   command sent from the box under the chamber goes through the same checks as a
+   plan step and says what became of it.
 4. **Read it in Plots**, live or afterwards, from the file the recorder wrote.
 5. **End it from any tab.** End asks the host to stop, so each instrument's shutdown
    runs.
@@ -76,7 +76,7 @@ seen and ended from the others.
    (no run, owner not loaded, chamber not connected). The GUI never shows a stale
    number as current.
 6. **Changes go through commands.** The viewers only read. Valves and pumps change on
-   the Status tab, through the same commands and prerequisite checks as the console,
+   the Control tab, through the same commands and prerequisite checks as the console,
    so a refusal reads the same everywhere.
 7. **The grammar is visible.** Every step is drawn in four shapes (instrument block,
    keyword pill, value box, free text) in its instrument's colour, so a plan can be
@@ -87,8 +87,8 @@ seen and ended from the others.
 ```
  browser (any machine)                    bench machine
  ┌──────────────────┐   HTTP + login     ┌───────────────────────────────┐
- │ Status / control │ ◀──── JSON ──────▶ │ gui server (stdlib)           │
- │ Chamber          │   polls ~1 s       │   api.py: thin wrappers       │
+ │ Control          │ ◀──── JSON ──────▶ │ gui server (stdlib)           │
+ │ Status           │   polls ~1 s       │   api.py: thin wrappers       │
  │ Plans (+ orbits) │                    └───┬───────────┬───────────────┘
  │ Plots            │                        │ reads     │ writes
  └──────────────────┘            CAST status │           │ CAST commands, ctrl,
@@ -116,7 +116,7 @@ seen and ended from the others.
 | `gui/auth.py` | The one login (PBKDF2) and in-memory sessions |
 | `gui/plans.py` | Plan, block and orbit files: one list, one set of names, save, trash, Edit and Ship |
 | `gui/runs.py` | The recorder's runs: list them, read a run's series |
-| `static/app.js` | Tabs, status and control, plots |
+| `static/app.js` | Tabs, control and status, plots |
 | `static/editor.js` | The plan editor and the orbit's live panel |
 | `static/plantext.js` | Plan text as lines: header lines, loops, missing orbit elements (pure, tested under Node) |
 | `static/info.js` | The help card for a command or step |
@@ -157,17 +157,15 @@ in use:
 
 A draft with mistakes can be saved, but it is listed as "cannot run" until it is fixed.
 
-### 2. Status and control
-
-Run state, the Start list, Pause and Resume, End in the header of every tab, a command
-box with the instruments' own completion and a help card, and one card per instrument
-with its readings grouped by part (Valves, Pumps, Zones, ...).
-
-### 3. Chamber
+### 2. Control
 
 The controller's Manual screen redrawn live, so operators see the picture they already
-know ([laco-chamber](../instruments/laco-chamber.md) has the screenshot). What each item is in our
-software:
+know ([laco-chamber](../instruments/laco-chamber.md) has the screenshot), and under it,
+as wide as the drawing, the run: its state, the Start list, a command box with the
+instruments' own completion and a help card, and the host log folded beneath (decided
+2026-10-30: the chamber and the box that changes it on one page, the log out of the way
+until it is wanted; Pause, Resume and End stay in the header of every tab). What each
+item of the drawing is in our software:
 
 | On the screen | Our name / source | Read? |
 |---|---|---|
@@ -186,6 +184,11 @@ software:
 Finding where the controller exposes the three unread values is a commissioning task,
 not GUI work. The HMI's icon states (red X against pale pink) still need decoding from
 live observation.
+
+### 3. Status
+
+One tile per instrument with its readings grouped by part (Valves, Pumps, Zones, ...),
+each saying whether it is live and, if not, why.
 
 ### 4. Space environment
 
@@ -234,11 +237,11 @@ guessed.
 Measured 2026-10-07 (thermal_cycle.plan): a plan check 42 ms, one row's choices 10 ms,
 the plans list 270 ms, a status poll 4 ms. What keeps it so: the bench profile is
 parsed once per change of the file; the editor asks for every row's choices in one
-request (`/api/plan/lines`); one status poll serves every tab (every second on Status
-and Chamber, every two elsewhere) and a tab switch retires the old loop; follow-live
+request (`/api/plan/lines`); one status poll serves every tab (every second on Control
+and Status, every two elsewhere) and a tab switch retires the old loop; follow-live
 and the orbit panel wait for each reply before the next. `test/test_gui_speed.py`
-guards the first two. Left as they are, cheap enough today: the Status cards and the
-Chamber drawing are rebuilt each second; follow-live re-reads the whole run as each row is due
+guards the first two. Left as they are, cheap enough today: the Status tiles and the
+Control drawing are rebuilt each second; follow-live re-reads the whole run as each row is due
 (an incremental read when runs grow long); the plans list checks every file each time
 it is asked for (on opening a view or after a save).
 

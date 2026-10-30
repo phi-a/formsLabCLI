@@ -7,7 +7,7 @@ A simulated HVC-3500 chamber, a throwaway config folder and a login (user
 Ctrl+C. The page says DEMO on its login screen and in an orange bar, and it uses
 port 8088, so it is not mistaken for `labcli gui` (8080). Your own ~/.formslab, your login, your plans and your instruments are
 not used. Start a plan (`tvac` holds until you end it; `pump_demo` runs and
-finishes), send `hvc vent open`, watch the Chamber tab, build a plan on the
+finishes), send `hvc vent open`, watch the chamber on Control, build a plan on the
 Plans tab.
 """
 from __future__ import annotations

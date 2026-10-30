@@ -46,8 +46,19 @@ last 8 hours and end when the server restarts. Logins and logouts are noted in
 
 ## Screens
 
-**Status and control.** Whether a run is going (plan, since when, where its data
-goes), one card per instrument, and the end of the host log. From here:
+**Control.** The chamber first, then the run under it, so a command is sent with the
+picture it changes in view. The drawing is the HVC-3500's own Manual screen, redrawn live: the chamber with
+its pressure and the three zone blocks (platen, shroud, t2) with temperature
+and setpoint, the vent, fill, gate, vacuum (rough) and foreline valves, the
+vacuum and turbo pumps, in the symbols used across the GUI (a valve is a
+bowtie, a pump a circle with a triangle), green when open or on, red when closed
+or off, with the state written beside it, and the fault banner. Temperatures can
+be shown in Celsius or Kelvin. It follows the same rule as the Status tiles:
+when the chamber is not connected, or not read recently, the drawing is greyed
+and says why, because those are the last values seen, not current readings.
+
+Under the drawing, as wide as it: whether a run is going (plan, since when, where its
+data goes), then the controls:
 
 - *Start run* starts a plan from the list (the plans `labcli plans` shows).
 - *Pause* and *Resume* are in the header on every tab while a run is going: they
@@ -81,8 +92,15 @@ goes), one card per instrument, and the end of the host log. From here:
 - Under the box, a help card for what you are typing: what the command does, what
   each input means, and what it needs first, each marked from the chamber's last
   report (✓ true now, ✗ not, ? not known).
+- *Host log*, under the command box, unfolds the end of the host's log. Folded, which
+  is how it starts, the page asks the server for one line a second; unfolded, forty.
+
+The other thermocouples are listed below the controls.
 
 Every action is noted with the user name in `~/.formslab/.run/gui.log`.
+
+**Status.** One tile per instrument, and nothing else: what each one reports, and
+whether it is current.
 
 Each card shows its readings in groups, by what they are: for the chamber, Valves, Pumps,
 Zones, Thermocouples, Pressure settings; for a supply, one group per channel, named
@@ -94,22 +112,12 @@ it recently (is its rScript in the plan's `load` line?), or the chamber says it
 is not connected. A block that is not live is greyed with its age; its numbers
 are the last ones seen, not current readings.
 
-**Chamber.** The HVC-3500's own Manual screen, redrawn live: the chamber with
-its pressure and the three zone blocks (platen, shroud, t2) with temperature
-and setpoint, the vent, fill, gate, vacuum (rough) and foreline valves, the
-vacuum and turbo pumps, in the symbols used across the GUI (a valve is a
-bowtie, a pump a circle with a triangle), green when open or on, red when closed
-or off, with the state written beside it, the fault banner, and every other thermocouple below. Temperatures can
-be shown in Celsius or Kelvin. It follows the same rule as the Status cards:
-when the chamber is not connected, or not read recently, the drawing is greyed
-and says why, because those are the last values seen, not current readings.
-
 ## Between runs
 
 The chamber stays live with no run going, so it can be watched after End: the
 zones warming or cooling, the vacuum holding. The formsLAB server reads it every
 5 s (`poll_interval_s`) and publishes it as rLACO would (`formslab.host.monitor`);
-the Chamber banner adds "No run is going: formsLAB is only reading it". It sends
+the chamber's banner on Control adds "No run is going: formsLAB is only reading it". It sends
 no commands: those still need a run.
 
 The controller takes one client at a time, so the monitor gives it up to a run.
@@ -211,7 +219,7 @@ the same way.
 else, and a name already taken by any plan is refused. Saving writes the file
 in one step and refuses to overwrite a plan that changed on disk since you
 opened it. A draft with mistakes can be saved; it is listed as "cannot run"
-until they are fixed. A saved plan appears in the Start list on the Status tab. *Delete* (your own plans only, and not
+until they are fixed. A saved plan appears in the Start list on the Control tab. *Delete* (your own plans only, and not
 the plan that is running) moves the file to `~/.formslab/plans/.trash`, where it
 is kept with the time it was deleted; move it back to restore it.
 

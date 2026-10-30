@@ -68,7 +68,7 @@ input's unit field, not its name. Names are `\w+`, at least three letters.
 
 ### Names of parts
 
-One name per part, everywhere: the help, the status cards, the Chamber view, the
+One name per part, everywhere: the help, the Status tiles, the chamber drawing, the
 rules. The chamber's parts use the names on its own screen (the HMI):
 
 | command word | name |
