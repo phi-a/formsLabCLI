@@ -5,6 +5,7 @@ from dataclasses import replace
 
 import pytest
 
+from formslab import lab
 from formslab import config, rscripts
 from formslab.devices.hvc3500.simulator import Simulator
 from formslab.host import sequence
@@ -17,7 +18,7 @@ from formslab.sequence.plan import ENV, describe_step, needed_rscripts, review
 
 def test_the_editor_lists_reads_and_saves_blocks_but_never_runs_them():
     from formslab.gui import api, plans
-    listed = {p["name"]: p for p in api.list_plans()}
+    listed = {p["name"]: p for p in lab.list_plans()}
     assert listed["pumpdown"]["kind"] == "block" and "error" not in listed["pumpdown"]
     r = plans.read("pumpdown")
     assert r["kind"] == "block" and r["errors"] == [] and r["warnings"][0]["line"] == 16
@@ -225,7 +226,7 @@ def test_a_block_that_waits_on_an_orbit_leaves_choosing_it_to_its_caller(name):
     text = (Path(__file__).resolve().parent / "fixtures" / "plans" / f"{name}.block").read_text(encoding="utf-8")
     errors, warnings = review_block(text)
     assert errors == [] and "The plan that calls this block must do it first" in warnings[0][1]
-    assert {p["name"]: p for p in api.list_plans()}[name].get("error") is None
+    assert {p["name"]: p for p in lab.list_plans()}[name].get("error") is None
 
 
 # --- units and thermocouples in a call -------------------------------------------------------

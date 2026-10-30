@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from formslab import lab
 from formslab.gui import api, plans
 from formslab.orbit.file import (
     GROUPS, ORDER, OrbitError, describe, discover, line_options, parse, review, tokens,
@@ -129,7 +130,7 @@ def test_the_help_card_says_what_the_element_is():
 # --- beside the plans -------------------------------------------------------------------------
 
 def test_an_orbit_is_listed_for_the_editor_but_never_as_a_plan_to_run():
-    listing = {p["name"]: p for p in api.list_plans()}
+    listing = {p["name"]: p for p in lab.list_plans()}
     assert all(listing[n]["kind"] == "orbit" and listing[n]["editable"] is False for n in SHIPPED)
     assert listing["tvac"]["kind"] == "plan"
     assert not any(p.stem in SHIPPED for p in discover_plans())
@@ -146,7 +147,7 @@ def test_an_orbit_is_read_and_saved_as_an_orbit():
     assert (user_plans_dir() / "my_orbit.orbit").read_text(encoding="utf-8") == GOOD
     again = plans.save("my_orbit", GOOD.replace("nu 10", "nu 20"), saved["hash"], as_new=False)
     assert again["kind"] == "orbit"
-    assert {p["name"]: p["kind"] for p in api.list_plans()}["my_orbit"] == "orbit"
+    assert {p["name"]: p["kind"] for p in lab.list_plans()}["my_orbit"] == "orbit"
 
 
 def test_a_name_is_taken_by_a_plan_or_an_orbit_alike():
@@ -167,7 +168,7 @@ def test_deleting_your_orbit_keeps_it_in_the_trash_as_an_orbit():
 
 def test_an_orbit_with_mistakes_is_listed_as_not_whole():
     plans.save("half", "a 6928 km\n", None, as_new=True, kind="orbit")
-    assert {p["name"]: p.get("error") for p in api.list_plans()}["half"].startswith("line 0: the orbit has no")
+    assert {p["name"]: p.get("error") for p in lab.list_plans()}["half"].startswith("line 0: the orbit has no")
 
 
 # --- over HTTP --------------------------------------------------------------------------------

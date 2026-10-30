@@ -2,6 +2,7 @@
 rLACO declares it, carried to the page on tokens, options and help cards."""
 import pytest
 
+from formslab import lab
 from formslab.gui import api
 from formslab.rscripts import cast
 from formslab.sequence.plan import describe_step, line_options, tokens
@@ -33,9 +34,9 @@ def test_dropdown_options_after_the_label_each_carry_their_own_part():
 
 
 def test_command_box_hints_carry_parts():
-    first = {o["text"]: o["part"] for o in api.complete(["hvc"])}
+    first = {o["text"]: o["part"] for o in lab.complete(["hvc"])}
     assert first["rough"] == "valve" and first["pump"] == "pump" and first["start"] is None
-    assert [o["part"] for o in api.complete(["hvc", "turbo"])] == ["pump", "pump"]
+    assert [o["part"] for o in lab.complete(["hvc", "turbo"])] == ["pump", "pump"]
 
 
 def test_a_help_card_knows_its_part_and_its_words():
