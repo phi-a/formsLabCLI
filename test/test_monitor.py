@@ -8,7 +8,7 @@ import time
 import pytest
 
 from formslab import config, lab, rscripts
-from formslab.console.cast.castutils import ReadStatus
+from formslab.state.castfile import ReadStatus
 from formslab.devices.hvc3500.simulator import Simulator
 from formslab.host import monitor
 from formslab.host import sequence as host

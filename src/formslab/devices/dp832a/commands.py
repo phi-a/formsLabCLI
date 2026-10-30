@@ -4,7 +4,7 @@ from __future__ import annotations
 import time
 from typing import Any, Dict, Optional
 
-from formslab.console.cast.castutils import ReadStatus, WriteCommand
+from formslab.state.castfile import ReadStatus, WriteCommand
 
 
 def _channel_key(channel: int | str) -> str:

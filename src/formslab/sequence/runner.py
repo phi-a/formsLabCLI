@@ -31,7 +31,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Optional
 
 from formslab import rscripts
-from formslab.console.cast.castutils import (
+from formslab.state.castfile import (
     RESULT_S, CommandPending, CommandState, WriteCommand, send_request,
 )
 from formslab.sequence.events import (

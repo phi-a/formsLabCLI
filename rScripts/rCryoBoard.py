@@ -10,7 +10,7 @@
 import os
 import time
 
-from formslab.console.cast.castutils import ReportResult, TakeCommand, UpdateStatus
+from formslab.state.castfile import ReportResult, TakeCommand, UpdateStatus
 from formslab.rscripts import RScriptControl
 from formslab.devices.cryocooler.owner import _init_cryo_board, _init_psu2, _shutdown_cryo_subsystem
 from formslab.devices.cryocooler.config import (

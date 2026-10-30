@@ -5,13 +5,13 @@ import threading
 from contextlib import contextmanager
 from typing import Dict, Iterable, Optional
 
-from formslab.console.safefile import atomic_write_text, file_lock, read_json
+from formslab.state.safefile import atomic_write_text, file_lock, read_json
 from formslab.state import build_default_ctrl_commands, ctrl_state_path
 
 # The ctrl command table is shared by the console, the host and the web GUI,
 # which are separate processes: every change is a read-modify-write under a
 # thread lock and a cross-process lock, and a write replaces the file in one
-# step (see safefile).
+# step (see state/safefile.py).
 _ctrl_lock = threading.Lock()
 
 

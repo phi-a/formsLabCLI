@@ -26,7 +26,7 @@ import time
 from datetime import datetime, timezone
 
 from formslab.config import output_dir
-from formslab.console.cast.castutils import CommandPending, ReportResult, TakeCommand, UpdateStatus
+from formslab.state.castfile import CommandPending, ReportResult, TakeCommand, UpdateStatus
 from formslab.devices.hvc3500 import turbo
 from formslab.devices.hvc3500.laco import LACO, OPERATIONS, PUMPS, VALVES, _flag
 from formslab.rscripts import C2K

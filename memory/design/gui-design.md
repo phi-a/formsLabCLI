@@ -107,7 +107,7 @@ and write the same `actions.log`.
 - Every endpoint calls an existing function and returns JSON; `api.py` is testable
   without a server.
 - The shared files (`castfile.json`, `ctrlfile.json`) are written under a
-  cross-process lock (`console/safefile.py`), since the console, the host and the GUI
+  cross-process lock (`state/safefile.py`), since the console, the host and the GUI
   all write them.
 
 ### Code

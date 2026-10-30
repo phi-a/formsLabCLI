@@ -88,7 +88,7 @@ def load(path=None) -> dict:
     path = usbmap_path() if live else Path(path)
     raw = json.loads(path.read_text(encoding="utf-8"))
     if live and _old(raw) and path != default_path(USBMAP_NAME):
-        from formslab.console.safefile import atomic_write_text
+        from formslab.state.safefile import atomic_write_text
 
         raw = convert(raw, plugged()[0])
         try:

@@ -9,8 +9,8 @@ from unittest import mock
 import pytest
 
 from formslab import config, lab
-from formslab.console.cast import castutils
-from formslab.console.ctrl import ctrlutils
+from formslab.state import castfile as castutils
+from formslab.state import ctrlfile as ctrlutils
 from formslab.gui import api
 from formslab.gui.server import CSRF_HEADER
 

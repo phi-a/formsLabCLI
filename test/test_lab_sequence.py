@@ -12,7 +12,7 @@ import sys
 import pytest
 
 from formslab import rscripts
-from formslab.console.cast.castutils import (
+from formslab.state.castfile import (
     CommandPending, ReadCommand, ReadStatus, WriteCommand,
 )
 from formslab.rscripts import control
@@ -181,7 +181,7 @@ def until(variable, op, value, unit, timeout_s, go_on=False):
 
 # A stand-in owner of psu1: takes each request and publishes what it applied.
 PSU_OWNER = '''
-from formslab.console.cast.castutils import ReadCommand, UpdateStatus
+from formslab.state.castfile import ReadCommand, UpdateStatus
 applied = []
 def rScript(run):
     req = ReadCommand("psu1")

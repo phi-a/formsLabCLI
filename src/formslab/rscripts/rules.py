@@ -176,7 +176,7 @@ def holds(c: Cond, state: dict, units: dict) -> bool | None:
 
 
 def _blocks() -> dict:
-    from formslab.console.safefile import read_json
+    from formslab.state.safefile import read_json
     from formslab.state import cast_state_path
 
     try:

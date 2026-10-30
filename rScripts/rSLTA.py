@@ -12,7 +12,7 @@ from formslab.rscripts import (
     RScriptControl, rTaskRegister, rTaskRunning, rTaskStart, rTaskStop, set_logger,
 )
 from formslab.devices.slta.imaging import capture
-from formslab.console.cast.castutils import UpdateStatus, ReadCommand, ReadStatus
+from formslab.state.castfile import UpdateStatus, ReadCommand, ReadStatus
 from formslab.devices.slta.routine import _init, _init_psu, slta_supply
 from formslab.devices.slta.exposure import ExposureManager
 from formslab.devices.dp832a.commands import (

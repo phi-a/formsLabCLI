@@ -8,7 +8,7 @@ import threading
 import uuid
 from typing import Callable, Optional, Tuple
 
-from formslab.console.safefile import atomic_write_text, file_lock, read_json
+from formslab.state.safefile import atomic_write_text, file_lock, read_json
 from formslab.state import build_default_cast_state, cast_state_path
 
 _KNOWN_CAST_LABELS = set(build_default_cast_state())

@@ -43,7 +43,7 @@ next" for completion.
 
 `castfile.json` and `ctrlfile.json` (in the config dir) are written by several
 processes at once: the host, formsLAB and labcli. Every change
-is a read-modify-write under a cross-process lock (`console/safefile.py`, a
+is a read-modify-write under a cross-process lock (`state/safefile.py`, a
 `<name>.lock` sidecar the OS releases if its holder dies), and a write replaces
 the file in one step, retried while a reader has it open and never done in
 place. A file that will not parse is kept as `<name>.bad` and regenerated from

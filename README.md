@@ -110,8 +110,8 @@ src/formslab/
 ├── safety.py    the off switches below End: supplies off, the PowerSwitch's outlets
 ├── demo.py      a simulated bench of its own, for the GUI demo and `labcli --demo`
 ├── config.py    config, output and run directory resolution
-├── state.py     CTRL command table and CAST device state
-├── console/     the watch screen (keys, frame, style) and the shared CAST and ctrl files
+├── state/       the files the processes share: castfile, ctrlfile (locked, replaced in one step), safefile
+├── console/     the watch screen: keys, frame, style
 ├── devices/     one folder per instrument (hvc3500, dp832a, smtc08, cryocooler, slta, powerswitch)
 ├── defaults/    shipped usbmap.json and tvac_bench.json
 ├── rscripts/    the rScripts runtime: loader, gates, the `Run` each script receives

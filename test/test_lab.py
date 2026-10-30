@@ -12,7 +12,7 @@ from unittest import mock
 import pytest
 
 from formslab import config, lab
-from formslab.console.ctrl import ctrlutils
+from formslab.state import ctrlfile as ctrlutils
 from formslab.host import runstate
 from formslab.host import sequence as host
 

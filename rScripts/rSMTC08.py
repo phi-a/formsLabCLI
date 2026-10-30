@@ -13,7 +13,7 @@ import math
 import os
 import time
 
-from formslab.console.cast.castutils import UpdateStatus
+from formslab.state.castfile import UpdateStatus
 from formslab.devices.smtc08.driver import SMTC08
 from formslab.rscripts import C2K, RScriptControl
 

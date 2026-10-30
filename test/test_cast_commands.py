@@ -9,7 +9,7 @@ import json
 import pytest
 
 from formslab import config, rscripts
-from formslab.console.cast.castutils import ReadCommand
+from formslab.state.castfile import ReadCommand
 from formslab.devices.hvc3500 import BenchProfile
 from formslab.devices.hvc3500.simulator import Simulator
 from formslab.devices.hvc3500.laco import LACO
@@ -209,7 +209,7 @@ def test_every_label_has_an_owner_and_a_cast_block():
 @pytest.fixture
 def run_going(monkeypatch):
     from formslab import lab
-    from formslab.console.cast import castutils
+    from formslab.state import castfile as castutils
     monkeypatch.setattr(lab, "host", lambda: {"pid": 1, "plan": "tvac", "started": "t", "output": "/x"})
     monkeypatch.setattr(lab, "CAST_TAKE_S", 0.3)
     castutils.UpdateStatus("hvc", {"connected": True, "fault_severity": "N", "pressure": 700.0, "platen C": 20.0,
@@ -244,7 +244,7 @@ def test_the_command_is_refused_when_no_run_is_going(monkeypatch):
 
 def test_the_command_shows_the_owners_refusal(run_going):
     import threading
-    from formslab.console.cast.castutils import ReportResult, TakeCommand
+    from formslab.state.castfile import ReportResult, TakeCommand
 
     def owner():
         for _ in range(300):
@@ -262,7 +262,7 @@ def test_the_command_shows_the_owners_refusal(run_going):
 
 
 def test_the_command_refuses_what_the_rules_forbid_and_sends_nothing(run_going):
-    from formslab.console.cast.castutils import ReadStatus, UpdateStatus
+    from formslab.state.castfile import ReadStatus, UpdateStatus
     UpdateStatus("hvc", {**ReadStatus("hvc"), "gate": True})
     code, text = _cast("hvc", "rough", "open")
     assert "refused, nothing sent. Needs Gate valve closed." in text and code == 1

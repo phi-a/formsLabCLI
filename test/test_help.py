@@ -5,7 +5,7 @@ import time
 
 import pytest
 
-from formslab.console.cast import castutils
+from formslab.state import castfile as castutils
 from formslab.rscripts import cast
 from formslab.rscripts.grammar import Grammar
 from formslab.sequence import find_plan

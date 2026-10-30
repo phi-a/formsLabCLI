@@ -179,7 +179,7 @@ def send(label: str, request: dict, *, host: dict | None, wait_result: bool | No
     request, state, ok, messages, text},
     where state is "refused" (not sent), "not_taken", "cleared", "taken" or "done",
     and `text` says it in one line."""
-    from formslab.console.cast import castutils
+    from formslab.state import castfile as castutils
     from formslab.rscripts.rules import refusal
 
     label = label.lower()

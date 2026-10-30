@@ -12,7 +12,7 @@ import time
 import pytest
 
 from formslab import config, rscripts
-from formslab.console.cast.castutils import ReadStatus, WriteCommand
+from formslab.state.castfile import ReadStatus, WriteCommand
 from formslab.devices.hvc3500.simulator import Simulator
 from formslab.rscripts import Scalar, cast
 from formslab.sequence.plan import review

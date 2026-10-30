@@ -14,7 +14,7 @@ import os
 import time
 from datetime import datetime, timedelta, timezone
 
-from formslab.console.cast.castutils import ReportResult, TakeCommand, UpdateStatus
+from formslab.state.castfile import ReportResult, TakeCommand, UpdateStatus
 from formslab.orbit import file as orbitfile
 from formslab.orbit.propagate import kepler
 

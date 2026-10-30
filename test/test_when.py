@@ -12,7 +12,7 @@ import sys
 import pytest
 
 from formslab import config, rscripts
-from formslab.console.cast.castutils import CommandPending
+from formslab.state.castfile import CommandPending
 from formslab.devices.hvc3500.simulator import Simulator
 from formslab.host import sequence as host
 from formslab.sequence import parse_plan
@@ -101,7 +101,7 @@ def test_a_rule_may_not_command_a_channel_another_routine_drives():
 
 # Publishes X from a list, one value a loop, then the last one; takes psu1 requests.
 OWNER = '''
-from formslab.console.cast.castutils import TakeCommand, ReportResult
+from formslab.state.castfile import TakeCommand, ReportResult
 CAST_LABELS = ("psu1",)
 VALUES = {values}
 applied, calls = [], []
@@ -114,7 +114,7 @@ def rScript(run):
 '''
 
 REFUSER = '''
-from formslab.console.cast.castutils import TakeCommand, ReportResult
+from formslab.state.castfile import TakeCommand, ReportResult
 CAST_LABELS = ("psu1",)
 RESULT_LABELS = ("psu1",)
 def rScript(run):

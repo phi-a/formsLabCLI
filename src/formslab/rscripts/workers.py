@@ -4,7 +4,7 @@ Each loaded rScript is called in its own loop at the host's rate. A chamber
 read that takes seconds no longer delays the PSU, the thermocouples, a cast
 command to another instrument, or the plan's own steps. Each script's state
 (`rg`, its gates, its hardware handles) is touched only by its own thread; what
-they share is CAST (locked in `castutils`) and the `run` variables.
+they share is CAST (locked in `state.castfile`) and the `run` variables.
 
     workers = Workers(run, hz=10)
     workers.start()

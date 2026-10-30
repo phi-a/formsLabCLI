@@ -40,8 +40,8 @@ import psutil
 
 from formslab import rscripts
 from formslab.config import output_dir, run_dir
-from formslab.console.cast.castutils import ClearPending, ReadStatus, ResetJson
-from formslab.console.ctrl.ctrlutils import ReadCommands, ResetCtrlState
+from formslab.state.castfile import ClearPending, ReadStatus, ResetJson
+from formslab.state.ctrlfile import ReadCommands, ResetCtrlState
 from formslab.host import runstate
 from formslab.rscripts.workers import Workers
 from formslab.sequence import (

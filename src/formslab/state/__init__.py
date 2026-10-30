@@ -147,8 +147,8 @@ def ensure_runtime_files() -> None:
     """Create any missing state file from its code default, and drop what an
     older version left in them (a CAST block nobody owns, a ctrl entry nobody
     reads), so a stale `tvac` block does not show on every status page."""
-    from formslab.console.cast.castutils import DropUnknownBlocks
-    from formslab.console.ctrl.ctrlutils import DropUnknownCommands
+    from formslab.state.castfile import DropUnknownBlocks
+    from formslab.state.ctrlfile import DropUnknownCommands
 
     ensure_json_file(cast_state_path(), build_default_cast_state)
     ensure_json_file(ctrl_state_path(), build_default_ctrl_commands)

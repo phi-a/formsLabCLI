@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from formslab import config, lab, rscripts
-from formslab.console.ctrl.ctrlutils import WriteCommand as ctrl
+from formslab.state.ctrlfile import WriteCommand as ctrl
 from formslab.devices.hvc3500.simulator import Simulator
 from formslab.host import runstate
 from formslab.host import sequence as host

@@ -25,7 +25,7 @@ import time
 import psutil
 
 from formslab.config import run_dir
-from formslab.console.cast.castutils import UpdateStatus
+from formslab.state.castfile import UpdateStatus
 
 LABEL = "hvc"
 RETRY_S = 30.0          # between connect attempts while the chamber is unreachable

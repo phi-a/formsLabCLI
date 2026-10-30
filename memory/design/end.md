@@ -255,7 +255,7 @@ the wait at once.
 | The script | `plans/end.plan` | — |
 | Running it | `src/formslab/host/sequence.py` | `_end`, `_end_script`, `_needs`, `_chamber_left`, `_write_ended`, `END_CAP_S`, `END_SCRIPT`, `ended_path` |
 | Best-effort steps | `src/formslab/sequence/runner.py` | `LabSequenceRunner.attempt_each`; `_command` passes `ending` to `assess` |
-| Dropping a waiting request | `src/formslab/console/cast/castutils.py` | `ClearPending` |
+| Dropping a waiting request | `src/formslab/state/castfile.py` | `ClearPending` |
 | Turning off an owned channel | `src/formslab/rscripts/rules.py` | `assess(..., ending=)`, `_only_off` |
 | Shutdown order | `src/formslab/rscripts/loader.py` | `shutdown`, `_ordered`, `SHUTDOWN_BEFORE` |
 | Nothing switched on while ending | `rScripts/rPSU.py` | the `"on"` branch of a channel request |

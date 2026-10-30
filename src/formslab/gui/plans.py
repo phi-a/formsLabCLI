@@ -30,7 +30,7 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
-from formslab.console.safefile import atomic_write_text
+from formslab.state.safefile import atomic_write_text
 from formslab.orbit import file as orbitfile
 from formslab.sequence import block as blockfile
 from formslab.sequence import plan as planfile

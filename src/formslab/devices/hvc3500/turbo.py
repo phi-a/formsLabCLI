@@ -17,7 +17,7 @@ import json
 import time
 
 from formslab.config import run_dir
-from formslab.console.safefile import atomic_write_text, read_json
+from formslab.state.safefile import atomic_write_text, read_json
 
 DEFAULT_SPINDOWN_S = 1800.0
 _WRITE_EVERY_S = 30.0          # a sighting is written at most this often

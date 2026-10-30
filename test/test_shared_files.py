@@ -10,16 +10,16 @@ from unittest import mock
 
 import pytest
 
-from formslab.console.cast import castutils
-from formslab.console.ctrl import ctrlutils
-from formslab.console.safefile import atomic_write_text, file_lock, read_json
+from formslab.state import castfile as castutils
+from formslab.state import ctrlfile as ctrlutils
+from formslab.state.safefile import atomic_write_text, file_lock, read_json
 from formslab.state import cast_state_path, ctrl_state_path
 
 N = 60
 
 WORKER = """
 import sys
-from formslab.console.cast.castutils import UpdateStatus, WriteCommand
+from formslab.state.castfile import UpdateStatus, WriteCommand
 kind, n = sys.argv[1], int(sys.argv[2])
 for i in range(1, n + 1):
     if kind == "command":
@@ -63,7 +63,7 @@ def test_cast_writes_fail_loudly_rather_than_write_in_place(monkeypatch):
     castutils.GenerateCleanCast()
     before = cast_state_path().read_bytes()
     with monkeypatch.context() as m:
-        m.setattr("formslab.console.safefile.REPLACE_TIMEOUT_S", 0.1)
+        m.setattr("formslab.state.safefile.REPLACE_TIMEOUT_S", 0.1)
         m.setattr(Path, "replace", mock.Mock(side_effect=PermissionError("held by a reader")))
         with pytest.raises(PermissionError):
             castutils.UpdateStatus("tc", {"TC01 C": 20.0})
@@ -208,7 +208,7 @@ def test_the_host_is_launched_writing_utf8(monkeypatch):
 # --- command ids and results ---------------------------------------------------------------------
 
 def test_merged_requests_each_get_their_answer():
-    from formslab.console.cast.castutils import CommandState, ReportResult, TakeCommand, WriteCommand
+    from formslab.state.castfile import CommandState, ReportResult, TakeCommand, WriteCommand
     a = WriteCommand({"vent": "close"}, "hvc")
     b = WriteCommand({"rough": "close"}, "hvc")
     assert CommandState("hvc", a)["state"] == CommandState("hvc", b)["state"] == "pending"
@@ -223,7 +223,7 @@ def test_merged_requests_each_get_their_answer():
 
 
 def test_a_request_cleared_before_it_was_taken_says_so():
-    from formslab.console.cast.castutils import CommandState, ResetJson, UpdateStatus, WriteCommand
+    from formslab.state.castfile import CommandState, ResetJson, UpdateStatus, WriteCommand
     rid = WriteCommand({"vent": "close"}, "hvc")
     ResetJson()
     assert CommandState("hvc", rid)["state"] == "cleared"
@@ -232,7 +232,7 @@ def test_a_request_cleared_before_it_was_taken_says_so():
 
 
 def test_results_are_kept_for_the_last_few_ids_only():
-    from formslab.console.cast.castutils import KEEP_RESULTS, CommandState, TakeCommand, WriteCommand
+    from formslab.state.castfile import KEEP_RESULTS, CommandState, TakeCommand, WriteCommand
     ids = []
     for _ in range(KEEP_RESULTS + 5):
         ids.append(WriteCommand({"vent": "close"}, "hvc"))
@@ -243,7 +243,7 @@ def test_results_are_kept_for_the_last_few_ids_only():
 
 def test_send_request_waits_for_the_take_and_the_result():
     import threading
-    from formslab.console.cast.castutils import ReportResult, TakeCommand, send_request
+    from formslab.state.castfile import ReportResult, TakeCommand, send_request
 
     def owner():
         for _ in range(200):
@@ -259,7 +259,7 @@ def test_send_request_waits_for_the_take_and_the_result():
 
 
 def test_send_request_with_nobody_reading():
-    from formslab.console.cast.castutils import send_request
+    from formslab.state.castfile import send_request
     t = iter(range(100))
     out = send_request({"1": {"on": False}}, "psu1", take_s=3, clock=lambda: next(t), tick=lambda: None)
     assert out["state"] == "not_taken"

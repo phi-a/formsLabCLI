@@ -22,8 +22,8 @@ import os
 import time
 
 from formslab.config import run_dir
-from formslab.console.cast.castutils import ReadCommand, UpdateStatus
-from formslab.console.safefile import atomic_write_text, read_json
+from formslab.state.castfile import ReadCommand, UpdateStatus
+from formslab.state.safefile import atomic_write_text, read_json
 from formslab.devices.dp832a.config import enabled_psu_labels
 from formslab.devices.dp832a.service import get_psu
 from formslab.rscripts import RScriptControl

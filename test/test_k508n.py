@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from formslab import config, rscripts
-from formslab.console.cast.castutils import CommandState, UpdateStatus, WriteCommand
+from formslab.state.castfile import CommandState, UpdateStatus, WriteCommand
 from formslab.devices.cryocooler import board as boardmod, owner
 from formslab.sequence.plan import review
 
@@ -132,7 +132,7 @@ def test_a_supply_setting_is_refused_with_why(words, error):
 
 
 def test_cryo_supply_sends_its_settings_with_protection_to_the_mapped_channel(cryo):
-    from formslab.console.cast.castutils import ReadCommand
+    from formslab.state.castfile import ReadCommand
     m, run, _ = cryo
     supply(volts=22.0, amps=0.8)                      # the channel as rPSU will report it once applied
     out = send(m, run, {"supply": {"psu": "psu1", "channel": 1, "volts": 22.0, "amps": 0.8, "ovp": 23.0, "ocp": 1.0}})
@@ -196,7 +196,7 @@ def test_a_board_that_does_not_answer_is_refused_at_once_with_why(stuck):
     why = out["messages"][0]
     assert "ETIMEDOUT" in why and "24.0 V, 2 mA" in why and "check the cable" in why
     assert bus.closed                                     # the Pico is released for the next try
-    from formslab.console.cast.castutils import ReadStatus
+    from formslab.state.castfile import ReadStatus
     assert "ETIMEDOUT" in ReadStatus("cryo")["ERR"]       # and the status card says so
 
 
@@ -223,7 +223,7 @@ def test_end_may_cut_the_boards_channel_and_nothing_switches_it_back_on(cryo):
     supply(on=False)                                       # the end script has cut it
     for _ in range(3):
         m.rScript(run)
-    from formslab.console.cast.castutils import ReadCommand
+    from formslab.state.castfile import ReadCommand
     assert not (ReadCommand("psu1") or {}).get("1", {}).get("on")   # rCryoBoard did not ask for it back
 
 
@@ -241,7 +241,7 @@ def test_cryo_on_turns_on_an_output_the_converter_dropped_and_says_why(cryo):
     send(m, run, {"update": True})
     bus.status = 0b00000001                               # read once, the flag is gone
     send(m, run, {"update": True})
-    from formslab.console.cast.castutils import ReadStatus
+    from formslab.state.castfile import ReadStatus
     assert run.get("CRYO_OK") == 0 and ReadStatus("cryo")["LASTFAULT"].startswith("OCP at")
     assert any("went off without cryo off" in line and "OCP" in line for line in logged)
     assert send(m, run, {"enabled": True})["ok"] is True

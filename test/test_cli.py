@@ -6,8 +6,8 @@ import time
 import pytest
 
 from formslab import app, cli, config, lab
-from formslab.console.cast import castutils
-from formslab.console.cast.castutils import ReadCommand
+from formslab.state import castfile as castutils
+from formslab.state.castfile import ReadCommand
 from formslab.host import runstate
 from formslab.host import sequence as host
 

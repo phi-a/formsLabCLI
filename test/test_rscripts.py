@@ -11,7 +11,7 @@ import sys
 import pytest
 
 from formslab import config, rscripts
-from formslab.console.cast.castutils import ReadStatus, WriteCommand
+from formslab.state.castfile import ReadStatus, WriteCommand
 from formslab.devices.hvc3500.simulator import Simulator
 from formslab.rscripts import control, loader
 
@@ -252,7 +252,7 @@ def _operator(after_s, *actions):
     at the console would while the host runs."""
     import threading
 
-    from formslab.console.ctrl.ctrlutils import WriteCommand
+    from formslab.state.ctrlfile import WriteCommand
 
     def act():
         for a in actions:
@@ -296,7 +296,7 @@ def test_a_cast_command_reaches_the_chamber_through_the_host(chamber, tmp_path, 
 
     def reported():                # as an operator would: once the chamber shows on the status page
         import time
-        from formslab.console.cast.castutils import ReadStatus
+        from formslab.state.castfile import ReadStatus
         for _ in range(100):
             if ReadStatus("hvc").get("fault_severity"):
                 return

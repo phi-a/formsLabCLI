@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 
 from formslab.config import run_dir
-from formslab.console.safefile import atomic_write_text, read_json
+from formslab.state.safefile import atomic_write_text, read_json
 
 FIELDS = ("pid", "plan", "started", "output", "step", "paused", "paused_since", "ending")
 
