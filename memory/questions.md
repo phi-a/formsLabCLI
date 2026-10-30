@@ -21,7 +21,7 @@ backing. Turn the turbo off and let it stop first (`until TurboSpinning = false`
 End leaves this to the `shutdown` plan. ([end](design/end.md), D6)
 
 **How do I shut the chamber down?**
-Run `shutdown` (the console's `run shutdown`, `labcli run shutdown`, or *Run
+Run `shutdown` (`labcli run shutdown`, `run shutdown` on the watch screen, or *Run
 shutdown* in the GUI's ended banner). From any state it turns the supplies off,
 warms or cools both zones to 25 °C, stops the turbo and the pumps, lets air in once
 the zones are between 10 and 60 °C, and turns the zones off. Run it after any End
@@ -52,9 +52,22 @@ valves; the fault then refuses the setpoints and `turbo off`. ([end](design/end.
 while an End is going. Check the chamber at the HMI afterwards. ([end](design/end.md), D11)
 
 **The host was killed. What now?**
-The GUI and `labcli status` say the run stopped without its end. Press *Run End now*
-(or `labcli end`). It never runs by itself, because someone may have stopped the host
-on purpose. ([end](design/end.md), A host that was killed)
+The GUI, `labcli status` and the watch screen say the run stopped without its end, and
+at which step. Press *Run End now* (or `labcli end`, or `E` on the watch screen). It
+never runs by itself, because someone may have stopped the host on purpose.
+([end](design/end.md), A host that was killed)
+
+**End does not stop the host.**
+`labcli kill` stops it without its end, after asking; the run is then lost, and
+`labcli end` runs its end from a fresh host. No front end kills a host on its own.
+([safety](rules/safety.md), When something must go off)
+
+**A supply is on and no run is going.**
+`labcli supplies off` turns every output off over the supply's own session. One that
+does not answer: `labcli power <outlet> cycle`, then `supplies off` again. Both ask
+first, and both are refused while a run is going: End does it then.
+([safety](rules/safety.md), When something must go off;
+[powerswitch](instruments/powerswitch.md))
 
 **What does "Chamber left: sealed, 3.2 Torr, pump off ..." mean?**
 How the end left the chamber, read from the controller. It is kept in
@@ -125,6 +138,16 @@ off, sets it, and turns it on again; `cryo on` re-arms a tripped output, and
 ([progress](progress.md), [cryocooler](instruments/cryocooler.md))
 
 ## Setup and files
+
+**How do I watch the bench from another room?**
+Over SSH, `labcli`: one screen that repaints every second with the run, where it is,
+the chamber and the other instruments, the log and how the last run ended; `Q` quits.
+`labcli status` is the same once, for a script. Or tunnel the GUI
+([gui](use/gui.md), From another machine). ([README](../README.md), The watch screen)
+
+**Where are actions noted?**
+`~/.formslab/.run/actions.log`: one line per action from either front end,
+`<when> <who> <gui or labcli> <what>`.
 
 **Where is my run's data?**
 `outputs/<plan>_<UTC start>.jsonl` (`tvac_20261028T143000Z.jsonl`), one row per

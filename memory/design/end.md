@@ -192,9 +192,14 @@ rPSU, whatever the `load` line's order. What each does:
 A killed host (a crash, Task Manager, a power cut) runs no end and leaves its
 lock behind. A lock whose process is not a host is a **lost run** (`lost_run`):
 
-- `labcli status` and the ctrl tab say "the last run ... ended without cleanup;
-  `end` runs its end now"; the GUI shows a red banner, *Run End now*.
-- **Ending it** (D10): `labcli end`, ctrl `end` or *Run End now* starts
+- `labcli status` and the watch screen say the run stopped without its end, and at
+  which step (the host leaves `run.json` behind); the GUI shows a red banner,
+  *Run End now*.
+- **Making it lost on purpose:** no front end kills a host that does not take End.
+  `labcli kill`, asked first, stops the host tree without its end; its lock stays,
+  so it is found as lost and ended here ([safety](../rules/safety.md), When
+  something must go off).
+- **Ending it** (D10): `labcli end`, `E` on the watch screen or *Run End now* starts
   `python -m formslab.host.sequence --end`. That host takes the lock, loads the
   routines of the lost run's plan (the end script's own, `rPSU rLACO`, if that
   plan is gone), and sets `run.ending` **before** any routine runs, so nothing is
@@ -211,7 +216,7 @@ lock behind. A lock whose process is not a host is a **lost run** (`lost_run`):
 ### Fast End
 
 The same end, without waiting to confirm it (D11). Asked for with *Fast End* in
-the GUI's header, `end fast` in the ctrl tab or `labcli end fast`: ctrl `end` with
+the GUI's header, `F` on the watch screen or `labcli end fast`: ctrl `end` with
 the key `fast`. For a lost run, *Fast End now* or `labcli end fast` starts the
 fresh host with `--end --fast`, which also skips the wait for first readings.
 
@@ -258,17 +263,18 @@ the wait at once.
 | The states the script confirms | `rScripts/rLACO.py` | `STATES`, `_publish_states` |
 | The camera's shutdown | `rScripts/rSLTA.py` | `rShutdown`, `SHUTDOWN_BEFORE` |
 | The board's shutdown | `src/formslab/devices/cryocooler/owner.py` | `_shutdown_cryo_subsystem` (skips an unpowered board) |
-| The End dialog's list | `src/formslab/gui/api.py`, `server.py` | `end_steps`, `GET /api/end/steps` |
-| Sending End | `src/formslab/gui/api.py` | `end_run` (writes ctrl `end` every 3 s for up to 120 s) |
-| The outcome | `src/formslab/gui/api.py` | `last_ended`; `status()["ended"]` |
+| The End dialog's list | `src/formslab/lab.py`, `gui/server.py`, `console/watch.py` | `end_steps`, `GET /api/end/steps`, the screen's `ask` |
+| Sending End | `src/formslab/lab.py` | `end` (writes ctrl `end` every 3 s for up to 150 s; never kills), `wait_ended` |
+| The outcome | `src/formslab/lab.py` | `last_ended`; `status()["ended"]` |
 | The page | `src/formslab/gui/static/app.js`, `index.html` | the `#end` handler, `renderEnded`, `#ended` |
-| Not in the Start list | `app.js` `loadPlans`; `api.list_plans` | `"end": true` |
+| Not in the Start list | `app.js` `loadPlans`; `lab.list_plans` | `"end": true` |
 | A lost run, found | `src/formslab/host/sequence.py` | `lost_run` |
 | Its end, from a fresh host | `src/formslab/host/sequence.py` | `channel(..., end_only=True)`, `_settle`, `END_SETTLE_S`, `main`'s `--end` |
-| Its end, asked for | `src/formslab/console/ctrl/ctrlcli.py`; `src/formslab/gui/api.py` | `end_sequence` → `_end_lost`; `end_run` → `_end_lost`; `status()["lost"]` |
+| Its end, asked for | `src/formslab/lab.py` | `end` → `_end_lost`; `status()["lost"]` |
+| A host stopped on purpose | `src/formslab/lab.py`, `cli.py` | `kill`, `labcli kill` |
 | Its banner | `src/formslab/gui/static/app.js` | `renderLost` |
 | Fast End, in the host | `src/formslab/host/sequence.py`; `src/formslab/sequence/runner.py` | `fast`, `_fast_if_asked`, `_watch_for_fast`, `--fast`; `attempt_each(..., skip_waits=)`, `_until`, `_command` |
-| Fast End, asked for | `ctrlcli.py`, `cli.py`; `api.py`, `server.py`, `app.js` | `end_sequence(fast=)`, `end fast`; `end_run(fast)`, `POST /api/end {"fast": true}`, `#end-fast` |
+| Fast End, asked for | `lab.py`, `cli.py`, `console/watch.py`; `server.py`, `app.js` | `end(fast=)`, `end fast`, `F`; `POST /api/end {"fast": true}`, `#end-fast` |
 
 The chamber's states the script confirms are published by rLACO for any plan, each
 `= true` or `= false`:
@@ -312,7 +318,8 @@ The chamber's states the script confirms are published by rLACO for any plan, ea
   the list (an old server), it falls back to "Each instrument's shutdown runs".
 - **Sending.** `POST /api/end` writes ctrl `end`, and again every 3 s while the host
   lives, for up to 150 s (`END_WAIT_S`: the script's 120 s, then the routines'
-  stop and shutdowns). The GUI never kills the host.
+  stop and shutdowns). No front end kills the host; `labcli kill` is the
+  operator's own act ([A host that was killed](#a-host-that-was-killed)).
 - **A lost run.** With no run going but a lost run's lock, a red banner says the
   run stopped without its end, with *Run End now*: the same dialog, then
   `POST /api/end` starts the `--end` host. It stays until that end has run or

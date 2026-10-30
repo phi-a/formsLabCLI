@@ -21,8 +21,9 @@ one web page:
 - **Space environment:** the orbit a test is meant to reproduce, and in time the
   satellite's background temperatures from it (section 4).
 
-It is a *client* of what already exists. It never opens an instrument, so it adds no
-new way for the bench to go wrong.
+It is a *client* of what already exists. The one instrument it opens is the chamber's
+controller, read-only, between runs ([gui](../use/gui.md), Between runs), so it adds
+no new way for the bench to go wrong.
 
 ## How it is meant to be used
 
@@ -40,8 +41,10 @@ new way for the bench to go wrong.
 5. **End it from any tab.** End asks the host to stop, so each instrument's shutdown
    runs.
 
-The console and SSH (`labcli <command>`) stay full equals: a run started in one is
-seen and ended from the others.
+labcli (the watch screen, and `labcli <command>` over SSH) stays a full equal: a run
+started in one is seen and ended from the other. Both go through `formslab.lab`,
+read the same files (the lock, `run.json` for where the run is, CAST, `ended.json`)
+and write the same `actions.log`.
 
 ## Decisions
 
@@ -58,9 +61,9 @@ seen and ended from the others.
 ## Principles
 
 1. **One owner per instrument.** The HVC-3500 takes exactly one TCP client, and a
-   supply or board should have one opener. The server therefore never opens a
-   driver: it reads CAST status blocks and files, and sends commands the way the
-   console does. Tests hold that ports, VISA, sockets and new processes stay shut
+   supply or board should have one opener. The server therefore opens no driver
+   but the chamber's read-only monitor between runs: it reads CAST status blocks
+   and files, and sends commands the way labcli does. Tests hold that ports, VISA, sockets and new processes stay shut
    while every screen's data is fetched.
 2. **No grammar of its own.** Dropdowns, checks, help cards and error text come from
    what the rScripts declare (`COMMANDS`, `VARIABLES`, `RULES`) and the plan parser.
@@ -254,7 +257,8 @@ it is asked for (on opening a view or after a save).
   are capped; an unexpected Host header is refused.
 - Plans are started by name from the server's own list, never from a path in a request.
   Writes are limited to the user's plans folder (and `plans/` through *Ship*).
-- Logins and actions are noted with the user name in `~/.formslab/.run/gui.log`. Per-command
+- Logins and actions are noted with the user name in `~/.formslab/.run/actions.log`,
+  beside labcli's. Per-command
   names inside the host would need a change to the CAST request format.
 - The chosen password is also the PowerSwitch fallback password: fine for a locked lab,
   worth separating later.

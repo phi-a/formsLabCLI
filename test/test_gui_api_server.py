@@ -109,7 +109,7 @@ def test_status_reads_never_write_the_cast_file():
 
 
 def test_the_log_tail_is_the_end_of_the_host_log():
-    from formslab.console.log.logcli import log_path
+    from formslab.lab import log_path
     assert lab.log_tail() == []
     log_path().write_text("\n".join(f"line {i}" for i in range(300)) + "\n", encoding="utf-8")
     assert lab.log_tail(3) == ["line 297", "line 298", "line 299"]

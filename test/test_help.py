@@ -132,13 +132,20 @@ def test_other_owners():
     assert cast.readings("cryo", {"CCVINM": 24.0})[0]["rows"][0]["name"] == "Measured (V)"
 
 
-def test_the_status_page_and_the_cast_tab_use_them(monkeypatch):
-    from formslab.console.cast import castcli
-    from formslab import lab
+def test_the_status_page_and_labcli_status_use_them(monkeypatch):
+    import io
+    from rich.console import Console
+    from formslab import cli, lab
     castutils.UpdateStatus("hvc", {"connected": True, "rough": False})
     assert _names(lab.status()["blocks"]["hvc"]["groups"]) == [
         ("Chamber", [("connected", "Connected", "Yes")]), ("Valves", [("rough", "Vacuum valve", "Closed")])]
-    text = castcli.status_panel("hvc").content.plain
+
+    def status(label):
+        out = Console(file=io.StringIO(), width=120, color_system=None, highlight=False, soft_wrap=True)
+        cli.main(["status", label], out)
+        return out.file.getvalue()
+
+    text = status("hvc")
     assert "Valves" in text and "Vacuum valve" in text and "Closed" in text and "rough " not in text
     castutils.UpdateStatus("psu1", {"1": {"on": True, "vset": 24.0, "cset": 2.0, "vmeas": 24.0, "cmeas": 0.4}})
-    assert "cryocooler board" in castcli.status_panel("psu1").content.plain
+    assert "cryocooler board" in status("psu1")

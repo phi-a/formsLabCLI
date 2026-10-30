@@ -344,10 +344,10 @@ def main(argv: list[str]) -> int:
         print("  listening on every interface; the login is sent as plain HTTP")
     monitor = None
     if not args.no_monitor:
-        from formslab.host.monitor import ChamberMonitor
-        monitor = ChamberMonitor()
-        monitor.start()
-        print("  reading the chamber while no run is going (--no-monitor to leave it free)")
+        from formslab.host.monitor import start_if_free
+        monitor = start_if_free()
+        print("  reading the chamber while no run is going (--no-monitor to leave it free)"
+              if monitor else "  another window is reading the chamber; its readings are shared")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

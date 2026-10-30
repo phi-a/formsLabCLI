@@ -125,6 +125,27 @@ architecture are in [project](project.md); the GUI's plan is in [gui-design](des
   banner has *Run shutdown*. Decided: `rest_to_ambient` stays, for a rough rest
   only. Open at the bench: whether the controller accepts `zone on` at atmosphere
   ([safety](rules/safety.md), Open).
+- **2026-10-30: labcli rebuilt as formsLAB's companion over SSH.** Asked for
+  because the console was a tab REPL that repainted only after a command, and
+  the GUI and the console each had their own run control, with two End policies
+  (the console killed a host after 15 s; the GUI never did). Now: one backend,
+  `formslab.lab`, for both front ends; the host publishes where its run is
+  (`.run/run.json`: the step, paused, ending), which both show; a bare `labcli`
+  is one watch screen, repainted every second, with `E F P R Q` hotkeys and a
+  command line that takes the `labcli <command>` words; the one-shot commands
+  rewritten over the backend (status with every card and the ended or lost
+  banner, check for blocks and orbits, end that waits and says how the chamber
+  was left); the off switches below End as `labcli kill`, `supplies off` and
+  `power` (the PowerSwitch), each asked first and refused while a run is going
+  ([safety](rules/safety.md), When something must go off); every action from
+  either front end in `.run/actions.log` (was gui.log); `labcli --demo` and the
+  GUI demo on one simulated bench (`formslab.demo`). Decided: End never kills
+  the host from anywhere, `kill` is the operator's own act; the hotkeys are
+  capital letters, so every command can still be typed; the watch screen reads
+  the chamber between runs when formsLAB does not, one reader at a time. The
+  tab console (ctrl, cast, log, psu) is gone. Not run on the bench: `kill`,
+  `supplies off`, `power`; which outlet feeds which supply is still to be
+  written in the map.
 - **Next:** the environment profile, the first stage after orbit files
   ([gui-design](design/gui-design.md), section 4): orbit file + spacecraft model → per-face background
   temperature over an orbit → a run in the recorder's format, in the Plots tab. It needs a way to
@@ -164,6 +185,7 @@ architecture are in [project](project.md); the GUI's plan is in [gui-design](des
 | 2026-10-06 | #10 | The Notebook: the project's intent, architecture and progress |
 | 2026-10-09 | #11 | Plans for the bench and a student session; rules (`when … then`), units, holds at a thermocouple; the K508N; a readable End (the end script); the cryocooler board as it really is |
 | 2026-10-15 | #12 | The two tested plans renamed, `plans/` in folders; the cryocooler by hand (no false "not live", a tripped output turns on again); End for a killed host (`--end`, *Run End now*); End resent for 150 s; supply protection read back; [end](design/end.md) |
+| 2026-10-30 | | labcli rebuilt: one backend for both front ends (`formslab.lab`), the host's published run state, the watch screen, the off switches (`kill`, `supplies off`, `power`), `actions.log`, the demo bench; the tab console removed |
 
 ## Waiting on a decision
 
@@ -175,7 +197,7 @@ From the GUI's open questions ([gui-design](design/gui-design.md)) and recent re
    And with what, given no internet and no build step (plotly's `scene3d` is multi-MB)?
 3. **rOrbit and Pause:** a paused run holds its steps, but the orbit goes on. Should a
    paused `orbit replay` hold the satellite too?
-4. **`labcli check` for `.orbit` files:** the GUI checks them; the console does not yet.
+4. ~~**`labcli check` for `.orbit` files**~~ Settled 2026-10-30: `labcli check` reads a block or an orbit too.
 5. **The umbra strip in dark mode:** its contrast is low.
 6. **Students starting runs** from the GUI, or only writing plans and watching. The
    practice session ([session](use/session.md)) assumes an instructor starts every bench run.

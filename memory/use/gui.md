@@ -42,7 +42,7 @@ HTTP, so use it only on a network you trust.
 account on Linux and Mac; Windows relies on the profile's permissions). Nothing
 is in the source or the repo. A wrong password waits about a second. Sessions
 last 8 hours and end when the server restarts. Logins and logouts are noted in
-`~/.formslab/.run/gui.log`.
+`~/.formslab/.run/actions.log`.
 
 ## Screens
 
@@ -82,7 +82,7 @@ data goes), then the controls:
 - A run whose host was killed (a crash, Task Manager, a power cut) shows a red
   banner: it stopped without its end. *Run End now* runs that end from a fresh
   host, with the same dialog ([end](../design/end.md), A host that was killed).
-- The command box takes the cast tab's words (`hvc platen 20`, `psu1 ch1 on`).
+- The command box takes the same words as `labcli cast` (`hvc platen 20`, `psu1 ch1 on`).
   The buttons under it are what the instruments' own grammar allows next, with
   limits and units; click one or type. A bad command is refused with what would
   fit and a "did you mean". A command is refused too when no run is going or the
@@ -97,7 +97,8 @@ data goes), then the controls:
 
 The other thermocouples are listed below the controls.
 
-Every action is noted with the user name in `~/.formslab/.run/gui.log`.
+Every action is noted with the user name in `~/.formslab/.run/actions.log`, beside
+labcli's, as `<when> <who> gui <what>`.
 
 **Status.** One tile per instrument, and nothing else: what each one reports, and
 whether it is current.
@@ -118,7 +119,9 @@ The chamber stays live with no run going, so it can be watched after End: the
 zones warming or cooling, the vacuum holding. The formsLAB server reads it every
 5 s (`poll_interval_s`) and publishes it as rLACO would (`formslab.host.monitor`);
 the chamber's banner on Control adds "No run is going: formsLAB is only reading it". It sends
-no commands: those still need a run.
+no commands: those still need a run. A labcli watch screen reads it the same way
+when formsLAB does not: one reader at a time, whichever came first, and what it
+reads is shared through CAST.
 
 The controller takes one client at a time, so the monitor gives it up to a run.
 A starting host takes its lock, then waits (up to 15 s, usually under 1) for the
@@ -126,7 +129,7 @@ monitor to close its connection and remove `~/.formslab/.run/monitor.lock`; the
 monitor stops a read in progress between two queries once the host's lock
 appears. After the run it reads again.
 
-`labcli gui --no-monitor` leaves the controller free, for `scripts/vent_test.py`
+`labcli gui --no-monitor` (and `labcli --no-monitor`) leaves the controller free, for `scripts/vent_test.py`
 and `scripts/pumpdown.py`, which need the connection themselves. The thermocouple
 readers and the supplies are still read only during a run.
 
@@ -148,8 +151,8 @@ Pick a plan on the left (a green page before its name); a plan you open is shown
 - every step is a chain of dropdowns. Choosing `hvc` narrows the next choice to
   hvc's commands, choosing `platen` makes the next box a number with its limits
   and unit (`<C -180..200 C>`), and a value that does not fit is flagged under
-  the row with what would. The choices come from the same declarations the cast
-  tab and `labcli check` use, so they cannot disagree;
+  the row with what would. The choices come from the same declarations `labcli cast`
+  and `labcli check` use, so they cannot disagree;
 - a unit the plan writes after a number (`12 V`, `270 ohm`, `5 Torr`) is drawn inside the
   number's box and written for you: a fixed unit as text, a choice (C or K for a
   temperature, Celsius first) as a small list in the box. A time's s, min or h stays a

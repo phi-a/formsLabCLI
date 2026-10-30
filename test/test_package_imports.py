@@ -106,15 +106,17 @@ class PackageImports(unittest.TestCase):
         from formslab.app import main
         self.assertTrue(callable(main))
 
-    def test_console_tabs_construct(self):
-        """Each tab the REPL offers can actually be built on a base install."""
-        from formslab.app import TAB_FACTORIES
+    def test_the_watch_screen_builds_with_nothing_running(self):
+        """The screen a bare `labcli` opens can be built on a base install, with
+        no run going and no instrument reachable."""
+        import io
+        from rich.console import Console
+        from formslab.console import watch
 
-        self.assertNotIn("book", TAB_FACTORIES)
-
-        for tab, factory in TAB_FACTORIES.items():
-            with self.subTest(tab=tab):
-                factory()
+        console = Console(file=io.StringIO(), width=100, height=30, force_terminal=True, color_system=None)
+        s = watch.snapshot()
+        console.print(watch.header(s), watch.body(s, 100))
+        self.assertIn("No run is going", console.file.getvalue())
 
 
 class ImportIsFree(unittest.TestCase):

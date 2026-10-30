@@ -5,7 +5,7 @@ import time
 
 import pytest
 
-from formslab import app, cli, lab
+from formslab import app, cli, config, lab
 from formslab.console.cast import castutils
 from formslab.console.cast.castutils import ReadCommand
 from formslab.host import runstate
@@ -197,3 +197,77 @@ def test_labcli_with_a_command_runs_it_and_exits(monkeypatch, capsys, no_host):
     with pytest.raises(SystemExit) as e:
         app.main()
     assert e.value.code == 1 and "No run is going" in capsys.readouterr().out
+
+
+# --- the off switches --------------------------------------------------------------------
+
+def test_kill_asks_first_and_needs_yes_without_a_terminal(capsys, monkeypatch):
+    monkeypatch.setattr(lab, "host", lambda: HOST)
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: False, raising=False)
+    killed = []
+    monkeypatch.setattr(lab, "kill", lambda: killed.append(1) or {"killed": 4321, "plan": "tvac", "lost": True})
+    code, out = run(capsys, "kill")
+    assert code == 2 and "Add the word yes" in out and killed == []
+    code, out = run(capsys, "kill", "yes")
+    assert code == 0 and killed == [1] and "stopped without its end" in out and "`labcli end` runs its end" in out
+    assert "kill" in (config.run_dir() / lab.ACTIONS_LOG).read_text(encoding="utf-8")
+
+
+def test_kill_with_no_run_says_so(capsys, no_host):
+    code, out = run(capsys, "kill", "yes")
+    assert code == 1 and "no run is going" in out
+
+
+def test_a_no_at_the_terminal_does_nothing(capsys, monkeypatch):
+    monkeypatch.setattr(lab, "host", lambda: HOST)
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True, raising=False)
+    monkeypatch.setattr(cli.Console, "input", lambda self, prompt: "n")
+    monkeypatch.setattr(lab, "kill", lambda: (_ for _ in ()).throw(AssertionError("killed")))
+    code, out = run(capsys, "kill")
+    assert code == 1 and "Not done." in out
+
+
+def test_supplies_off_is_refused_while_a_run_is_going(capsys, monkeypatch):
+    monkeypatch.setattr(lab, "host", lambda: HOST)
+    code, out = run(capsys, "supplies", "off", "yes")
+    assert code == 1 and "a run is going" in out
+
+
+def test_supplies_off_reports_each_supply(capsys, no_host, monkeypatch):
+    from formslab import safety
+    monkeypatch.setattr(safety, "supplies_off", lambda labels=(): [
+        {"label": "psu1", "ok": True, "text": "psu1: CH1, CH2, CH3 off"},
+        {"label": "psu2", "ok": False, "text": "psu2: not reached: no such port"}])
+    code, out = run(capsys, "supplies", "off", "yes")
+    assert code == 1 and "✔ psu1: CH1, CH2, CH3 off" in out and "✗ psu2: not reached" in out
+    assert "supplies off" in (config.run_dir() / lab.ACTIONS_LOG).read_text(encoding="utf-8")
+
+
+def test_power_lists_the_outlets_and_switches_one(capsys, no_host, monkeypatch):
+    from formslab import safety
+    monkeypatch.setattr(safety, "outlets", lambda: {
+        "host": "192.0.2.1", "adapter": "Ethernet 2", "local_ip": "192.168.0.50", "reachable": False,
+        "note": "192.0.2.1 not reached: timed out", "outlets": [{"number": 1, "feeds": "psu1"}, {"number": 2, "feeds": ""}]})
+    code, out = run(capsys, "power")
+    assert code == 1 and "not reached" in out and "outlet 1  psu1" in out and "outlet 2  -" in out
+    switched = []
+    monkeypatch.setattr(safety, "outlet", lambda n, action: switched.append((n, action)) or {"ok": True, "lines": [f"outlet {n} {action}"]})
+    assert run(capsys, "power", "3", "cycle")[0] == 2                      # asks; no terminal, no yes
+    code, out = run(capsys, "power", "3", "cycle", "yes")
+    assert code == 0 and switched == [(3, "cycle")] and "✔ outlet 3 cycle" in out
+    assert run(capsys, "power", "3", "on")[0] == 0 and switched[-1] == (3, "on")   # on needs no question
+    assert run(capsys, "power", "x", "on")[0] == 2
+
+
+def test_power_setup_runs_the_drivers_setup(capsys, monkeypatch):
+    import subprocess
+    seen = {}
+
+    def run_(cmd, **kw):
+        seen["cmd"] = cmd
+        return subprocess.CompletedProcess(cmd, 0, "[dry-run] planned\n", "")
+
+    monkeypatch.setattr(subprocess, "run", run_)
+    code, out = run(capsys, "power", "setup", "--dry-run")
+    assert code == 0 and "[dry-run] planned" in out
+    assert seen["cmd"][1:] == ["-m", "formslab.devices.powerswitch", "setup", "--dry-run"]

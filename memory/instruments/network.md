@@ -42,7 +42,7 @@ administrator PowerShell: right-click PowerShell, **Run as administrator**, and
 check that the title bar starts with *Administrator:*. A window that merely
 opens in `C:\WINDOWS\system32` is not elevated and answers "Access is denied".
 
-- **PowerSwitch address:** the PSU tab's `--setup` (see [powerswitch](powerswitch.md)).
+- **PowerSwitch address:** `labcli power setup` (see [powerswitch](powerswitch.md)).
   It adds `192.168.0.50` and keeps the adapter's other addresses; with the
   address already there it changes nothing.
 - **Chamber address:**

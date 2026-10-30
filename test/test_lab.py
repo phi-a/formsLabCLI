@@ -289,3 +289,26 @@ class HostModule(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Kill(unittest.TestCase):
+    """The deliberate act for a host that will not take End: its lock stays, so
+    the run is lost and `end` then runs its end from a fresh host."""
+
+    def tearDown(self):
+        host.lock_path().unlink(missing_ok=True)
+
+    def test_kill_stops_the_host_and_leaves_its_lock(self):
+        host.lock_path().write_text("4321\ntvac\n2026-10-02T21:35:02+00:00\n/x\n", encoding="utf-8")
+        alive = [True]
+        with mock.patch.object(lab, "is_host", side_effect=lambda pid: alive[0]), \
+                mock.patch.object(lab, "_kill_tree", side_effect=lambda pid: alive.__setitem__(0, False)) as kill:
+            r = lab.kill()
+        kill.assert_called_once_with(4321)
+        self.assertEqual(r, {"killed": 4321, "plan": "tvac", "lost": True})
+        self.assertIsNotNone(lab.lost_run())                       # found, for `end` to finish
+
+    def test_kill_with_no_run_is_refused(self):
+        with mock.patch.object(lab, "host", return_value=None), self.assertRaises(lab.LabError) as e:
+            lab.kill()
+        self.assertEqual(e.exception.code, 409)

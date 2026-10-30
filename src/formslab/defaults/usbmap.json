@@ -7,7 +7,8 @@
     "adapter": "Ethernet 2",
     "local_ip": "192.168.0.50",
     "prefix_length": 24,
-    "outlet_count": 8
+    "outlet_count": 8,
+    "outlets": {}
   },
 
   "psu1": {

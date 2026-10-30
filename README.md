@@ -62,45 +62,29 @@ Both resolve the venv relative to the checkout and run from the repo root, so
 UTF-8, because the default OEM codepage mangles the box-drawing characters.
 `labgui.cmd` opens the GUI, formsLAB, as a desktop window on Windows (memory/use/gui.md).
 
-## Tabs
+## The watch screen
 
-| Tab | What it drives |
-|---|---|
-| `ctrl` | Runs: `plans`, `run <plan|tvac>`, pause, resume, end |
-| `cast` | Instrument status, and commands to them (`hvc vent open`, `psu1 ch1 on`, `hvc platen ?`, `help`) |
-| `psu` | Rigol supplies and PowerSwitch outlets |
-| `log` | Tail the run log |
+A bare `labcli` opens one screen that repaints itself every second: the run and
+where it is (the step, paused, ending), the chamber and the other instruments as
+formsLAB shows them, the last lines of the host log, and how the last run
+ended. Capital letters act on the run: `E` End, `F` Fast End, `P` Pause, `R`
+Resume, `Q` Quit; an End first lists the steps it will run and asks `y/n`. The
+line at the bottom takes the same words as `labcli <command>` (`cast hvc platen
+20`, `run tvac`, `status psu1`), and the last command's output shows above the
+cards. Lowercase always types, so every command can be typed.
 
-Switch with `--psu`, `--cast`, … or start on one: `labcli --psu`.
+The screen reads only. While no run is going and nothing else reads the
+chamber, it starts the same read-only monitor formsLAB runs and lets go when it
+quits or a run starts (`--no-monitor` leaves the controller to `scripts/`).
+`labcli --demo` opens it on a simulated bench of its own, nothing real touched.
 
-### The screen
-
-The console redraws one fixed frame rather than printing a transcript. A tab
-bar, a status region, a content pane and the prompt sit on the same rows every
-time, so the prompt does not walk down the terminal as output grows and shrinks.
-The regions are drawn as boxes deliberately: a pane that pads to a constant
-height only reads as a window if you can see it holding its shape, and without a
-border a one-line result and a thirty-line one look like the same printed text.
-
-Output taller than the content pane is windowed in place rather than spilled
-into scrollback. `PgUp`/`PgDn` move it by a page and `↑`/`↓` by a line, without
-Enter; the pane's bottom edge carries the position, `1-21 of 28`.
-
-Both that and resizing work because the console reads *keys*, not lines
-(`console/keys.py`). `input()` blocks until Enter, so between keystrokes the old
-console could not notice the window had changed shape or that you wanted to
-scroll — the same limitation behind both. Polling for keys leaves an idle gap on
-every tick, and the resize check and the scroll keys live in that gap.
-
-Where keys cannot be read — a pipe, a capture, a dumb terminal — the console
-falls back to plain `input()` and append-only text, so redirected runs stay
-diffable. The typed `more`, `back` and `top` exist for that path.
-
-The status region is the tab's `banner()`, drawn only where a tab sets
-`live_status`: it is polled once per repaint. CTRL (reads the running host's lock) and
-CAST (reads `castfile.json`) opt in. PSU's banner opens a VISA session per
-supply and queries every channel, so it stays a command rather than a region —
-a new tab has to declare its banner free before the frame will poll it.
+It is one fixed frame (`console/frame.py`): a header, a banner when there is
+something to say, a pane for the cards and the log, and the prompt on the last
+row, so nothing walks down the terminal; `PgUp`/`PgDn` and `↑`/`↓` move the
+pane. It reads keys, not lines (`console/keys.py`), so a resize and the
+once-a-second tick repaint between keystrokes. Where keys cannot be read, a
+pipe, a dumb terminal or a window under 40 by 12, it prints the status once and
+reads commands line by line.
 
 ## Install
 
@@ -120,10 +104,14 @@ pip install -e ".[dev]"       # + pytest
 
 ```
 src/formslab/
-├── app.py       the `labcli` entry point: the REPL and its tab bar
+├── app.py       the `labcli` entry point: one command, or the watch screen
+├── cli.py       `labcli <command>`: one command, then an exit status
+├── lab.py       what is going, start, end, pause, commands: one backend for labcli and formsLAB
+├── safety.py    the off switches below End: supplies off, the PowerSwitch's outlets
+├── demo.py      a simulated bench of its own, for the GUI demo and `labcli --demo`
 ├── config.py    config, output and run directory resolution
 ├── state.py     CTRL command table and CAST device state
-├── console/     the tabs, sessions, and command tables
+├── console/     the watch screen (keys, frame, style) and the shared CAST and ctrl files
 ├── devices/     one folder per instrument (hvc3500, dp832a, smtc08, cryocooler, slta, powerswitch)
 ├── defaults/    shipped usbmap.json and tvac_bench.json
 ├── rscripts/    the rScripts runtime: loader, gates, the `Run` each script receives
@@ -185,7 +173,7 @@ else runs against fakes and passes on a bare install with nothing plugged in.
 ## Running a test
 
 A lab plan is a hardware test sequence, one step per line: `load` names the
-rScripts that own the instruments, then commands (the cast tab's words),
+rScripts that own the instruments, then commands (the same words as `labcli cast`),
 `hold`, `until` and `log`. See [memory/use/plans.md](memory/use/plans.md).
 
 ```
@@ -199,17 +187,17 @@ hvc stop
 
 ```
 labcli check ambient_to_rest                     # read a plan; touches no hardware
-labcli --ctrl
-ctrl> plans                                        # lab plans; tvac runs until end
-ctrl> run tvac                                     # manual operation: then the cast tab
-ctrl> run ambient_to_rest                        # or any plan
-ctrl> pause / resume / end
-log>  tail 50                                      # the host's output
+labcli plans                                     # the plans, blocks and orbits found
+labcli run tvac                                  # manual operation: then `labcli cast`, or the watch screen
+labcli run ambient_to_rest                       # or any plan
+labcli pause / resume / end
+labcli log 50                                    # the host's output
 ```
 
-`end` asks the host to stop, so every rScript's `rShutdown` runs (a plan's PSU
-outputs go off, pumping the run started stops) before it exits. `tvac` runs
-the bench's rScripts until `end` while you operate from the cast tab; a plan
+`end` asks the host to stop, so the end script and every rScript's `rShutdown`
+run (a plan's PSU outputs go off, pumping the run started stops) before it
+exits, and says how the chamber was left. `tvac` runs the bench's rScripts
+until `end` while you operate from the watch screen or `labcli cast`; a plan
 ends by itself. Every run records its variables to `outputs/<plan>_<UTC>.jsonl`.
 
 ## One command at a time (SSH, scripts)
@@ -219,20 +207,26 @@ refused or failed, 2 usage). What is running is kept per machine in
 `~/.formslab/.run`, so this works from any folder or an SSH session:
 
 ```
-labcli status                       # is a run going (exit 1 if not)
+labcli status                       # what is going, where the run is, each instrument (exit 1 with no run)
 labcli run tvac                     # start one; it keeps running after you log out
 labcli cast hvc platen 20           # waits until the chamber has done it, or says why not
 labcli cast hvc platen '?'          # what can come next
 labcli status hvc                   # one instrument's readings
 labcli log 50                       # the host's output
 labcli hardware                     # what is plugged in, beside the hardware map
-labcli end
+labcli end                          # waits for the host, and says how the chamber was left
+labcli kill                         # a host that will not take end; then `labcli end` again
+labcli supplies off                 # every supply output off, when no run is going
+labcli power 3 cycle                # a PowerSwitch outlet off and on again
 ```
 
 `labcli cast` refuses when no run is going (nothing would apply the command),
-and when the command's prerequisites are not met now (the rough valve open for
-a vent; see [memory/use/plans.md](memory/use/plans.md)). `labcli help` lists every
-command.
+when the instrument is not live, and when the command's prerequisites are not
+met now (the rough valve open for a vent; see
+[memory/use/plans.md](memory/use/plans.md)). `kill`, `supplies off` and an outlet
+off or cycled ask first; add the word `yes` from a script. The order when
+something must go off is in [memory/rules/safety.md](memory/rules/safety.md).
+`labcli help` lists every command.
 
 `labcli gui` starts a small web GUI on this machine: every instrument's status,
 starting and ending runs, the command box, the chamber drawn as its own screen
@@ -266,7 +260,7 @@ Setting up a Pi for a DP832A over USB:
 ```bash
 sudo apt install libusb-1.0-0
 lsusb -d 1ab1:0e11          # the Rigol shows up (vendor:product)
-.venv/bin/labcli --psu
+.venv/bin/labcli hardware   # the supply is found by its serial number
 ```
 
 The operator also needs permission to open the USB device, usually a udev rule

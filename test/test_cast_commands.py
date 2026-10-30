@@ -9,7 +9,6 @@ import json
 import pytest
 
 from formslab import config, rscripts
-from formslab.console.cast import castcli
 from formslab.console.cast.castutils import ReadCommand
 from formslab.devices.hvc3500 import BenchProfile
 from formslab.devices.hvc3500.simulator import Simulator
@@ -209,32 +208,41 @@ def test_every_label_has_an_owner_and_a_cast_block():
 
 @pytest.fixture
 def run_going(monkeypatch):
+    from formslab import lab
     from formslab.console.cast import castutils
-    from formslab.console.ctrl import ctrlcli
-    monkeypatch.setattr(ctrlcli, "running", lambda: {"pid": 1, "plan": "tvac"})
-    monkeypatch.setattr(castutils, "TAKE_S", 0.3)
+    monkeypatch.setattr(lab, "host", lambda: {"pid": 1, "plan": "tvac", "started": "t", "output": "/x"})
+    monkeypatch.setattr(lab, "CAST_TAKE_S", 0.3)
     castutils.UpdateStatus("hvc", {"connected": True, "fault_severity": "N", "pressure": 700.0, "platen C": 20.0,
                                         "shroud C": 20.0, "rough": False, "vent": False, "fill": False,
                                         "foreline": False, "gate": False, "pump": False, "turbo": False,
                                    "turbo_spinning": False})   # the chamber has just reported: sealed, at rest, no fault
 
 
-def test_the_tab_writes_the_request_and_says_what_became_of_it(run_going):
-    result = castcli.execute_command(["hvc", "vent", "open"])
-    assert "hvc ←" in result.content.plain and "not taken within 0.3 s" in result.content.plain
-    assert not result.ok
+def _cast(*words):
+    """`labcli cast <words>`: its exit status and what it printed."""
+    import io
+    from rich.console import Console
+    from formslab import cli
+    out = Console(file=io.StringIO(), width=120, color_system=None, highlight=False, soft_wrap=True)
+    code = cli.main(["cast", *words], out)
+    return code, out.file.getvalue()
+
+
+def test_the_command_writes_the_request_and_says_what_became_of_it(run_going):
+    code, text = _cast("hvc", "vent", "open")
+    assert "hvc \u2190" in text and "not taken within 0.3 s" in text and code == 1
     assert ReadCommand("hvc") == {"vent": "open"}
 
 
-def test_the_tab_refuses_when_no_run_is_going(monkeypatch):
-    from formslab.console.ctrl import ctrlcli
-    monkeypatch.setattr(ctrlcli, "running", lambda: None)
-    result = castcli.execute_command(["hvc", "vent", "open"])
-    assert "refused: no run is going" in result.content.plain and not result.ok
+def test_the_command_is_refused_when_no_run_is_going(monkeypatch):
+    from formslab import lab
+    monkeypatch.setattr(lab, "host", lambda: None)
+    code, text = _cast("hvc", "vent", "open")
+    assert "nothing sent: no run is going" in text and code == 1
     assert ReadCommand("hvc") == {}
 
 
-def test_the_tab_shows_the_owners_refusal(run_going):
+def test_the_command_shows_the_owners_refusal(run_going):
     import threading
     from formslab.console.cast.castutils import ReportResult, TakeCommand
 
@@ -248,34 +256,33 @@ def test_the_tab_shows_the_owners_refusal(run_going):
 
     thread = threading.Thread(target=owner, daemon=True)
     thread.start()
-    result = castcli.execute_command(["hvc", "rough", "open"])
+    code, text = _cast("hvc", "rough", "open")
     thread.join(5)
-    assert "✗ hvc ←" in result.content.plain
-    assert "refused: rough: refused by the PLC" in result.content.plain
+    assert "\u2717 hvc \u2190" in text and "refused: rough: refused by the PLC" in text
 
 
-def test_the_tab_refuses_what_the_rules_forbid_and_sends_nothing(run_going):
+def test_the_command_refuses_what_the_rules_forbid_and_sends_nothing(run_going):
     from formslab.console.cast.castutils import ReadStatus, UpdateStatus
     UpdateStatus("hvc", {**ReadStatus("hvc"), "gate": True})
-    result = castcli.execute_command(["hvc", "rough", "open"])
-    assert "refused, nothing sent. Needs Gate valve closed." in result.content.plain and not result.ok
+    code, text = _cast("hvc", "rough", "open")
+    assert "refused, nothing sent. Needs Gate valve closed." in text and code == 1
     assert ReadCommand("hvc") == {}
 
 
-def test_the_tab_lists_what_can_come_next():
-    text = castcli.execute_command(["hvc", "pump", "?"]).content.plain
-    assert "on" in text and "off" in text and "Turn a pump on or off" in text
+def test_the_command_lists_what_can_come_next():
+    code, text = _cast("hvc", "pump", "?")
+    assert "on" in text and "off" in text and "Turn a pump on or off" in text and code == 0
     assert ReadCommand("hvc") == {}
 
 
-def test_the_tab_reports_usage_without_writing():
-    result = castcli.execute_command(["hvc", "platen", "900"])
-    assert "outside" in result.content.plain
+def test_the_command_reports_usage_without_writing():
+    code, text = _cast("hvc", "platen", "900")
+    assert "outside" in text and code == 1
     assert ReadCommand("hvc") == {}
 
 
-def test_help_lists_every_scripts_commands():
-    text = castcli.help_panel().content.plain
+def test_help_rows_list_every_scripts_commands():
+    usages = {usage for _, usage, _ in cast.help_rows()}
     for usage in ("hvc platen <temperature>", "hvc stop", "psu1|psu2 <channel> set <volts> <amps>",
                   "cryo ccv <volts>", "slta image", "hvc <valve> open|close"):
-        assert usage in text
+        assert usage in usages

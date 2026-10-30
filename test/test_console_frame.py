@@ -12,9 +12,7 @@ import pytest
 from rich.console import Console
 from rich.text import Text
 
-from formslab import app
 from formslab.console import frame
-from formslab.console.sessions.psu import PSUSession
 
 
 WIDTH = 60
@@ -31,7 +29,7 @@ def _build(body_lines, *, banner=None, scroll=0, height=HEIGHT, title=None):
     body = Text("\n".join(f"body{i:02d}" for i in range(body_lines)))
     built = frame.build(
         console,
-        tab_bar=Text("[ CTRL ][ CAST ][ LOG ][ PSU ]"),
+        header=Text("* tvac running since 12:00"),
         body=body,
         banner=banner,
         title=title,
@@ -108,35 +106,3 @@ def test_content_that_fits_is_never_paged():
     assert not built.paged
     assert built.scroll == 0
     assert "PgUp" not in painted        # no footer when nothing is windowed
-
-
-def test_redirected_output_keeps_the_append_only_path(monkeypatch):
-    """A pipe or a test capture wants the text, not a screenful of padding."""
-    printed = []
-
-    class _Console:
-        is_dumb_terminal = False
-        size = type("Size", (), {"width": WIDTH, "height": HEIGHT})()
-
-        def clear(self):
-            pass
-
-        def print(self, value, **kwargs):
-            printed.append(value)
-
-    monkeypatch.setattr(app, "console", _Console())
-    monkeypatch.setattr(app.sys, "stdout", io.StringIO())  # isatty() is False
-
-    app.render_output(Text("hello"))
-
-    assert app._last_frame is None
-    assert any("hello" in str(getattr(v, "plain", v)) for v in printed)
-
-
-def test_psu_does_not_opt_into_the_status_region():
-    """`psucli.status_panel` opens a VISA session per supply.
-
-    Drawing it as a persistent region would reconnect the instrument after every
-    command typed on the tab. The frame only polls a banner that opts in.
-    """
-    assert PSUSession.live_status is False

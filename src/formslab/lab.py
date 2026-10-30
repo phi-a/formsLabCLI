@@ -466,6 +466,20 @@ def send_command(line: str, *, take_s: float | None = None) -> dict:
                      take_s=CAST_TAKE_S if take_s is None else take_s)
 
 
+def kill() -> dict:
+    """Stop the host without its end: the deliberate act for a host that will
+    not take End. Its lock stays, so the run is lost and `end` runs its end from
+    a fresh host (D10). Returns {killed, plan, lost}."""
+    running = host()
+    if running is None:
+        raise LabError(409, "no run is going")
+    _kill_tree(running["pid"])
+    deadline = time.monotonic() + 5.0
+    while time.monotonic() < deadline and is_host(running["pid"]):
+        time.sleep(0.1)
+    return {"killed": running["pid"], "plan": running["plan"], "lost": lost_run() is not None}
+
+
 # --- the host's processes -------------------------------------------------------------
 
 def host_processes() -> list[psutil.Process]:

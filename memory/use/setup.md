@@ -99,9 +99,10 @@ adapter also needs `10.1.2.50/24`: see [network](../instruments/network.md).
 .\.venv\Scripts\labcli.exe
 ```
 
-Use `help`, `help all`, `--psu` to switch tabs, and `exit` to quit. In the PSU
-tab, `--status` checks configured supplies. Restart the console after editing
-the map. For a desktop shortcut, target `.venv\Scripts\labcli.exe` and set
+A bare `labcli` opens the watch screen (`Q` quits); `labcli help` lists the
+commands and `labcli status` says what is going, once. `labcli hardware` says
+whether each instrument in the map is found: run it after editing the map.
+For a desktop shortcut, target `.venv\Scripts\labcli.exe` and set
 **Start in** to the checkout folder.
 Outputs default to `outputs/` under the working directory; set
 `FORMSLAB_OUTPUT_DIR` to choose another folder. Environment overrides must also

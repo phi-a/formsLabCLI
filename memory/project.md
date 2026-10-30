@@ -69,7 +69,8 @@ written for the first of them ([writing](design/writing.md)).
 | Sequences | `formslab.sequence` | Plans, blocks, loops, conditions; the checks a plan gets when read |
 | Host | `formslab.host` | One run: lock, ctrl, pacing, recording, shutdown on any exit |
 | Orbits | `formslab.orbit` | Orbit files and the models they feed: propagation (Kepler + J2), geometry, view factors, thermal |
-| Console, GUI | `formslab.console`, `formslab.gui` | The operator's two front ends over the same files |
+| Backend | `formslab.lab` | What is going, start, end, pause, a command: one set of functions for both front ends |
+| Console, GUI | `formslab.cli`, `formslab.console.watch`, `formslab.gui` | The operator's two front ends over the same files; `formslab.safety` the off switches below End |
 
 A plan is one step per line: `load` (which rScripts run), `record every`, then
 commands (`hvc platen 20`), waits (`until chamberP < 5 within 20 min`), holds, logs,

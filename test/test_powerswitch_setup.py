@@ -4,7 +4,6 @@ import json
 import subprocess
 from pathlib import Path
 
-from formslab.console.psu import psucli
 from formslab.devices.powerswitch import driver as powerswitch
 
 
@@ -194,21 +193,3 @@ def test_outlet_range_refuses_before_any_http_request(monkeypatch, capsys):
 
     assert not powerswitch.switch("ON", 9, powerswitch.PowerSwitchConfig())
     assert "outside 1-8" in capsys.readouterr().out
-
-
-def test_labcli_setup_dispatches_the_python_lab_tool(monkeypatch):
-    captured = {}
-
-    def run(command, **kwargs):
-        captured["command"] = command
-        return _completed(command, stdout="[dry-run] planned\n")
-
-    monkeypatch.setattr(psucli.subprocess, "run", run)
-
-    result = psucli.execute_command(["--setup", "--dry-run"], target="ps")
-
-    command = captured["command"]
-    assert command[0] == powerswitch.sys.executable
-    assert command[1:3] == ["-m", "formslab.devices.powerswitch"]
-    assert command[3:] == ["setup", "--dry-run"]
-    assert "PowerSwitch network setup completed successfully" in result.content.plain

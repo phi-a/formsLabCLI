@@ -92,6 +92,25 @@ It does not:
 - **run by itself for a host that was killed** (D10). Someone may have stopped it
   on purpose; it runs when the operator asks.
 - **confirm anything, if it was a Fast End** (D11). Check the chamber at the HMI.
+- **kill a host that does not take it.** No front end does; `labcli kill` is the
+  operator's own act, asked first, after which End runs from a fresh host.
+
+## When something must go off
+
+In this order; each step is for when the one before cannot do it. The refusals
+are held by formsLAB; the order by the operator.
+
+| Step | When | What it does |
+|---|---|---|
+| End: `E` on the watch screen, *End run*, `labcli end` | a run is going | the end script, then every routine's shutdown: supplies off, zones off, valves closed, pumps stopped |
+| Fast End: `F`, *Fast End*, `labcli end fast` | End is waiting on something slow | the same steps, not waiting to confirm each |
+| `labcli kill`, then End again | the host does not take End | stops the host without its end; the run is then lost, and End runs its end from a fresh host (D10) |
+| `labcli supplies off` | no run is going, or its host is gone, and a supply must go off now | every output of every enabled supply off, over its own session; refused while a run is going |
+| `labcli power <outlet> cycle`, then `supplies off` again | a supply does not answer | the PowerSwitch outlet it is on off and on again ([powerswitch](../instruments/powerswitch.md)); refused while a run is going |
+
+`kill`, `supplies off` and an outlet off or cycled ask `y/n` before they act; from
+a script, add the word `yes`. Every one of them, from either front end, is a line
+in `~/.formslab/.run/actions.log`.
 
 ## Supplies
 
@@ -101,6 +120,7 @@ It does not:
 | The board's supply: 20 to 24.5 V, at most 2.0 A, protection at or above the setting (shipped: 24 V, 1.0 A, OVP 24.5 V, OCP 1.25 A). | formsLAB | [cryocooler](../instruments/cryocooler.md) |
 | Check the psu1 card shows protection on, and the log has no "protection ... not as set", before trusting it. The command rPSU sends differs from the supply guide's form and is not yet confirmed on the bench. | Operator | [end](../design/end.md), Open items |
 | While a run ends, no supply channel is switched on. | formsLAB | [end](../design/end.md) |
+| Between runs a supply is turned off by `labcli supplies off`, or its outlet cycled by `labcli power`; while a run is going both are refused and End does it. | formsLAB | [When something must go off](#when-something-must-go-off) |
 
 ## The network
 
@@ -119,5 +139,7 @@ checking what else uses them. ([hvc3500](../instruments/hvc3500.md), Network saf
 | Whether the controller accepts `hvc platen on` at atmosphere (it limits the heaters above 700 Torr) | if it refuses, `shutdown` run on a chamber already at air stops at that step; then move the zone steps after `vent` |
 | Cooling has never been run through formsLabCLI | watch the first cold run at the HMI |
 | End has not been run on the real chamber | the bench checklist, [end](../design/end.md) section 9 |
+| `labcli kill` and `labcli supplies off` have not been run on the bench | try `supplies off` on a supply with nothing connected first |
+| Which PowerSwitch outlet feeds which supply is not written down | read it off the switch and record `PS.outlets` in the live map ([powerswitch](../instruments/powerswitch.md)) |
 | End's confirmation times (15 s, 30 s) are estimates | adjust from the bench checklist |
 | What the controller reports while a recipe runs | [recipes](recipes.md) |

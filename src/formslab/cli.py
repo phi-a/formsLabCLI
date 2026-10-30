@@ -31,8 +31,13 @@ VERBS = (
     ("labcli end fast", "End without waiting to confirm each step"),
     ("labcli pause", "Hold the plan's steps"),
     ("labcli resume", "Go on with the plan's steps"),
+    ("labcli kill", "Stop the host without its end"),
     ("labcli log lines", "The host's last lines"),
     ("labcli cast label words", "A command to an instrument"),
+    ("labcli supplies off", "Every supply output off"),
+    ("labcli power", "The PowerSwitch and what each outlet feeds"),
+    ("labcli power outlet on", "An outlet on, off or cycled"),
+    ("labcli power setup", "Give this computer the PowerSwitch's address"),
     ("labcli hardware", "What is plugged in, beside the map"),
     ("labcli gui", "The web GUI on this machine"),
 )
@@ -41,6 +46,9 @@ NOTES = (
     "A plan is named, or given as a path; `labcli plans` lists the names.",
     "`labcli cast hvc platen 20` waits until the rScript that owns hvc takes it. "
     "`labcli cast hvc platen ?` says what can come next, with the ? quoted in bash and zsh.",
+    "When something must go off: end; end fast; kill, then end again; supplies off; "
+    "power N cycle, then supplies off again. The supplies and the switch are refused while a run is going.",
+    "kill, supplies off, power N off and power N cycle ask first; add the word yes to do them from a script.",
     "`labcli gui` takes --port N, --listen, --set-login and --no-monitor.",
     "Exit status: 0 done, 1 refused or failed, 2 usage.",
 )
@@ -80,12 +88,55 @@ def main(argv: list[str], out: Console | None = None) -> int:
         return _run(out, args)
     if verb in ("end", "pause", "resume"):
         return _ctrl(out, verb, args)
+    if verb == "kill":
+        return _kill(out, args)
     if verb == "log":
         return _log(out, args)
     if verb == "cast":
         return _cast(out, args)
+    if verb == "supplies":
+        return _supplies(out, args)
+    if verb == "power":
+        return _power(out, args)
     out.print(f"✗ unknown command {verb!r}; `labcli help` lists them", markup=False)
     return USAGE
+
+
+def question(words: list[str]) -> str | None:
+    """What is asked before a command that cannot be taken back, or None. The
+    watch screen asks the same question on its own line."""
+    w = [x.lower() for x in words]
+    if w[:1] == ["kill"]:
+        return "Stop the host without its end?"
+    if w[:2] == ["supplies", "off"]:
+        return "Every supply output off?"
+    if w[:1] == ["power"] and len(w) >= 3 and w[2] in ("off", "cycle"):
+        return f"Outlet {w[1]} {'off' if w[2] == 'off' else 'off, then on again'}?"
+    return None
+
+
+def _confirm(out, words: list[str]) -> int | None:
+    """None to go on: the word yes is among `words`, or a y was typed at a
+    terminal. Else the exit status to return: 1 for a no, 2 with no terminal."""
+    q = question(words)
+    if q is None or "yes" in (w.lower() for w in words):
+        return None
+    try:
+        at_terminal = sys.stdin is not None and sys.stdin.isatty()
+    except (AttributeError, ValueError):
+        at_terminal = False
+    if not at_terminal:
+        out.print(f"✗ {q} Add the word yes to do it without a terminal: labcli {' '.join(words)} yes",
+                  markup=False)
+        return USAGE
+    try:
+        answer = out.input(f"{q} y/n ")
+    except (EOFError, KeyboardInterrupt):
+        answer = ""
+    if answer.strip().lower() in ("y", "yes"):
+        return None
+    out.print("Not done.", markup=False)
+    return 1
 
 
 def _help(out) -> int:
@@ -240,7 +291,7 @@ def _check(out, args) -> int:
 
     if find_plan(name) is not None:
         from formslab.sequence.__main__ import main as check_plan
-        return check_plan([name])
+        return check_plan([name], out=out.file)
     from formslab.orbit import file as orbitfile
     from formslab.sequence import block as blockfile
 
@@ -324,6 +375,90 @@ def _ctrl(out, verb: str, args) -> int:
     else:
         out.print(f"✖ {r['plan']} ended.", markup=False)
     return 0
+
+
+def _kill(out, args) -> int:
+    """The host stopped without its end, for one that will not take End. Its
+    lock stays, so `labcli end` then runs the end from a fresh host."""
+    from formslab import lab
+
+    if lab.host() is None:
+        out.print("✗ no run is going." + (" Its host is already gone; `labcli end` runs its end."
+                                           if lab.lost_run() else ""), markup=False)
+        return 1
+    if (code := _confirm(out, ["kill", *args])) is not None:
+        return code
+    r = lab.kill()
+    lab.audit(_who(), "kill")
+    out.print(f"✖ {r['plan']}'s host (pid {r['killed']}) was stopped without its end. "
+              "`labcli end` runs its end from a fresh host.", markup=False)
+    return 0
+
+
+def _supplies(out, args) -> int:
+    from formslab import lab, safety
+
+    if args[:1] != ["off"]:
+        out.print("✗ supplies off, or supplies off psu1", markup=False)
+        return USAGE
+    if (code := _confirm(out, ["supplies", *args])) is not None:
+        return code
+    labels = [a for a in args[1:] if a.lower() != "yes"]
+    try:
+        done = safety.supplies_off(labels)
+    except safety.Refused as e:
+        out.print(f"✗ {e}", markup=False)
+        return 1
+    lab.audit(_who(), "supplies off" + (" " + " ".join(labels) if labels else ""))
+    for d in done:
+        out.print(("✔ " if d["ok"] else "✗ ") + d["text"], markup=False)
+    if not done:
+        out.print("no supply is enabled in the hardware map", markup=False)
+    return 0 if done and all(d["ok"] for d in done) else 1
+
+
+def _power(out, args) -> int:
+    """The PowerSwitch: what it is and what each outlet feeds; an outlet on,
+    off or cycled; or this computer's address for it (the driver's setup)."""
+    import subprocess
+
+    from formslab import lab, safety
+
+    args = list(args)
+    if args[:1] == ["setup"]:
+        cmd = [sys.executable, "-m", "formslab.devices.powerswitch", "setup"] + \
+              (["--dry-run"] if "--dry-run" in args else [])
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        except subprocess.TimeoutExpired:
+            out.print("✗ the setup did not finish in 60 s", markup=False)
+            return 1
+        out.print((r.stdout + r.stderr).rstrip(), markup=False)
+        return 0 if r.returncode == 0 else 1
+    if not args or args[:1] == ["status"]:
+        s = safety.outlets()
+        out.print(f"PowerSwitch at {s['host']}, from {s['local_ip']} on {s['adapter']}: "
+                  f"{'reached' if s['reachable'] else 'not reached'}", markup=False)
+        if not s["reachable"]:
+            out.print(f"  {s['note']}", markup=False)
+        for o in s["outlets"]:
+            out.print(f"  outlet {o['number']}  {o['feeds'] or '-'}", markup=False)
+        return 0 if s["reachable"] else 1
+    number, action = args[0], (args[1].lower() if len(args) > 1 else "")
+    if not number.isdigit() or action not in safety.ACTIONS:
+        out.print("✗ power, power setup, or power <outlet> on, off or cycle", markup=False)
+        return USAGE
+    if (code := _confirm(out, ["power", number, action, *args[2:]])) is not None:
+        return code
+    try:
+        r = safety.outlet(int(number), action)
+    except (safety.Refused, ValueError) as e:
+        out.print(f"✗ {e}", markup=False)
+        return 1
+    lab.audit(_who(), f"power {number} {action}")
+    for line in r["lines"]:
+        out.print(("✔ " if r["ok"] else "✗ ") + line, markup=False)
+    return 0 if r["ok"] else 1
 
 
 def _log(out, args) -> int:

@@ -10,7 +10,7 @@ load rPSU rSMTC08
 # record: every value to outputs/<plan>_<UTC>.jsonl (default every 10 s).
 record every 2 s
 
-# A command is the same words as the cast tab.
+# A command is the same words as `labcli cast`.
 psu1 ch1 set 1.0 0.1
 psu1 ch1 on
 hold 60 s
@@ -21,7 +21,7 @@ log done
 
 | step | does | fails the plan when |
 |---|---|---|
-| `<label> <words>` | a command to the routine that owns the label (`hvc vent open`, `psu1 ch1 on`, `cryo ccv 14`) -- the cast tab's words; waits until the routine has taken it, and for the chamber (rLACO) until it is done | a prerequisite is not met (below); not taken within 10 s; the chamber refuses it |
+| `<label> <words>` | a command to the routine that owns the label (`hvc vent open`, `psu1 ch1 on`, `cryo ccv 14`) -- the same words as `labcli cast`; waits until the routine has taken it, and for the chamber (rLACO) until it is done | a prerequisite is not met (below); not taken within 10 s; the chamber refuses it |
 | `hold <time> s\|min\|h` | runs the routines for a while | — |
 | `hold until end` | runs until ctrl `end` (`tvac.plan`: manual operation) | — |
 | `until <condition>` | runs until the condition holds, however long that takes, or until the run is ended (Conditions, below) | — |
@@ -74,7 +74,7 @@ tvac.plan:9: TC01 is published by rSMTC08; add it to `load`
 tvac.plan:4: expected s, min or h after 'hold 30', got 'sec'; did you mean 's'?
 ```
 
-To see what can follow some words, end them with `?` in the cast tab
+To see what can follow some words, end them with `?` on the watch screen or after `labcli cast`
 (`hvc platen ?`) or `labcli cast hvc platen ?`.
 
 ### Holding at a thermocouple
@@ -152,7 +152,7 @@ with an `until` just before the step (`until chamberP >= 0.01 ...` before
 `hvc rough open`, as the `pumpdown` block does). A wait that may go on without it
 (`... or go on`) proves nothing. Every rule is then checked again, live, when the step runs, against what the chamber last reported:
 a step it fails stops the plan, before anything is sent. The command box, the
-cast tab and `labcli cast` check the same rules and refuse with the reason.
+watch screen and `labcli cast` check the same rules and refuse with the reason.
 
 ### Blocks
 
@@ -334,7 +334,7 @@ Shipped plans, the bench's tests, each built from the blocks above:
 
 | plan | does | takes about |
 |---|---|---|
-| `tvac` | manual operation from the cast tab, until `end` | until `end` |
+| `tvac` | manual operation from the watch screen or `labcli cast`, until `end` | until `end` |
 | `ambient_to_rest` | pumps down from ambient to 3 Torr, seals the chamber and leaves it to rest | 10 minutes |
 | `rest_to_ambient` | lets air into a sealed chamber at a rough rest | 5 minutes |
 | `shutdown` | from any state to at air with everything off: supplies off, zones to 25 °C, `seal chamber`, `vent`, zones off. Run it after any End and at the end of a session | minutes from a rest; up to 4 h from -150 °C |
@@ -363,8 +363,8 @@ beside the plans; a plan follows one with rOrbit, `orbit follow <orbit>`
 ## Running
 
 ```
-labcli check <plan>                              # read it: steps listed, errors by line
-labcli run <plan>                                # or in the console: ctrl> run <plan>
+labcli check <plan>                              # read it: steps listed, errors by line; a block or an orbit too
+labcli run <plan>                                # or `run <plan>` on the watch screen
 labcli status / end
 ```
 
@@ -381,7 +381,7 @@ up a hold.
 
 The whole design, its decisions, code map, tests and open items: [end](../design/end.md).
 
-A run cut short -- End in the GUI, `labcli end`, ctrl `end`, Ctrl+C, a failed
+A run cut short -- End in the GUI, `labcli end`, `E` on the watch screen, Ctrl+C, a failed
 step, a crash -- first runs the **end script**, `plans/end.plan`, with every
 routine still live. It is a plan like any other, read in the editor and by
 `labcli check`, and never started on its own. What it does, in order:

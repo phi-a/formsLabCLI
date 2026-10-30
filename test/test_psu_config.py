@@ -1,9 +1,6 @@
 import json
 
-from rich.text import Text
-
 from formslab import config
-from formslab.console.sessions.base import CLIResult
 from formslab.devices.dp832a import config as psu_config
 
 
@@ -44,29 +41,3 @@ def test_disabled_psu_is_not_exposed():
     _write_map()
 
     assert psu_config.enabled_psu_labels() == ("psu1",)
-
-
-
-def test_psu_help_omits_disabled_psu():
-    from formslab.console.psu import psucli
-
-    text = psucli.help_panel().content.plain
-    assert "psu1" in text
-    assert "psu2" not in text
-
-
-def test_psu_session_returns_only_command_result(monkeypatch):
-    from formslab.console.psu import psucli
-    from formslab.console.sessions.psu import PSUSession
-
-    monkeypatch.setattr(psucli, "psus", lambda: {"psu1": object()})
-    monkeypatch.setattr(
-        psucli,
-        "execute_command",
-        lambda parts, target=None: CLIResult(Text(f"result for {target}")),
-    )
-
-    result = PSUSession().handle("--status")
-
-    assert result.content.plain == "result for psu1"
-

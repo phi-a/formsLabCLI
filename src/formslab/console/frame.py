@@ -1,13 +1,13 @@
 """Compose one fixed-geometry screen.
 
-The console redraws; it does not scroll. Every command repaints a frame whose
+The console redraws; it does not scroll. Every repaint draws a frame whose
 regions occupy the same rows each time, so the prompt never walks down the
 terminal and no earlier output survives below the fold. Top to bottom:
 
-    tab bar     the tab strip -- constant height
-    status      `session.banner()`, for a tab that publishes one
-    content     the last command's output, in a pane of fixed height
-    prompt      the terminal's last row, written by the REPL after this frame
+    header      the run line and the key legend -- constant height
+    status      a banner, when there is something to say
+    content     the cards, the log, the last command's output, in a pane of fixed height
+    prompt      the terminal's last row, written by the watch loop after this frame
 
 The regions are drawn as boxes on purpose. A pane that pads to a constant height
 is only *reassuring* if you can see it holding its shape: without a border, a
@@ -96,7 +96,7 @@ def _footer(scroll: int, shown: int, total: int) -> Text:
     return Text(f" {first}-{last} of {total} · ↑↓ PgUp/PgDn ", style=style.DIM)
 
 
-def build(console, *, tab_bar, body, banner=None, title=None,
+def build(console, *, header, body, banner=None, title=None,
           width: int, height: int, scroll: int = 0) -> Frame:
     """Lay out one frame of exactly `height - PROMPT_ROWS` rows.
 
@@ -109,7 +109,7 @@ def build(console, *, tab_bar, body, banner=None, title=None,
     inner_width = max(1, width - PANE_CHROME_COLS)
 
     def chrome_lines(with_banner: bool) -> List[List[Segment]]:
-        parts: List[Any] = [tab_bar]
+        parts: List[Any] = [header]
         if with_banner and banner is not None:
             parts.append(Panel(
                 banner,

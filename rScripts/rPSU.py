@@ -310,7 +310,7 @@ def _handle_psu_request(run, label, psu, request):
     changed = False
 
     if request.get("shutdown"):
-        run.log(f"{label.upper()} shutdown requested via CAST — ignored (use psucli)", level="WARNING", component=name)
+        run.log(f"{label.upper()} shutdown requested via CAST — ignored (use labcli supplies off between runs)", level="WARNING", component=name)
 
     update = request.get("update")
     if isinstance(update, bool):

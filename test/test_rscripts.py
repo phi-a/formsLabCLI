@@ -285,14 +285,13 @@ def test_tvac_plan_runs_until_end(chamber, tmp_path, monkeypatch):
 
 
 def test_a_cast_command_reaches_the_chamber_through_the_host(chamber, tmp_path, monkeypatch):
-    """The whole path: cast tab words -> rLACO's COMMANDS -> CAST -> rLACO
+    """The whole path: the typed words -> rLACO's COMMANDS -> CAST -> rLACO
     in the host -> LACO.apply -> the controller."""
-    from formslab.console.cast import castcli
-    from formslab.console.ctrl import ctrlcli
+    from formslab import lab
     from formslab.host import sequence
 
     plan = _tvac_plan(tmp_path, monkeypatch, ["rLACO"])
-    monkeypatch.setattr(ctrlcli, "running", lambda: {"pid": 1, "plan": "tvac"})   # the host, in this process
+    monkeypatch.setattr(lab, "host", lambda: {"pid": 1, "plan": "tvac", "started": "t", "output": "/x"})   # the host, in this process
     typed = []      # typed while the host runs: it clears stale requests at start
 
     def reported():                # as an operator would: once the chamber shows on the status page
@@ -303,11 +302,11 @@ def test_a_cast_command_reaches_the_chamber_through_the_host(chamber, tmp_path, 
                 return
             time.sleep(0.1)
 
-    timer = _operator(0.5, reported, lambda: typed.append(castcli.execute_command(["hvc", "platen", "35"])),
+    timer = _operator(0.5, reported, lambda: typed.append(lab.send_command("hvc platen 35")),
                       lambda: __import__("time").sleep(1.5))
     sequence.channel(plan)
     timer.join()
-    assert "platen" in typed[0].content.plain and "done" in typed[0].content.plain
+    assert typed[0]["request"] == {"platen": 35.0} and "done" in typed[0]["text"]
     assert chamber.state.zone_setpoint[1] == pytest.approx(35.0)
 
 
