@@ -229,7 +229,7 @@
     if (s.action === "starting") { note.className = "note"; note.textContent = "Starting the run..."; }
     else if (s.action === "ending") { note.className = "note"; note.textContent = "Ending: the end script is running, then each instrument's shutdown..."; }
     else if (note.dataset.sticky !== "1") { note.textContent = ""; }
-    if (!running && !state.plansLoaded) loadPlans();
+    if (!s.host && !state.plansLoaded) loadPlans();
   }
 
   function say(note, text, isError) {
