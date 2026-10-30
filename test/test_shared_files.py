@@ -11,7 +11,7 @@ from unittest import mock
 import pytest
 
 from formslab.console.cast import castutils
-from formslab.console.ctrl import ctrlcli, ctrlutils
+from formslab.console.ctrl import ctrlutils
 from formslab.console.safefile import atomic_write_text, file_lock, read_json
 from formslab.state import cast_state_path, ctrl_state_path
 
@@ -113,7 +113,6 @@ def test_an_unreadable_ctrl_table_is_unknown_not_empty():
     ctrl_state_path().write_text("{ not json", encoding="utf-8")
 
     assert ctrlutils.LoadCommands() is None                   # never {}
-    assert ctrlcli._end_pending() is True                     # unknown is not "taken"
 
 
 def test_a_damaged_ctrl_table_is_kept_and_regenerated_for_a_write():
@@ -147,49 +146,6 @@ def test_ctrl_writers_in_two_threads_lose_nothing():
     [t.start() for t in threads]
     [t.join(30) for t in threads]
     assert set(ctrlutils.ReadCommands(labels)) == set(labels)
-
-
-# --- ending a run -------------------------------------------------------------------------
-
-HOST = {"pid": 4321, "plan": "tvac", "started": "t", "output": "/x"}
-
-
-def test_end_is_sent_again_while_it_waits(monkeypatch):
-    """A host that is starting clears ctrl after taking its lock, so one `end`
-    can be erased. It is sent again, and a healthy host is never killed."""
-    ctrlutils.LoadCommands()
-    alive = threading.Event()
-    alive.set()
-
-    def host():
-        time.sleep(0.15)
-        ctrlutils.ResetCtrlState()                              # the start-up reset: erases the first end
-        while alive.is_set():
-            if "end" in ctrlutils.ReadCommands(["end"]):
-                alive.clear()
-            time.sleep(0.02)
-
-    t = threading.Thread(target=host, daemon=True)
-    t.start()
-    monkeypatch.setattr(ctrlcli, "END_RESEND_S", 0.2)
-    try:
-        with mock.patch.object(ctrlcli, "running", return_value=HOST), \
-                mock.patch.object(ctrlcli, "is_host", side_effect=lambda pid: alive.is_set()), \
-                mock.patch.object(ctrlcli, "_kill_tree") as kill:
-            result = ctrlcli.end_sequence(take_s=5, finish_s=2)
-    finally:
-        alive.clear()          # the helper thread must never outlive the test's isolated dirs
-        t.join(2)
-
-    kill.assert_not_called()
-    assert "stopped cleanly" in result.content
-
-
-def test_end_reports_a_ctrl_file_it_cannot_write(monkeypatch):
-    with mock.patch.object(ctrlcli, "running", return_value=HOST), \
-            mock.patch.object(ctrlcli, "WriteCommand", side_effect=PermissionError("locked")):
-        result = ctrlcli.end_sequence(take_s=0.1, finish_s=0.1)
-    assert result.ok is False and "could not send `end`" in result.content.plain
 
 
 # --- what a block's timestamp means -------------------------------------------------------------
@@ -228,7 +184,7 @@ def test_a_log_line_the_stream_cannot_encode_does_not_raise():
 
 
 def test_the_host_is_launched_writing_utf8(monkeypatch):
-    from formslab.console.ctrl import ctrlcli
+    from formslab import lab
     seen = {}
 
     class Proc:
@@ -239,11 +195,11 @@ def test_the_host_is_launched_writing_utf8(monkeypatch):
         seen.update(kw)
         return Proc()
 
-    monkeypatch.setattr(ctrlcli.subprocess, "Popen", popen)
-    monkeypatch.setattr(ctrlcli, "running", lambda: None)
-    monkeypatch.setattr(ctrlcli.time, "sleep", lambda s: None)
-    monkeypatch.setattr(ctrlcli.time, "monotonic", iter([0.0, 10.0, 10.0, 10.0]).__next__)
-    ctrlcli._launch_sequence("x.plan")
+    monkeypatch.setattr(lab.subprocess, "Popen", popen)
+    monkeypatch.setattr(lab, "host", lambda: None)
+    monkeypatch.setattr(lab.time, "sleep", lambda s: None)
+    monkeypatch.setattr(lab.time, "monotonic", iter([0.0, 10.0, 10.0, 10.0]).__next__)
+    lab.launch("x.plan")
     assert seen["env"]["PYTHONIOENCODING"] == "utf-8"
     assert seen["stdout"].encoding.lower().replace("-", "") == "utf8"
 

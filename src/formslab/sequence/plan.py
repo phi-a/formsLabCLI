@@ -127,6 +127,21 @@ def search_dirs() -> list[Path]:
     return out
 
 
+def editable_dirs() -> set[Path]:
+    """Where a plan may be changed in place: this machine's own folder and any
+    folder $FORMSLAB_PLANS_DIR names (a bench keeps its own copies there)."""
+    dirs = {user_plans_dir().resolve()}
+    for p in (os.environ.get(ENV) or "").split(os.pathsep):
+        if p:
+            dirs.add(Path(p).expanduser().resolve())
+    return dirs
+
+
+def is_editable(path: Path) -> bool:
+    path = path.resolve()
+    return any(path.is_relative_to(d) for d in editable_dirs())
+
+
 def find_plan(target: str) -> Path | None:
     """A path to a plan file, or a plan name looked up in `search_dirs`."""
     path = Path(target).expanduser()

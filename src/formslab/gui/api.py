@@ -1,175 +1,27 @@
-"""What the web GUI asks of formsLabCLI, as plain functions (no sockets here).
+"""What the web GUI asks of formsLabCLI beyond `formslab.lab`, as plain functions
+(no sockets here): recorded runs, the hardware survey, the plan editor and
+orbit files. Run control and status are `formslab.lab`, shared with labcli.
 
-Nothing here opens an instrument. Reads (the host's lock, CAST status blocks, the
-host log, recorded runs) use one short read of the file, never `ReadStatus`,
-which writes back. Control goes the way the console's does: a run is started
-as the sequence host process, and `end`, `pause`, `resume` and commands are
-written to the ctrl and CAST files for the host to take.
+Nothing here opens an instrument. Reads use one short read of a file, never
+`ReadStatus`, which writes back.
 """
 from __future__ import annotations
 
-import json
-import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from formslab import config
-from formslab.console.cast import castutils
-from formslab.console.ctrl import ctrlcli, ctrlutils
-from formslab.console.log.logcli import log_path
-from formslab.console.safefile import read_json
+from formslab import config, lab
 from formslab.gui import plans, runs
-from formslab.host.sequence import (
-    END_CAP_S, END_SCRIPT, END_SETTLE_S, ended_path, is_host, lost_run, read_lock,
-)
+from formslab.host.sequence import read_lock
+from formslab.lab import LabError as ApiError, _lock
 from formslab.orbit import file as orbitfile
 from formslab.orbit.propagate.kepler import live
 from formslab.sequence import block as blockfile
-from formslab import rscripts
-from formslab.rscripts import cast
-from formslab.rscripts.grammar import GrammarError
-from formslab.sequence import PlanError, discover, load_plan
+from formslab.sequence import discover
 from formslab.sequence.plan import (
     available_rscripts, describe_step, line_options, lines_options, needed_rscripts, tokens,
 )
-from formslab.state import cast_state_path
-
-# How often each block is republished while its owner runs (seconds). A block
-# older than three of these, plus a little slack, is not live.
-CADENCE_S = {"tc": 2.0, "hvc": 6.0, "psu1": 1.0, "psu2": 1.0, "cryo": 5.0, "slta": 3.0, "orbit": 1.0}
-DEFAULT_CADENCE_S = 5.0
-SLACK_S = 2.0
-LOG_TAIL_BYTES = 64 * 1024
-CAST_TAKE_S = castutils.TAKE_S     # how long a command may wait to be taken
-# How long an `end` is kept being sent to a host that is still up: the end script's
-# own limit, then its routines' threads (15 s) and their shutdowns.
-END_WAIT_S = END_CAP_S + 30.0
-END_RESEND_S = 3.0
-
-
-class ApiError(Exception):
-    """A refusal, with the HTTP status the server should answer it with."""
-
-    def __init__(self, code: int, message: str) -> None:
-        super().__init__(message)
-        self.code = code
-
-
-# rScript-importing calls (plans, completion) share a module cache that is not
-# thread-safe, and the GUI's own CAST writes are serialised.
-_lock = threading.RLock()
-_action_lock = threading.Lock()
-_action: dict = {"name": None, "since": 0.0}
-
-
-def host() -> dict | None:
-    """The live host's lock ({pid, plan, started, output}), or None."""
-    lock = read_lock()
-    return lock if lock and is_host(lock["pid"]) else None
-
-
-def _epoch(iso: str) -> float | None:
-    try:
-        return datetime.fromisoformat(iso).timestamp()
-    except ValueError:
-        return None
-
-
-def freshness(label: str, block: dict, running: dict | None, now: float) -> dict:
-    """Is this block live, and if not, why: a host is running, its owner reported
-    within three of its publish cadences (the block's timestamp is only ever set
-    by an owner's status write), and a chamber says it is connected."""
-    age = now - float(block.get("timestamp") or 0)
-    limit = 3 * CADENCE_S.get(label, DEFAULT_CADENCE_S) + SLACK_S
-    if running is None:
-        # Between runs the chamber monitor (formslab.host.monitor) keeps "hvc" read.
-        status = block.get("status") or {}
-        if label == "hvc" and age <= limit and status.get("connected"):
-            return {"live": True, "watched": True, "age_s": age, "reason": ""}
-        return {"live": False, "age_s": age, "reason": "no run is going"}
-    if age > limit:
-        return {"live": False, "age_s": age, "reason": f"not updated for {age:.0f} s "
-                                                       f"(its owner may not be loaded)"}
-    status = block.get("status") or {}
-    if label == "hvc" and not status.get("connected"):
-        return {"live": False, "age_s": age, "reason": status.get("error") or "chamber not connected"}
-    return {"live": True, "age_s": age, "reason": ""}
-
-
-def read_blocks() -> dict | None:
-    """castfile.json as written by the host, or None when it cannot be read."""
-    try:
-        data = read_json(cast_state_path())
-    except (OSError, ValueError):
-        return None
-    return data if isinstance(data, dict) else None
-
-
-def status(log_lines: int = 40) -> dict:
-    now = time.time()
-    running = host()
-    data = read_blocks()
-    blocks = {}
-    for label, block in (data or {}).items():
-        if not isinstance(block, dict):
-            continue
-        status_ = block.get("status") or {}
-        with _lock:
-            try:
-                groups = cast.readings(label, status_) if isinstance(status_, dict) else []
-            except Exception:                        # a broken rScript must not break the page
-                groups = []
-        blocks[label] = {"status": status_, "groups": groups,
-                         "pending": bool(block.get("request")) and not block.get("processed", True),
-                         **freshness(label, block, running, now)}
-    return {"now": now, "host": running, "last_run": None if running else read_lock(),
-            "action": current_action(), "blocks": blocks, "cast_unreadable": data is None,
-            "log": log_tail(log_lines), "ended": None if running else last_ended(),
-            "lost": None if running else lost_run()}
-
-
-def last_ended() -> dict | None:
-    """How the last run ended (the host's ended.json): plan, when, how, the chamber
-    as it was left, and what the end script could not do."""
-    try:
-        return json.loads(ended_path().read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-
-
-def end_steps() -> list[str]:
-    """What End will do for the running plan, or for the run whose host was lost:
-    the end script's steps for the routines it loaded, as the End dialog lists them."""
-    running = host() or lost_run()
-    if running is None:
-        raise ApiError(409, "no run is going")
-    path = next((p for p in discover() if p.stem == END_SCRIPT), None)
-    if path is None:
-        return []
-    from formslab.host.sequence import _needs
-    from formslab.rscripts import cast
-
-    with _lock:
-        try:
-            script, plan = load_plan(path), load_plan(next(p for p in discover() if p.stem == running["plan"]))
-        except (PlanError, StopIteration):
-            return []
-        labels, loaded = cast.owners()[0], set(plan.rscripts)
-        return [s.label for s in script.sequence.segments if _needs(s, labels) <= loaded]
-
-
-def log_tail(lines: int = 40) -> list[str]:
-    """The last `lines` lines of the host log (read from its tail only)."""
-    path = log_path()
-    try:
-        with path.open("rb") as f:
-            f.seek(0, 2)
-            f.seek(max(0, f.tell() - LOG_TAIL_BYTES))
-            text = f.read().decode("utf-8", errors="replace")
-    except OSError:
-        return []
-    return text.splitlines()[-max(1, min(int(lines), 500)):]
 
 
 # --- recorded runs -----------------------------------------------------------------
@@ -179,7 +31,7 @@ def run_dirs() -> list[Path]:
     live host's lock says it is writing to (the host starts from wherever it was
     launched)."""
     dirs = [config.output_dir()]
-    lock = host() or read_lock()
+    lock = lab.host() or read_lock()
     if lock and lock.get("output") not in (None, "?"):
         extra = Path(lock["output"])
         if extra.is_dir() and extra.resolve() not in {d.resolve() for d in dirs}:
@@ -190,7 +42,7 @@ def run_dirs() -> list[Path]:
 def list_runs() -> dict:
     found = runs.scan(run_dirs())
     for r in found["runs"]:
-        r["live"] = bool(host()) and r["modified"] > time.time() - 3 * 60
+        r["live"] = bool(lab.host()) and r["modified"] > time.time() - 3 * 60
     return found
 
 
@@ -215,203 +67,17 @@ def hardware() -> dict:
     return survey.survey()
 
 
-# --- control --------------------------------------------------------------------------
-
-def current_action() -> str | None:
-    """"starting" or "ending" while a start or an end is in progress, else None."""
-    with _action_lock:
-        return _action["name"]
-
-
-def _begin(name: str) -> None:
-    with _action_lock:
-        if _action["name"]:
-            raise ApiError(409, f"a run is already {_action['name']}")
-        _action.update(name=name, since=time.time())
-
-
-def _finish() -> None:
-    with _action_lock:
-        _action["name"] = None
-
-
-def list_plans() -> list[dict]:
-    """The plans `run <name>` can start, each with the rScripts it loads, or why
-    it does not read; then the blocks (kind "block"), which plans call, and the
-    orbit files (kind "orbit"), which the editor opens; neither is run itself."""
-    out = []
-    with _lock:
-        for path in discover():
-            try:
-                plan = load_plan(path)
-            except PlanError as e:
-                out.append({"name": path.stem, "kind": "plan", "error": str(e),
-                            "editable": plans.is_editable(path)})
-                continue
-            out.append({"name": path.stem, "kind": "plan", "rscripts": list(plan.rscripts),
-                        "steps": len(plan.sequence.segments), "editable": plans.is_editable(path),
-                        "warnings": [f"line {n}: {m}" for n, m in plan.warnings],
-                        "open_ended": plan.sequence.open_ended,
-                        **({"end": True} if path.stem == END_SCRIPT else {})})   # run by End, never started
-        taken = {p["name"] for p in out}
-        for path in blockfile.discover():
-            if path.stem in taken:                      # a plan of the same name is found first
-                continue
-            errors, _ = blockfile.review(path.read_text(encoding="utf-8"))
-            out.append({"name": path.stem, "kind": "block", "editable": plans.is_editable(path),
-                        **({"error": f"line {errors[0][0]}: {errors[0][1]}"} if errors else {})})
-            taken.add(path.stem)
-        for path in orbitfile.discover():
-            if path.stem in taken:                      # a plan of the same name is found first
-                continue
-            errors, _ = orbitfile.review(path.read_text(encoding="utf-8"))
-            out.append({"name": path.stem, "kind": "orbit", "editable": plans.is_editable(path),
-                        **({"error": f"line {errors[0][0]}: {errors[0][1]}"} if errors else {})})
-    return out
-
+# --- control -----------------------------------------------------------------------------
 
 def start_run(name: str) -> dict:
     """Start the host on a plan the server itself lists (never a path from the
-    request). The launch waits for the host's lock, so it runs on a thread."""
+    request). The launch waits for the host's lock, so `lab.start` runs it on a
+    thread and the page shows "starting"."""
     with _lock:
         path = next((p for p in discover() if p.stem == name), None)
-        if path is None:
-            raise ApiError(404, f"no plan {name!r}")
-        try:
-            plan = load_plan(path)
-        except PlanError as e:
-            raise ApiError(400, str(e))
-        missing = [n for n in plan.rscripts if rscripts.find(n) is None]
-        if missing:                              # the host refuses a plan whose scripts are not found
-            raise ApiError(400, f"rScript {', '.join(missing)} not found "
-                                f"(searched {', '.join(str(d) for d in rscripts.search_dirs())})")
-    if host():
-        raise ApiError(409, "a run is already going")
-    _begin("starting")
-
-    def launch() -> None:
-        try:
-            ctrlcli._launch_sequence(str(path.resolve()))
-        finally:
-            _finish()
-
-    threading.Thread(target=launch, name="gui-start", daemon=True).start()
-    return {"state": "starting", "plan": name}
-
-
-_end_key: dict = {"key": None}            # what End sends: "fast" for a Fast End
-
-
-def end_run(fast: bool = False) -> dict:
-    """Ask the host to stop, so every rScript's rShutdown runs. `end` is sent
-    again every few seconds while the host lives (a host that is starting clears
-    the ctrl file and can erase it), and the host is never killed from here.
-    With no host but a lost run (its host was killed), that run's end runs from
-    a fresh host. `fast`: a Fast End, the end script's steps sent without waiting
-    to confirm them; asked while an End is going, it makes the rest of it fast."""
-    running = host()
-    if running is None:
-        if lost_run() is None:
-            raise ApiError(409, "no run is going")
-        return _end_lost(fast)
-    with _action_lock:
-        already = fast and _action["name"] == "ending"
-    if already:
-        _end_key["key"] = "fast"
-        ctrlutils.WriteCommand("end", "fast")
-        return {"state": "ending", "plan": running["plan"]}
-    _begin("ending")
-    _end_key["key"] = "fast" if fast else None
-
-    def end(pid: int) -> None:
-        try:
-            deadline, resend_at = time.monotonic() + END_WAIT_S, 0.0
-            while time.monotonic() < deadline and is_host(pid):
-                if time.monotonic() >= resend_at:
-                    resend_at = time.monotonic() + END_RESEND_S
-                    try:
-                        ctrlutils.WriteCommand("end", _end_key["key"])
-                    except (OSError, ValueError):
-                        pass                             # tried again next round
-                time.sleep(0.25)
-        finally:
-            _finish()
-
-    threading.Thread(target=end, args=(running["pid"],), name="gui-end", daemon=True).start()
-    return {"state": "ending", "plan": running["plan"]}
-
-
-def _end_lost(fast: bool = False) -> dict:
-    """Start a host that runs only the end of the run whose host was lost
-    (`--end`), and show "ending" until it has gone. No `end` is sent to it: it
-    stops by itself, and an `end` would cut short its wait for first readings."""
-    lost = lost_run()
-    _begin("ending")
-
-    def end() -> None:
-        try:
-            ctrlcli._launch_sequence(None, end_only=True, fast=fast)
-            deadline = time.monotonic() + END_SETTLE_S + END_WAIT_S
-            while time.monotonic() < deadline and host() is not None:
-                time.sleep(0.25)
-        finally:
-            _finish()
-
-    threading.Thread(target=end, name="gui-end-lost", daemon=True).start()
-    return {"state": "ending", "plan": lost["plan"]}
-
-
-def ctrl(command: str) -> dict:
-    """`pause` or `resume` the running plan's steps."""
-    if command not in ("pause", "resume"):
-        raise ApiError(400, f"unknown ctrl command {command!r}")
-    if host() is None:
-        raise ApiError(409, "no run is going")
-    try:
-        ctrlutils.WriteCommand(command)
-    except (OSError, ValueError) as e:
-        raise ApiError(503, f"could not write the ctrl file: {e}")
-    return {"sent": command}
-
-
-def complete(words: list[str]) -> list[dict]:
-    """What can come after `words` in a command, for the command box."""
-    with _lock:
-        try:
-            options = cast.complete(words)
-            parts = cast.option_parts(words, options)
-        except Exception as e:                       # a broken rScript must not break the box
-            raise ApiError(500, f"{type(e).__name__}: {e}")
-    return [{"kind": o.kind, "text": o.text, "help": o.help, "lo": o.lo, "hi": o.hi, "unit": o.unit,
-             "part": p} for o, p in zip(options, parts)]
-
-
-def send_command(line: str) -> dict:
-    """Send `hvc platen 20`-style words to the rScript that owns the label,
-    exactly as the cast tab does (cast.send), and say what became of it.
-
-    Refused unless a run is going and the instrument's block is live: a command
-    to a chamber that is not connected, or whose rScript is not loaded, would sit
-    unread, and the page would look as if it had worked."""
-    words = line.split()
-    if not words:
-        raise ApiError(400, "type a command, e.g. hvc vent open")
-    label = words[0].lower()
-    with _lock:
-        try:
-            request = cast.request(label, words[1:])
-            wait = cast.reports_results(label)
-        except GrammarError as e:
-            raise ApiError(400, str(e))
-    running = host()
-    if running is None:
-        raise ApiError(409, "no run is going, so nothing would apply it")
-    blocks = read_blocks() or {}
-    fresh = freshness(label, blocks.get(label) or {}, running, time.time())
-    if not fresh["live"]:
-        raise ApiError(409, f"{label} is not live ({fresh['reason']}), so the command would not be taken")
-    # Outside the lock: the wait (up to cast.REPLY_S) must not hold up the other pages.
-    return cast.send(label, request, host=running, wait_result=wait, take_s=CAST_TAKE_S)
+    if path is None:
+        raise ApiError(404, f"no plan {name!r}")
+    return lab.start(name, wait=False)
 
 
 # --- the plan editor ---------------------------------------------------------------------
@@ -444,6 +110,8 @@ def describe(words: list[str] | None = None, text: str | None = None, line: int 
              kind: str = "plan") -> dict:
     """The help card: for line `line` of plan or orbit `text` (the editor), or for
     the command `words` (the command box, its prerequisites checked now)."""
+    from formslab.rscripts import cast
+
     with _lock:
         try:
             if text is not None and kind == "orbit":
@@ -478,20 +146,22 @@ def rscripts_available() -> list[str]:
         return available_rscripts()
 
 
-def plan_delete(name: str, base_hash: str | None) -> dict:
-    """Move one of your plans to the trash; not while it is the plan running."""
-    running = host()
+def _not_running(name: str) -> None:
+    running = lab.host()
     if running and running.get("plan") == name:
         raise ApiError(409, f"{name!r} is running; end the run first")
+
+
+def plan_delete(name: str, base_hash: str | None) -> dict:
+    """Move one of your plans to the trash; not while it is the plan running."""
+    _not_running(name)
     with _lock:
         return _plan_call(plans.delete, name, base_hash)
 
 
 def plan_rename(name: str, new: str, base_hash: str | None) -> dict:
     """Rename one of your files, and what refers to it; not the plan running."""
-    running = host()
-    if running and running.get("plan") == name:
-        raise ApiError(409, f"{name!r} is running; end the run first")
+    _not_running(name)
     with _lock:
         return _plan_call(plans.rename, name, new, base_hash)
 
@@ -499,9 +169,7 @@ def plan_rename(name: str, new: str, base_hash: str | None) -> dict:
 def plan_move(action: str, name: str, base_hash: str | None) -> dict:
     """`edit` (take a shipped file out to yours) or `ship` (put yours in the
     shipped plans); not while it is the plan running."""
-    running = host()
-    if running and running.get("plan") == name:
-        raise ApiError(409, f"{name!r} is running; end the run first")
+    _not_running(name)
     with _lock:
         return _plan_call({"edit": plans.edit, "ship": plans.ship}[action], name, base_hash)
 

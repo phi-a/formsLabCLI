@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from formslab import config
+from formslab import config, lab
 from formslab.gui import api, plans
 from formslab.sequence import PlanError, discover, find_plan, parse_plan
 from formslab.sequence.plan import (
@@ -127,7 +127,7 @@ def sha(path):
 
 
 def test_shipped_plans_are_read_only_and_listed_as_such():
-    listing = {p["name"]: p for p in api.list_plans()}
+    listing = {p["name"]: p for p in lab.list_plans()}
     assert all(listing[n]["editable"] is False for n in SHIPPED)
     r = plans.read("tvac")
     assert r["editable"] is False and r["errors"] == [] and r["text"].rstrip().endswith("hold until end")
@@ -141,7 +141,7 @@ def test_save_as_makes_a_copy_in_this_machines_folder():
     assert saved["errors"] == [] and saved["editable"] is True
     assert path.read_text(encoding="utf-8") == text                    # comments, blank lines, all of it
     assert saved["hash"] == sha(path)
-    assert {p["name"]: p["editable"] for p in api.list_plans()}["my_pumpdown"] is True
+    assert {p["name"]: p["editable"] for p in lab.list_plans()}["my_pumpdown"] is True
 
 
 @pytest.mark.parametrize("name", SHIPPED)
@@ -212,7 +212,7 @@ def test_a_draft_with_mistakes_is_saved_and_the_mistakes_come_back():
     saved = plans.save("draft", DRAFT, None, as_new=True)
     assert (user_plans_dir() / "draft.plan").read_text(encoding="utf-8") == DRAFT
     assert {e["line"] for e in saved["errors"]} >= {2, 3, 4, 5, 6, 7, 9}
-    assert {p["name"]: p for p in api.list_plans()}["draft"]["error"].startswith("draft.plan:")   # cannot be started
+    assert {p["name"]: p for p in lab.list_plans()}["draft"]["error"].startswith("draft.plan:")   # cannot be started
 
 
 def test_reading_an_unknown_or_path_like_name_is_a_404():
@@ -266,8 +266,8 @@ def test_read_check_and_save_over_http(client):
     assert code == 409 and "changed on disk" in body2["error"]
     assert client.json("POST", "/api/plan/save", {"name": "tvac", "text": "x", "base_hash": "x"})[0] == 403
     assert client.json("POST", "/api/plan/save", {"name": "../x", "text": "x", "as_new": True})[0] == 400
-    log = (config.run_dir() / "gui.log").read_text(encoding="utf-8")
-    assert "tester save plan mine (new)" in log and "refused plan/save" in log
+    log = (config.run_dir() / "actions.log").read_text(encoding="utf-8")
+    assert "tester gui save plan mine (new)" in log and "refused plan/save" in log
 
 
 def test_line_options_over_http(client):
@@ -278,11 +278,10 @@ def test_line_options_over_http(client):
 
 
 def test_a_started_plan_can_be_one_you_saved(client, monkeypatch):
-    from formslab.console.ctrl import ctrlcli
     plans.save("mine", "load rSMTC08\nhold 1 s\n", None, as_new=True)
     launched = []
-    monkeypatch.setattr(ctrlcli, "_launch_sequence", lambda path: launched.append(path))
-    monkeypatch.setattr(api, "host", lambda: None)
+    monkeypatch.setattr(lab, "launch", lambda path, **kw: launched.append(path))
+    monkeypatch.setattr(lab, "host", lambda: None)
     assert client.json("POST", "/api/run", {"plan": "mine"})[0] == 200
     for _ in range(100):
         if launched:
@@ -376,13 +375,13 @@ def test_deleting_an_unknown_or_path_like_name_is_a_404():
 def test_delete_and_tokens_over_http(client, monkeypatch):
     saved = plans.save("mine", "load rSMTC08\nhold 1 s\n", None, as_new=True)
     assert client.json("POST", "/api/plan/delete", {"name": "tvac", "base_hash": "x"})[0] == 403
-    monkeypatch.setattr(api, "host", lambda: {"pid": 1, "plan": "mine", "started": "t", "output": "/x"})
+    monkeypatch.setattr(lab, "host", lambda: {"pid": 1, "plan": "mine", "started": "t", "output": "/x"})
     code, body = client.json("POST", "/api/plan/delete", {"name": "mine", "base_hash": saved["hash"]})
     assert code == 409 and "is running" in body["error"]                                # not the plan running
-    monkeypatch.setattr(api, "host", lambda: None)
+    monkeypatch.setattr(lab, "host", lambda: None)
     code, body = client.json("POST", "/api/plan/delete", {"name": "mine", "base_hash": saved["hash"]})
     assert code == 200 and body["deleted"] == "mine"
-    assert "tester delete plan mine" in (config.run_dir() / "gui.log").read_text(encoding="utf-8")
+    assert "tester gui delete plan mine" in (config.run_dir() / "actions.log").read_text(encoding="utf-8")
     code, body = client.json("POST", "/api/plan/tokens", {"text": "load rLACO\nhvc vent open\n"})
     assert code == 200 and [t["role"] for t in body["lines"][1]] == ["verb", "kw", "kw"]
 
@@ -458,16 +457,16 @@ def test_a_file_with_problems_is_not_shipped(shipped):
 
 def test_edit_and_ship_over_http(client, shipped, monkeypatch):
     ours = plans.read("ours")
-    monkeypatch.setattr(api, "host", lambda: {"pid": 1, "plan": "ours", "started": "t", "output": "/x"})
+    monkeypatch.setattr(lab, "host", lambda: {"pid": 1, "plan": "ours", "started": "t", "output": "/x"})
     code, body = client.json("POST", "/api/plan/edit", {"name": "ours", "base_hash": ours["hash"]})
     assert code == 409 and "is running" in body["error"]
-    monkeypatch.setattr(api, "host", lambda: None)
+    monkeypatch.setattr(lab, "host", lambda: None)
     code, body = client.json("POST", "/api/plan/edit", {"name": "ours", "base_hash": ours["hash"]})
     assert code == 200 and body["editable"] is True
     code, body = client.json("POST", "/api/plan/ship", {"name": "ours", "base_hash": body["hash"]})
     assert code == 200 and body["editable"] is False
-    log = (config.run_dir() / "gui.log").read_text(encoding="utf-8")
-    assert "tester edit plan ours" in log and "tester ship plan ours" in log
+    log = (config.run_dir() / "actions.log").read_text(encoding="utf-8")
+    assert "tester gui edit plan ours" in log and "tester gui ship plan ours" in log
 
 
 # --- rename -------------------------------------------------------------------------------------------------
@@ -529,12 +528,12 @@ def test_a_change_of_case_only_keeps_the_file():
 
 def test_rename_over_http(client, monkeypatch):
     saved = plans.save("seal", SEAL, None, as_new=True, kind="block")
-    monkeypatch.setattr(api, "host", lambda: {"pid": 1, "plan": "seal", "started": "t", "output": "/x"})
+    monkeypatch.setattr(lab, "host", lambda: {"pid": 1, "plan": "seal", "started": "t", "output": "/x"})
     assert client.json("POST", "/api/plan/rename", {"name": "seal", "new": "x", "base_hash": saved["hash"]})[0] == 409
-    monkeypatch.setattr(api, "host", lambda: None)
+    monkeypatch.setattr(lab, "host", lambda: None)
     code, body = client.json("POST", "/api/plan/rename", {"name": "seal", "new": "close_up", "base_hash": saved["hash"]})
     assert code == 200 and body["name"] == "close_up"
-    assert "tester rename block seal to close_up" in (config.run_dir() / "gui.log").read_text(encoding="utf-8")
+    assert "tester gui rename block seal to close_up" in (config.run_dir() / "actions.log").read_text(encoding="utf-8")
 
 
 def test_a_blocks_name_is_drawn_as_its_name():

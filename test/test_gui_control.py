@@ -8,9 +8,9 @@ from unittest import mock
 
 import pytest
 
-from formslab import config
+from formslab import config, lab
 from formslab.console.cast import castutils
-from formslab.console.ctrl import ctrlcli, ctrlutils
+from formslab.console.ctrl import ctrlutils
 from formslab.gui import api
 from formslab.gui.server import CSRF_HEADER
 
@@ -35,14 +35,14 @@ def client(server):
 @pytest.fixture
 def host_up(monkeypatch):
     """A run is going."""
-    monkeypatch.setattr(api, "host", lambda: HOST)
+    monkeypatch.setattr(lab, "host", lambda: HOST)
 
 
 def wait_idle(timeout=5.0):
     deadline = time.monotonic() + timeout
-    while api.current_action() and time.monotonic() < deadline:
+    while lab.action() and time.monotonic() < deadline:
         time.sleep(0.02)
-    assert api.current_action() is None
+    assert lab.action() is None
 
 
 # --- who may act ------------------------------------------------------------------------------
@@ -77,37 +77,37 @@ def test_the_plans_that_can_be_started_are_listed(client):
 
 def test_start_runs_the_host_on_a_plan_the_server_lists(client, monkeypatch):
     launched = []
-    monkeypatch.setattr(ctrlcli, "_launch_sequence", lambda path: launched.append(path))
-    monkeypatch.setattr(api, "host", lambda: None)
+    monkeypatch.setattr(lab, "launch", lambda path, **kw: launched.append(path))
+    monkeypatch.setattr(lab, "host", lambda: None)
 
     code, body = client.json("POST", "/api/run", {"plan": "tvac"})
 
     assert (code, body) == (200, {"state": "starting", "plan": "tvac"})
     wait_idle()
     assert [Path(p).name for p in launched] == ["tvac.plan"] and Path(launched[0]).is_absolute()
-    assert "tester run tvac" in (config.run_dir() / "gui.log").read_text(encoding="utf-8")
+    assert "tester gui run tvac" in (config.run_dir() / "actions.log").read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize("name", ["nope", "../tvac", "..\\tvac", "C:\\x\\tvac.plan", "tvac.plan", "", "tvac "])
 def test_start_takes_a_plan_name_never_a_path(client, monkeypatch, name):
     launched = []
-    monkeypatch.setattr(ctrlcli, "_launch_sequence", lambda path: launched.append(path))
-    monkeypatch.setattr(api, "host", lambda: None)
+    monkeypatch.setattr(lab, "launch", lambda path, **kw: launched.append(path))
+    monkeypatch.setattr(lab, "host", lambda: None)
     assert client.json("POST", "/api/run", {"plan": name})[0] == 404
     assert launched == []
 
 
 def test_start_refuses_a_second_run_and_a_second_start(client, monkeypatch):
     release, launched = threading.Event(), []
-    monkeypatch.setattr(ctrlcli, "_launch_sequence", lambda path: (launched.append(path), release.wait(5)))
-    monkeypatch.setattr(api, "host", lambda: None)
+    monkeypatch.setattr(lab, "launch", lambda path, **kw: (launched.append(path), release.wait(5)))
+    monkeypatch.setattr(lab, "host", lambda: None)
     assert client.json("POST", "/api/run", {"plan": "tvac"})[0] == 200
     code, body = client.json("POST", "/api/run", {"plan": "laco_vent"})          # while the first is starting
     assert code == 409 and "already starting" in body["error"]
     assert client.json("GET", "/api/status")[1]["action"] == "starting"
     release.set()
     wait_idle()
-    monkeypatch.setattr(api, "host", lambda: HOST)
+    monkeypatch.setattr(lab, "host", lambda: HOST)
     code, body = client.json("POST", "/api/run", {"plan": "tvac"})
     assert code == 409 and "already going" in body["error"] and len(launched) == 1
 
@@ -117,9 +117,9 @@ def test_start_refuses_a_plan_whose_rscripts_are_missing(client, tmp_path, monke
     plans.mkdir()
     (plans / "broken.plan").write_text("load rNotThere\nhold 1 s\n", encoding="utf-8")
     monkeypatch.setenv("FORMSLAB_PLANS_DIR", str(plans))
-    monkeypatch.setattr(api, "host", lambda: None)
+    monkeypatch.setattr(lab, "host", lambda: None)
     launched = []
-    monkeypatch.setattr(ctrlcli, "_launch_sequence", lambda path: launched.append(path))
+    monkeypatch.setattr(lab, "launch", lambda path, **kw: launched.append(path))
     code, body = client.json("POST", "/api/run", {"plan": "broken"})
     assert code == 400 and "rNotThere not found" in body["error"] and launched == []
 
@@ -143,8 +143,8 @@ def make_host(monkeypatch, reset_at=None):
 
     thread = threading.Thread(target=run, daemon=True)
     thread.start()
-    monkeypatch.setattr(api, "host", lambda: HOST if alive.is_set() else None)
-    monkeypatch.setattr(api, "is_host", lambda pid: alive.is_set())
+    monkeypatch.setattr(lab, "host", lambda: HOST if alive.is_set() else None)
+    monkeypatch.setattr(lab, "is_host", lambda pid: alive.is_set())
     return alive, thread
 
 
@@ -152,7 +152,7 @@ def test_end_asks_the_host_and_never_kills_it(client, monkeypatch):
     ctrlutils.LoadCommands()
     alive, thread = make_host(monkeypatch)
     try:
-        with mock.patch.object(ctrlcli, "_kill_tree") as kill:
+        with mock.patch.object(lab, "_kill_tree") as kill:
             code, body = client.json("POST", "/api/end", {})
             assert (code, body) == (200, {"state": "ending", "plan": "tvac"})
             assert client.json("POST", "/api/end", {})[0] in (200, 409)       # a second click is harmless
@@ -168,8 +168,8 @@ def test_fast_end_asks_for_it_also_of_a_run_already_ending(client, monkeypatch):
     ctrlutils.LoadCommands()
     alive = threading.Event()
     alive.set()
-    monkeypatch.setattr(api, "host", lambda: HOST if alive.is_set() else None)
-    monkeypatch.setattr(api, "is_host", lambda pid: alive.is_set())
+    monkeypatch.setattr(lab, "host", lambda: HOST if alive.is_set() else None)
+    monkeypatch.setattr(lab, "is_host", lambda pid: alive.is_set())
     try:
         assert client.json("POST", "/api/end", {})[0] == 200
         deadline = time.monotonic() + 2
@@ -186,9 +186,9 @@ def test_fast_end_asks_for_it_also_of_a_run_already_ending(client, monkeypatch):
 
 def test_fast_end_on_a_lost_run_starts_its_end_fast(client, monkeypatch):
     launched = []
-    monkeypatch.setattr(api, "host", lambda: None)
-    monkeypatch.setattr(api, "lost_run", lambda: HOST)
-    monkeypatch.setattr(ctrlcli, "_launch_sequence",
+    monkeypatch.setattr(lab, "host", lambda: None)
+    monkeypatch.setattr(lab, "lost_run", lambda: HOST)
+    monkeypatch.setattr(lab, "launch",
                         lambda path, end_only=False, fast=False: launched.append((path, end_only, fast)))
     assert client.json("POST", "/api/end", {"fast": True})[0] == 200
     wait_idle()
@@ -197,7 +197,7 @@ def test_fast_end_on_a_lost_run_starts_its_end_fast(client, monkeypatch):
 
 def test_end_survives_a_host_that_clears_ctrl_as_it_starts(client, monkeypatch):
     ctrlutils.LoadCommands()
-    monkeypatch.setattr(api, "END_RESEND_S", 0.2)
+    monkeypatch.setattr(lab, "END_RESEND_S", 0.2)
     alive, thread = make_host(monkeypatch, reset_at=0.15)                     # erases the first end
     try:
         assert client.json("POST", "/api/end", {})[0] == 200
@@ -209,7 +209,7 @@ def test_end_survives_a_host_that_clears_ctrl_as_it_starts(client, monkeypatch):
 
 
 def test_end_with_no_run_is_refused(client, monkeypatch):
-    monkeypatch.setattr(api, "host", lambda: None)
+    monkeypatch.setattr(lab, "host", lambda: None)
     code, body = client.json("POST", "/api/end", {})
     assert code == 409 and "no run is going" in body["error"]
 
@@ -217,9 +217,9 @@ def test_end_with_no_run_is_refused(client, monkeypatch):
 def test_end_on_a_lost_run_starts_a_host_for_its_end_and_sends_no_end(client, monkeypatch):
     """Its host was killed: End runs that run's end from a fresh host (`--end`)."""
     launched = []
-    monkeypatch.setattr(api, "host", lambda: None)
-    monkeypatch.setattr(api, "lost_run", lambda: HOST)
-    monkeypatch.setattr(ctrlcli, "_launch_sequence",
+    monkeypatch.setattr(lab, "host", lambda: None)
+    monkeypatch.setattr(lab, "lost_run", lambda: HOST)
+    monkeypatch.setattr(lab, "launch",
                         lambda path, end_only=False, fast=False: launched.append((path, end_only, fast)))
     ctrlutils.LoadCommands()
     assert client.json("GET", "/api/status")[1]["lost"] == HOST
@@ -232,7 +232,7 @@ def test_end_on_a_lost_run_starts_a_host_for_its_end_and_sends_no_end(client, mo
 
 def test_end_keeps_asking_for_as_long_as_the_end_script_may_take():
     from formslab.host.sequence import END_CAP_S
-    assert api.END_WAIT_S > END_CAP_S
+    assert lab.END_WAIT_S > END_CAP_S
 
 
 # --- pause, resume ---------------------------------------------------------------------------------------
@@ -246,7 +246,7 @@ def test_pause_and_resume_reach_the_host_through_ctrl(client, host_up):
 
 
 def test_pause_with_no_run_is_refused(client, monkeypatch):
-    monkeypatch.setattr(api, "host", lambda: None)
+    monkeypatch.setattr(lab, "host", lambda: None)
     assert client.json("POST", "/api/pause", {})[0] == 409
     assert ctrlutils.ReadCommands(["pause"]) == {}
 
@@ -293,7 +293,7 @@ def test_a_command_is_sent_and_taken(client, host_up, owner):
     assert code == 200 and body == {"label": "hvc", "request": {"platen": 35.0}, "state": "done",
                                     "ok": True, "messages": ["verified"], "text": "done: verified"}
     assert owner == [{"platen": 35.0}]
-    assert "tester cast hvc platen 35" in (config.run_dir() / "gui.log").read_text(encoding="utf-8")
+    assert "tester gui cast hvc platen 35" in (config.run_dir() / "actions.log").read_text(encoding="utf-8")
 
 
 def test_the_label_and_keywords_ignore_case(client, host_up, owner):
@@ -303,7 +303,7 @@ def test_the_label_and_keywords_ignore_case(client, host_up, owner):
 
 def test_a_command_nobody_takes_is_reported_as_not_taken(client, host_up, monkeypatch):
     live_hvc()
-    monkeypatch.setattr(api, "CAST_TAKE_S", 0.3)
+    monkeypatch.setattr(lab, "CAST_TAKE_S", 0.3)
     code, body = client.json("POST", "/api/cast", {"line": "hvc stop"})
     assert code == 200 and body["state"] == "not_taken" and body["ok"] is False
     assert castutils.CommandPending("hvc")
@@ -319,7 +319,7 @@ def test_a_command_the_chamber_refuses_says_why(client, host_up):
         thread.join(2)
     assert code == 200 and body["ok"] is False
     assert body["text"] == "refused: rough: still closed (interlock)"
-    assert "cast hvc rough open (refused: rough" in (config.run_dir() / "gui.log").read_text(encoding="utf-8")
+    assert "cast hvc rough open (refused: rough" in (config.run_dir() / "actions.log").read_text(encoding="utf-8")
 
 
 def test_a_command_the_rules_forbid_is_not_sent(client, host_up, owner):
@@ -343,7 +343,7 @@ def test_a_bad_command_says_what_would_fit_and_sends_nothing(client, host_up):
 
 def test_nothing_is_sent_when_no_run_is_going(client, monkeypatch):
     live_hvc()
-    monkeypatch.setattr(api, "host", lambda: None)
+    monkeypatch.setattr(lab, "host", lambda: None)
     code, body = client.json("POST", "/api/cast", {"line": "hvc vent open"})
     assert code == 409 and "no run is going" in body["error"]
     assert not castutils.CommandPending("hvc")
@@ -354,7 +354,7 @@ def test_nothing_is_sent_to_an_instrument_that_is_not_live(client, host_up):
     code, body = client.json("POST", "/api/cast", {"line": "hvc vent open"})
     assert code == 409 and "hvc is not live" in body["error"] and "not connected" in body["error"]
     assert not castutils.CommandPending("hvc")
-    assert "refused cast: hvc is not live" in (config.run_dir() / "gui.log").read_text(encoding="utf-8")
+    assert "refused cast: hvc is not live" in (config.run_dir() / "actions.log").read_text(encoding="utf-8")
 
 
 # --- completion ----------------------------------------------------------------------------------------------
@@ -386,11 +386,11 @@ def test_the_actions_work_with_every_instrument_door_shut(client, monkeypatch, o
 
     def popen(cmd, *a, **k):
         spawned.append(cmd)
-        monkeypatch.setattr(ctrlcli, "running", lambda: HOST)          # the host's lock appears
+        monkeypatch.setattr(lab, "host", lambda: HOST)          # the host's lock appears
         return FakeProc()
 
-    monkeypatch.setattr(api, "host", lambda: None)
-    monkeypatch.setattr(ctrlcli, "running", lambda: None)
+    monkeypatch.setattr(lab, "host", lambda: None)
+    monkeypatch.setattr(lab, "host", lambda: None)
     with monkeypatch.context() as m:
         m.setattr(subprocess, "Popen", popen)
         assert client.json("POST", "/api/run", {"plan": "tvac"})[0] == 200
@@ -398,7 +398,7 @@ def test_the_actions_work_with_every_instrument_door_shut(client, monkeypatch, o
     assert len(spawned) == 1 and spawned[0][1:3] == ["-m", "formslab.host.sequence"]
 
     live_hvc()
-    monkeypatch.setattr(api, "host", lambda: HOST)
+    monkeypatch.setattr(lab, "host", lambda: HOST)
     ctrlutils.LoadCommands()
     with monkeypatch.context() as m:
         def shut(*a, **k):

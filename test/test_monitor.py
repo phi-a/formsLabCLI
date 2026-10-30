@@ -7,10 +7,9 @@ import time
 
 import pytest
 
-from formslab import config, rscripts
+from formslab import config, lab, rscripts
 from formslab.console.cast.castutils import ReadStatus
 from formslab.devices.hvc3500.simulator import Simulator
-from formslab.gui import api
 from formslab.host import monitor
 from formslab.host import sequence as host
 
@@ -47,7 +46,7 @@ def wait_for(cond, limit=15.0):
 
 def _timestamp():
     """When the "hvc" block was last published."""
-    return float(((api.read_blocks() or {}).get("hvc") or {}).get("timestamp") or 0)
+    return float(((lab.read_blocks() or {}).get("hvc") or {}).get("timestamp") or 0)
 
 
 def test_with_no_run_the_chamber_is_read_and_shown_live(chamber, watching):
@@ -55,7 +54,7 @@ def test_with_no_run_the_chamber_is_read_and_shown_live(chamber, watching):
         chamber.state.pressure = 3.2
     assert wait_for(lambda: (ReadStatus("hvc") or {}).get("pressure") == pytest.approx(3.2, rel=0.01))
     assert monitor.holder() == os.getpid() and chamber.clients == 1
-    blocks = api.status(log_lines=0)["blocks"]
+    blocks = lab.status(log_lines=0)["blocks"]
     assert blocks["hvc"]["live"] and blocks["hvc"].get("watched")
 
 
@@ -87,11 +86,3 @@ def test_a_lock_left_by_a_process_that_has_gone_is_not_waited_for(capsys):
     t0 = time.monotonic()
     monitor.wait_released(print)
     assert time.monotonic() - t0 < 1 and not monitor.lock_path().exists()
-
-
-def test_only_the_chamber_is_live_between_runs():
-    now = time.time()
-    hvc = {"timestamp": now - 2, "status": {"connected": True}}
-    assert api.freshness("hvc", hvc, None, now) == {"live": True, "watched": True, "age_s": pytest.approx(2), "reason": ""}
-    assert not api.freshness("hvc", {**hvc, "timestamp": now - 60}, None, now)["live"]
-    assert api.freshness("psu1", {"timestamp": now - 1, "status": {}}, None, now)["reason"] == "no run is going"

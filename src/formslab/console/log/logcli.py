@@ -3,20 +3,8 @@ import sys, re
 from pathlib import Path
 from rich.text import Text
 from formslab.console.sessions.base import CLIResult
-from formslab.config import run_dir
 from formslab.console.style import console, TEXT, ERROR
-
-# Paths
-
-
-def log_path() -> Path:
-    """The sequence host's log.
-
-    The single definition of that file: `ctrl` redirects the host's stdout here
-    when it launches, and this tab reads it back. Previously the two computed it
-    from different roots, so the tab could tail a file nothing was writing.
-    """
-    return run_dir() / "host.log"
+from formslab.lab import log_path             # the one definition of the host log's path
 
 
 HELP = {"status": "Show entire log file", "tail": "Show last N lines of the log",

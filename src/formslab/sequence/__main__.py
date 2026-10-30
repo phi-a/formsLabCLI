@@ -52,8 +52,9 @@ def main(argv=None) -> int:
     if missing:
         print(f"missing rScripts: {', '.join(missing)}", file=sys.stderr)
         return 1
-    print(f"\nrun:  python -m formslab.host.sequence \"{path}\"")
-    print(f"      or in the console ctrl tab: run {path.stem}")
+    for n, m in plan.warnings:
+        print(f"  {path.name}:{n}: warning: {m} (checked when the step runs)")
+    print(f"\nrun:  labcli run {path.stem}")
     return 0
 
 

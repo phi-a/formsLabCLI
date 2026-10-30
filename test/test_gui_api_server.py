@@ -10,7 +10,7 @@ from unittest import mock
 
 import pytest
 
-from formslab import config
+from formslab import config, lab
 from formslab.console.cast import castutils
 from formslab.gui import api
 from formslab.gui.server import CSRF_HEADER, MAX_BODY
@@ -28,25 +28,25 @@ def block(age, status=None):
 
 
 def test_nothing_is_live_without_a_run():
-    f = api.freshness("tc", block(0.5), None, NOW)
+    f = lab.freshness("tc", block(0.5), None, NOW)
     assert f["live"] is False and "no run" in f["reason"]
 
 
 def test_a_fresh_block_of_a_running_host_is_live():
-    assert api.freshness("tc", block(1.0), HOST, NOW)["live"] is True
+    assert lab.freshness("tc", block(1.0), HOST, NOW)["live"] is True
 
 
 def test_a_block_older_than_three_cadences_is_not_live():
-    f = api.freshness("tc", block(30), HOST, NOW)                  # tc publishes every 2 s
+    f = lab.freshness("tc", block(30), HOST, NOW)                  # tc publishes every 2 s
     assert f["live"] is False and "not updated for 30 s" in f["reason"]
-    assert api.freshness("hvc", block(30), HOST, NOW)["live"] is False      # ~6 s cadence, limit 20 s
-    assert api.freshness("hvc", block(15, {"connected": True}), HOST, NOW)["live"] is True
+    assert lab.freshness("hvc", block(30), HOST, NOW)["live"] is False      # ~6 s cadence, limit 20 s
+    assert lab.freshness("hvc", block(15, {"connected": True}), HOST, NOW)["live"] is True
 
 
 def test_the_chamber_must_say_it_is_connected():
-    f = api.freshness("hvc", block(1, {"connected": False, "error": "timed out"}), HOST, NOW)
+    f = lab.freshness("hvc", block(1, {"connected": False, "error": "timed out"}), HOST, NOW)
     assert f == {"live": False, "age_s": 1.0, "reason": "timed out"}
-    assert api.freshness("hvc", block(1, {}), HOST, NOW)["reason"] == "chamber not connected"
+    assert lab.freshness("hvc", block(1, {}), HOST, NOW)["reason"] == "chamber not connected"
 
 
 def test_the_cryo_card_is_live_between_rcryoboards_writes():
@@ -58,14 +58,14 @@ def test_the_cryo_card_is_live_between_rcryoboards_writes():
     spec = importlib.util.spec_from_file_location("rCryoBoard_cadence", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    assert api.CADENCE_S["cryo"] >= module.STATUS_INTERVAL
-    assert api.freshness("cryo", block(8), HOST, NOW)["live"] is True
-    assert api.freshness("cryo", block(20), HOST, NOW)["live"] is False
+    assert lab.CADENCE_S["cryo"] >= module.STATUS_INTERVAL
+    assert lab.freshness("cryo", block(8), HOST, NOW)["live"] is True
+    assert lab.freshness("cryo", block(20), HOST, NOW)["live"] is False
 
 
 def test_a_block_written_to_by_a_command_alone_gets_no_credit_without_its_owner():
     """A command bumps the block's timestamp; with no owner publishing, it ages out."""
-    assert api.freshness("psu1", block(10), HOST, NOW)["live"] is False
+    assert lab.freshness("psu1", block(10), HOST, NOW)["live"] is False
 
 
 # --- status ---------------------------------------------------------------------------------
@@ -73,7 +73,7 @@ def test_a_block_written_to_by_a_command_alone_gets_no_credit_without_its_owner(
 def test_status_with_no_host_and_a_cast_file():
     castutils.GenerateCleanCast()
     castutils.UpdateStatus("tc", {"TC01 C": 20.5})
-    s = api.status()
+    s = lab.status()
     assert s["host"] is None and s["blocks"]["tc"]["status"] == {"TC01 C": 20.5}
     assert s["blocks"]["tc"]["live"] is False and s["cast_unreadable"] is False
     assert {"hvc", "tc", "psu1", "psu2", "cryo", "slta"} <= set(s["blocks"])
@@ -83,8 +83,8 @@ def test_status_with_a_running_host(monkeypatch):
     castutils.GenerateCleanCast()
     castutils.UpdateStatus("tc", {"TC01 C": 20.5})
     castutils.WriteCommand({"stop_pumping": True}, "hvc")
-    monkeypatch.setattr(api, "host", lambda: HOST)
-    s = api.status()
+    monkeypatch.setattr(lab, "host", lambda: HOST)
+    s = lab.status()
     assert s["host"] == HOST and s["last_run"] is None
     assert s["blocks"]["tc"]["live"] is True
     assert s["blocks"]["hvc"]["pending"] is True and s["blocks"]["tc"]["pending"] is False
@@ -94,7 +94,7 @@ def test_status_survives_an_unreadable_cast_file():
     castutils.GenerateCleanCast()
     from formslab.state import cast_state_path
     cast_state_path().write_text("{ torn", encoding="utf-8")
-    s = api.status()
+    s = lab.status()
     assert s["cast_unreadable"] is True and s["blocks"] == {}
     assert cast_state_path().read_text(encoding="utf-8") == "{ torn"          # a read, never a repair
 
@@ -103,19 +103,19 @@ def test_status_reads_never_write_the_cast_file():
     castutils.GenerateCleanCast()
     from formslab.state import cast_state_path
     before = cast_state_path().read_bytes()
-    api.status()
-    api.status()
+    lab.status()
+    lab.status()
     assert cast_state_path().read_bytes() == before
 
 
 def test_the_log_tail_is_the_end_of_the_host_log():
     from formslab.console.log.logcli import log_path
-    assert api.log_tail() == []
+    assert lab.log_tail() == []
     log_path().write_text("\n".join(f"line {i}" for i in range(300)) + "\n", encoding="utf-8")
-    assert api.log_tail(3) == ["line 297", "line 298", "line 299"]
-    assert len(api.log_tail(1000)) == 300
+    assert lab.log_tail(3) == ["line 297", "line 298", "line 299"]
+    assert len(lab.log_tail(1000)) == 300
     log_path().write_bytes(b"x" * 200_000 + b"\nlast\n")
-    assert api.log_tail(1)[-1] == "last"
+    assert lab.log_tail(1)[-1] == "last"
 
 
 def test_runs_are_found_in_the_output_folder_and_in_the_hosts_folder(tmp_path, monkeypatch):
@@ -124,7 +124,7 @@ def test_runs_are_found_in_the_output_folder_and_in_the_hosts_folder(tmp_path, m
     write_run(config.output_dir(), plan="here")
     write_run(elsewhere, plan="there", stamp="20261004T130000Z")
     monkeypatch.setattr(api, "read_lock", lambda: {**HOST, "output": str(elsewhere)})
-    monkeypatch.setattr(api, "host", lambda: None)
+    monkeypatch.setattr(lab, "host", lambda: None)
     assert {r["name"] for r in api.list_runs()["runs"]} == {"here", "there"}
     assert api.run_series("there_20261004T130000Z", ["TC01"])["series"]["TC01"][0] == 293.15
     assert api.run_series("there_20261004T140000Z", None) is None
@@ -171,8 +171,8 @@ def test_logging_in_out_and_a_wrong_password(monkeypatch):
         assert c.json("POST", "/api/logout", {})[0] == 200
         assert c.json("GET", "/api/status")[0] == 401                    # the session is gone
 
-        log = (config.run_dir() / "gui.log").read_text(encoding="utf-8")
-        assert "tester login refused" in log and "tester login" in log and "tester logout" in log
+        log = (config.run_dir() / "actions.log").read_text(encoding="utf-8")
+        assert "tester gui login refused" in log and "tester gui login" in log and "tester gui logout" in log
 
 
 def test_a_post_needs_the_request_header_and_a_sane_body(monkeypatch):

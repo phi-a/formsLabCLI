@@ -169,8 +169,11 @@
   function renderControl(s) {
     const banner = $("#run-banner");
     banner.className = "banner " + (s.host ? "running" : "stopped");
+    const run = s.run || {};
     banner.textContent = s.host
       ? `Running: plan ${s.host.plan} (pid ${s.host.pid}), since ${new Date(s.host.started).toLocaleString()}. Data in ${s.host.output}`
+        + (run.step ? ` Step ${run.step.index} of ${run.step.total}: ${run.step.text}.` : "")
+        + (run.ending ? " Ending." : run.paused ? " Paused." : "")
       : "No run is going." + (s.last_run ? ` Last run: plan ${s.last_run.plan}.` : "");
     if (s.cast_unreadable) banner.textContent += " The CAST file could not be read just now.";
     renderControls(s);

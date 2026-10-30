@@ -134,9 +134,9 @@ def test_other_owners():
 
 def test_the_status_page_and_the_cast_tab_use_them(monkeypatch):
     from formslab.console.cast import castcli
-    from formslab.gui import api
+    from formslab import lab
     castutils.UpdateStatus("hvc", {"connected": True, "rough": False})
-    assert _names(api.status()["blocks"]["hvc"]["groups"]) == [
+    assert _names(lab.status()["blocks"]["hvc"]["groups"]) == [
         ("Chamber", [("connected", "Connected", "Yes")]), ("Valves", [("rough", "Vacuum valve", "Closed")])]
     text = castcli.status_panel("hvc").content.plain
     assert "Valves" in text and "Vacuum valve" in text and "Closed" in text and "rough " not in text

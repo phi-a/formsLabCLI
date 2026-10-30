@@ -42,10 +42,12 @@ from formslab import rscripts
 from formslab.config import output_dir, run_dir
 from formslab.console.cast.castutils import ClearPending, ReadStatus, ResetJson
 from formslab.console.ctrl.ctrlutils import ReadCommands, ResetCtrlState
+from formslab.host import runstate
 from formslab.rscripts.workers import Workers
 from formslab.sequence import (
     JsonlEventSink, LabSequenceRunner, PlanError, SequenceError, find_plan, load_plan,
 )
+from formslab.sequence.events import SegmentStarted
 from formslab.sequence.spec import Sequence
 
 # Loop rate. Scripts gate their own hardware cadence; this bounds how quickly a
@@ -148,12 +150,31 @@ def check_ctrl_commands(run) -> None:
             raise GracefulExit()
         if label == "pause":
             paused = True
+            runstate.write(paused=True, paused_since=_now())
         elif label == "resume":
             paused = False
+            runstate.write(paused=False, paused_since=None)
         elif label == "reset":
             ensure_runtime_files()           # an older version's stale blocks and entries go
             ResetCtrlState()
             ResetJson()
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+class _StateSink:
+    """The run's events, and where the run is for the front ends: each event goes
+    to the events file, and the start of a step is written to run.json."""
+
+    def __init__(self, inner, total: int) -> None:
+        self.inner, self.total = inner, total
+
+    def emit(self, event) -> None:
+        self.inner.emit(event)
+        if isinstance(event, SegmentStarted):
+            runstate.write(step={"index": event.index + 1, "total": self.total, "text": event.label})
 
 
 def _fast_if_asked(block: dict) -> None:
@@ -334,7 +355,8 @@ def _end(run, plan, how: str) -> dict:
     global paused
     paused = False
     run.ending = True                     # routines read it: rPSU switches nothing on, rCryoBoard no bring-up
-    out = {"plan": plan.name, "when": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    runstate.write(ending=True, paused=False)
+    out = {"plan": plan.name, "when": _now(),
            "how": how, "fast": False, "chamber": None, "warnings": []}
     try:
         if how != "complete":
@@ -382,6 +404,7 @@ def channel(plan_path, relay_func=None, end_only: bool = False, fast_end: bool =
     if not _acquire_lock(emit, Path(plan_path).stem):
         return
     try:
+        runstate.begin(read_lock())          # where the run is, for the front ends
         from formslab.host.monitor import wait_released
         wait_released(emit)                  # formsLAB reads the chamber between runs
         ResetCtrlState()
@@ -391,6 +414,7 @@ def channel(plan_path, relay_func=None, end_only: bool = False, fast_end: bool =
         run.ending = end_only            # set before any routine runs: no supply on, no bring-up
     except BaseException:
         _release_lock()
+        runstate.clear()
         raise
 
     signal.signal(signal.SIGTERM, _on_signal)
@@ -410,7 +434,8 @@ def channel(plan_path, relay_func=None, end_only: bool = False, fast_end: bool =
         run.log(f"Plan {plan.name} running ({LOOP_HZ:g} Hz, pid {os.getpid()}).",
                   component=COMPONENT)
         workers.start()
-        runner = LabSequenceRunner(run, plan.sequence, sink=JsonlEventSink(events_path()),
+        sink = _StateSink(JsonlEventSink(events_path()), len(plan.sequence.segments))
+        runner = LabSequenceRunner(run, plan.sequence, sink=sink,
                                    poll=lambda: poll(run, runner.watch), tick=lambda _run: None,
                                    hz=LOOP_HZ)
         runner.execute()
@@ -442,6 +467,7 @@ def channel(plan_path, relay_func=None, end_only: bool = False, fast_end: bool =
         _write_ended(out)
         run.log("Host stopped.", component=COMPONENT)
         _release_lock()
+        runstate.clear()
 
 
 def main(argv=None) -> int:

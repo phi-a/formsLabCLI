@@ -1,33 +1,49 @@
-"""`labcli <command>`: one command, then exit -- for SSH sessions and scripts.
+"""`labcli <command>`: one command, then an exit status, for SSH and scripts.
+A bare `labcli` opens the console.
 
-    labcli                          the interactive console
-    labcli status                   is a run going (exit 1 if not)
-    labcli status <label>           one instrument's CAST block (hvc, tc, psu1...)
-    labcli plans                    the plans and the rScripts each loads
-    labcli check <plan>             read a plan without running it
-    labcli run <plan>               start a plan; returns once its host is up
-    labcli end | pause | resume     the running plan
-    labcli end fast                 a Fast End: the end's steps, not waiting to confirm each
-    labcli ps                       every sequence host process
-    labcli log [N]                  the host's last N log lines (default 40)
-    labcli cast <label> <words>     a command to an instrument, e.g. cast hvc platen 20;
-                                    waits until the rScript that owns it takes it
-    labcli cast <label> <words> ?   what can come next ('?' quoted in bash/zsh)
-    labcli hardware                 what is plugged in, beside the hardware map
-    labcli gui [--port N] [--listen]  the web GUI on this machine (http://localhost:8080/)
-    labcli gui --set-login          set the GUI's user name and password
-
-Exit status: 0 done, 1 refused or failed, 2 usage. The run state is per
-machine, so these work from any folder or SSH session.
+Every command goes through `formslab.lab`, the same functions the web GUI
+uses, so a refusal reads the same in both. Exit status: 0 done, 1 refused or
+failed, 2 usage. The run state is per machine, so these work from any folder
+or SSH session.
 """
 from __future__ import annotations
 
+import getpass
 import json
 import sys
+from datetime import datetime
 
 from rich.console import Console
 
 USAGE = 2
+ORDER = ("hvc", "psu1", "psu2", "tc", "cryo", "slta", "orbit")
+
+# (usage, summary): what `labcli help` prints, and the one list of what exists.
+# A summary follows memory/design/writing.md: one plain phrase, at most 50 characters.
+VERBS = (
+    ("labcli", "Watch the bench and command it"),
+    ("labcli status", "What is going now, once"),
+    ("labcli status label", "One instrument's last readings"),
+    ("labcli plans", "The plans, blocks and orbits found"),
+    ("labcli check name", "Read a plan, block or orbit without running it"),
+    ("labcli run plan", "Start a plan"),
+    ("labcli end", "End the run"),
+    ("labcli end fast", "End without waiting to confirm each step"),
+    ("labcli pause", "Hold the plan's steps"),
+    ("labcli resume", "Go on with the plan's steps"),
+    ("labcli log lines", "The host's last lines"),
+    ("labcli cast label words", "A command to an instrument"),
+    ("labcli hardware", "What is plugged in, beside the map"),
+    ("labcli gui", "The web GUI on this machine"),
+)
+
+NOTES = (
+    "A plan is named, or given as a path; `labcli plans` lists the names.",
+    "`labcli cast hvc platen 20` waits until the rScript that owns hvc takes it. "
+    "`labcli cast hvc platen ?` says what can come next, with the ? quoted in bash and zsh.",
+    "`labcli gui` takes --port N, --listen, --set-login and --no-monitor.",
+    "Exit status: 0 done, 1 refused or failed, 2 usage.",
+)
 
 
 def _console() -> Console:
@@ -39,11 +55,10 @@ def _console() -> Console:
     return Console(highlight=False, soft_wrap=True)
 
 
-def main(argv: list[str]) -> int:
-    out = _console()
+def main(argv: list[str], out: Console | None = None) -> int:
+    out = out or _console()
     if not argv or argv[0].lower() in ("help", "-h", "--help"):
-        out.print(__doc__.strip(), markup=False)
-        return 0
+        return _help(out)
     verb, args = argv[0].lower(), argv[1:]
 
     if verb == "gui":
@@ -52,43 +67,19 @@ def main(argv: list[str]) -> int:
     if verb == "hardware":
         return _hardware(out)
 
-    from formslab.console.cast import castcli
-    from formslab.console.ctrl import ctrlcli
     from formslab.state import ensure_runtime_files
-
     ensure_runtime_files()
 
-    def show(result) -> int:
-        out.print(result.content)
-        return 0 if result.ok else 1
-
     if verb == "check":
-        from formslab.sequence.__main__ import main as check
-        return check(args)
+        return _check(out, args)
     if verb == "status":
-        return show(castcli.status_panel(args[0]) if args else ctrlcli.status_panel())
+        return _status(out, args[0] if args else None)
     if verb == "plans":
-        return show(ctrlcli.plans_command())
-    if verb == "ps":
-        return show(ctrlcli.list_sequence())
+        return _plans(out)
     if verb == "run":
-        from formslab.sequence import find_plan
-        if not args or find_plan(args[0]) is None:
-            out.print(f"✗ run what? {'no plan ' + repr(args[0]) if args else 'a plan name'} "
-                      "(`labcli plans` lists them)", markup=False)
-            return USAGE
-        return show(ctrlcli.run_sequence(args))
+        return _run(out, args)
     if verb in ("end", "pause", "resume"):
-        args = [a.lower() for a in args]
-        if args not in ([], ["fast"]) or (args and verb != "end"):
-            out.print("✗ end, end fast, pause or resume", markup=False)
-            return USAGE
-        if ctrlcli.running() is None and not (verb == "end" and ctrlcli.lost_run()):
-            out.print("✗ no run is going.", markup=False)
-            return 0 if verb == "end" else 1           # ending what has ended is done
-        if verb == "end":
-            return show(ctrlcli.end_sequence(fast=args == ["fast"]))
-        return show(ctrlcli.execute_command([verb]))
+        return _ctrl(out, verb, args)
     if verb == "log":
         return _log(out, args)
     if verb == "cast":
@@ -97,8 +88,246 @@ def main(argv: list[str]) -> int:
     return USAGE
 
 
+def _help(out) -> int:
+    width = max(len(u) for u, _ in VERBS) + 2
+    for usage, summary in VERBS:
+        out.print(f"  {usage.ljust(width)}{summary}", markup=False)
+    out.print()
+    for note in NOTES:
+        out.print(note, markup=False)
+    return 0
+
+
+def _who() -> str:
+    try:
+        return getpass.getuser()
+    except Exception:
+        return "?"
+
+
+# --- what is going ------------------------------------------------------------------
+
+def _status(out, label: str | None) -> int:
+    from formslab import lab
+
+    s = lab.status(log_lines=0)
+    if label:
+        label = label.lower()
+        block = s["blocks"].get(label)
+        if block is None:
+            out.print(f"✗ no instrument {label!r}; one of {', '.join(sorted(s['blocks']))}", markup=False)
+            return 1
+        _card(out, label, block)
+        return 0
+    _run_lines(out, s)
+    for name in sorted(s["blocks"], key=lambda n: (ORDER.index(n) if n in ORDER else 99, n)):
+        _card(out, name, s["blocks"][name])
+    return 0 if s["host"] else 1
+
+
+def _run_lines(out, s: dict) -> None:
+    host, run, lost = s["host"], s["run"] or {}, s["lost"]
+    step = run.get("step")
+    if host:
+        line = f"● {host['plan']} running since {_clock(host['started'])}, pid {host['pid']}"
+        if run.get("ending"):
+            line += ", ending"
+        elif run.get("paused"):
+            line += f", paused since {_clock(run.get('paused_since'))}"
+        out.print(line, style="bold green", markup=False)
+        if step:
+            out.print(f"  step {step['index']} of {step['total']}: {step['text']}", markup=False)
+        out.print(f"  data in {host['output']}", markup=False)
+    elif lost:
+        out.print(f"⚠ {lost['plan']} stopped without its end: its host (pid {lost['pid']}) is gone, "
+                  "and its instruments may be as it left them. `labcli end` runs its end now.",
+                  style="yellow", markup=False)
+        if step:
+            out.print(f"  it was at step {step['index']} of {step['total']}: {step['text']}", markup=False)
+    else:
+        last = s["last_run"]
+        out.print("No run is going." + (f" Last run: {last['plan']}." if last else ""), markup=False)
+        if s["ended"]:
+            out.print(_ended_text(s["ended"]), markup=False)
+    if not host:
+        out.print("The chamber is " + ("read between runs." if s["monitor"] else
+                                       "not being read; formsLAB reads it while it is open."),
+                  style="dim", markup=False)
+
+
+def _ended_text(e: dict) -> str:
+    how = {"ended": "ended", "lost": "was ended after its host was lost", "complete": "completed",
+           "failed": "stopped on a failed step", "error": "stopped on an error"}.get(e.get("how"), e.get("how"))
+    if e.get("fast"):
+        how += " with Fast End"
+    lines = [f"{e.get('plan')} {how} at {_clock(e.get('when'))}."]
+    if e.get("chamber"):
+        lines.append(f"  {e['chamber']}")
+    lines += [f"  not done: {w}" for w in e.get("warnings", [])]
+    return "\n".join(lines)
+
+
+def _card(out, label: str, block: dict) -> None:
+    badge = ("live" if block["live"] else "not live") + f" · {_age(block['age_s'])}"
+    head = f"{label:<5} {badge}" + ("" if block["live"] else f"  {block['reason']}")
+    out.print(head, style="bold" if block["live"] else "dim", markup=False)
+    if block.get("pending"):
+        out.print("      a command is waiting to be taken", style="yellow", markup=False)
+    for g in block["groups"]:
+        rows = " · ".join(f"{r['name']} {r.get('text', _value(r['value']))}" for r in g["rows"])
+        title = f"{g['title']}: " if g.get("title") else ""
+        out.print(f"      {title}{rows}", markup=False)
+
+
+def _age(seconds: float) -> str:
+    if seconds > 10 * 365 * 86400:
+        return "never"
+    if seconds < 60:
+        return f"{seconds:.0f} s"
+    if seconds < 3600:
+        return f"{seconds / 60:.0f} min"
+    return f"{seconds / 3600:.1f} h"
+
+
+def _value(v) -> str:
+    if v is None:
+        return "-"
+    if isinstance(v, float):
+        return f"{v:.4g}"
+    return str(v)
+
+
+def _clock(iso) -> str:
+    try:
+        return datetime.fromisoformat(str(iso)).astimezone().strftime("%H:%M")
+    except (TypeError, ValueError):
+        return str(iso)
+
+
+# --- plans ----------------------------------------------------------------------------
+
+def _plans(out) -> int:
+    from formslab import lab
+
+    items = lab.list_plans()
+    plans = [p for p in items if p["kind"] == "plan"]
+    out.print("plans", style="bold", markup=False)
+    for p in plans:
+        if "error" in p:
+            out.print(f"  ✗ {p['name']:<20} {p['error']}", style="red", markup=False)
+            continue
+        note = ("run by End, not started" if p.get("end") else "until end" if p["open_ended"] else "")
+        mark = "●" if p["open_ended"] else "▶"
+        yours = "  (yours)" if p["editable"] else ""
+        out.print(f"  {mark} {p['name']:<20} {note:<24} {', '.join(p['rscripts'])}{yours}", markup=False)
+    for kind, mark in (("block", "■"), ("orbit", "○")):
+        names = [p for p in items if p["kind"] == kind]
+        if names:
+            out.print(f"{kind}s", style="bold", markup=False)
+            for p in names:
+                err = f"  {p['error']}" if "error" in p else ""
+                out.print(f"  {mark} {p['name']}{err}", style="red" if err else None, markup=False)
+    out.print("\n`labcli run <plan>` starts one; `labcli check <name>` reads it first.", style="dim", markup=False)
+    return 0
+
+
+def _check(out, args) -> int:
+    if not args:
+        out.print("✗ check what? A plan, block or orbit name, or a path to a .plan file", markup=False)
+        return USAGE
+    name = args[0]
+    from formslab.sequence import find_plan
+
+    if find_plan(name) is not None:
+        from formslab.sequence.__main__ import main as check_plan
+        return check_plan([name])
+    from formslab.orbit import file as orbitfile
+    from formslab.sequence import block as blockfile
+
+    for kind, mod in (("block", blockfile), ("orbit", orbitfile)):
+        path = next((p for p in mod.discover() if p.stem == name), None)
+        if path is None:
+            continue
+        errors, warnings = mod.review(path.read_text(encoding="utf-8"))
+        out.print(f"{kind:<6}    {name}  ({path})", markup=False)
+        for n, m in errors:
+            out.print(f"  {path.name}:{n}: {m}", markup=False)
+        for n, m in warnings:
+            out.print(f"  {path.name}:{n}: warning: {m}", markup=False)
+        if not errors and not warnings:
+            out.print("  reads clean", markup=False)
+        return 1 if errors else 0
+    out.print(f"✗ no plan, block or orbit {name!r} (`labcli plans` lists them)", markup=False)
+    return USAGE
+
+
+# --- control ----------------------------------------------------------------------------
+
+def _run(out, args) -> int:
+    from formslab import lab
+
+    if not args:
+        out.print("✗ run what? A plan name (`labcli plans` lists them)", markup=False)
+        return USAGE
+    try:
+        r = lab.start(args[0])
+    except lab.LabError as e:
+        out.print(f"✗ {e}", markup=False)
+        return USAGE if e.code == 404 else 1
+    lab.audit(_who(), f"run {args[0]}")
+    if r["state"] == "running":
+        out.print(f"✔ a run is already going: {r['plan']} (pid {r['pid']})", markup=False)
+        return 1
+    if r["state"] == "started":
+        out.print(f"🟢 {r['plan']} started (pid {r['pid']}); `labcli status` shows it", markup=False)
+    else:
+        out.print(f"🟢 {r['plan']} starting; `labcli status` shows it, `labcli log` if it does not", markup=False)
+    return 0
+
+
+def _ctrl(out, verb: str, args) -> int:
+    from formslab import lab
+
+    args = [a.lower() for a in args]
+    if args not in ([], ["fast"]) or (args and verb != "end"):
+        out.print("✗ end, end fast, pause or resume", markup=False)
+        return USAGE
+    if verb in ("pause", "resume"):
+        try:
+            lab.ctrl(verb)
+        except lab.LabError as e:
+            out.print(f"✗ {e}.", markup=False)
+            return 1
+        lab.audit(_who(), verb)
+        out.print(f"✔ {verb} sent", markup=False)
+        return 0
+    fast = args == ["fast"]
+    if lab.host() is None and lab.lost_run() is None:
+        out.print("✗ no run is going.", markup=False)
+        return 0                                     # ending what has ended is done
+    before = lab.last_ended()
+    try:
+        r = lab.end(fast)
+    except lab.LabError as e:
+        out.print(f"✗ {e}", markup=False)
+        return 1
+    lab.audit(_who(), "end fast" if fast else "end")
+    out.print(f"… ending {r['plan']}" + (" with Fast End" if fast else "")
+              + ": the end script, then each instrument's shutdown", markup=False)
+    ended = lab.wait_ended()
+    if lab.host() is not None:
+        out.print(f"⚠ {r['plan']} has not stopped; its host is still running. `labcli status` shows it.",
+                  markup=False)
+        return 1
+    if ended and ended != before:
+        out.print(_ended_text(ended), markup=False)
+    else:
+        out.print(f"✖ {r['plan']} ended.", markup=False)
+    return 0
+
+
 def _log(out, args) -> int:
-    from formslab.console.log.logcli import log_path
+    from formslab.lab import log_path
 
     try:
         n = int(args[0]) if args else 40
@@ -148,25 +377,34 @@ def _cast(out, args) -> int:
     owner that reports (rLACO), until it is done or refused. Refused when no run
     is going: the host clears CAST when it starts, so a request written
     beforehand would be silently lost."""
-    from formslab.console.cast import castcli
-    from formslab.console.cast.castutils import RESULT_S
-    from formslab.console.ctrl import ctrlcli
-    from formslab.rscripts import cast
+    from formslab import lab
 
     if not args:
         out.print("✗ cast <label> <words>, e.g. `labcli cast hvc platen 20`", markup=False)
         return USAGE
     if args[-1] == "?":
-        result = castcli.execute_command(args)
-        out.print(result.content)
-        return 0 if result.ok else 1
+        words = args[:-1]
+        try:
+            options = lab.complete(words)
+        except lab.LabError as e:
+            out.print(f"✗ {e}", markup=False)
+            return 1
+        if not options:
+            out.print(f"nothing can follow {' '.join(words)}", markup=False)
+            return 0
+        out.print(f"after {' '.join(words)}:" if words else "a command starts with:", markup=False)
+        for o in options:
+            span = f"  {o['lo']:g} to {o['hi']:g} {o['unit'] or ''}" if o.get("lo") is not None else ""
+            out.print(f"  {o['text']:<14} {o['help'] or ''}{span}", markup=False)
+        return 0
     try:
-        request = cast.request(args[0], args[1:])
-    except cast.GrammarError as e:
-        out.print(f"✗ {e}", markup=False)
+        r = lab.send_command(" ".join(args))
+    except lab.LabError as e:
+        if e.code == 409 and str(e).startswith("no run"):
+            out.print("✗ nothing sent: no run is going (`labcli run tvac` starts manual operation)", markup=False)
+        else:
+            out.print(f"✗ {e}", markup=False)
         return 1
-    sent = cast.send(args[0], request, host=ctrlcli.running(), result_s=RESULT_S)
-    hint = " (`labcli run tvac` starts manual operation)" if sent["state"] == "refused" else ""
-    out.print(f"{'✔' if sent['ok'] else '✗'} {sent['label']} ← {json.dumps(request)}: "
-              f"{sent['text']}{hint}", markup=False)
-    return 0 if sent["ok"] else 1
+    lab.audit(_who(), f"cast {' '.join(args)}" + ("" if r["ok"] else f" ({r['text']})"))
+    out.print(f"{'✔' if r['ok'] else '✗'} {r['label']} ← {json.dumps(r['request'])}: {r['text']}", markup=False)
+    return 0 if r["ok"] else 1

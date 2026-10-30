@@ -21,14 +21,13 @@ import math
 import re
 import os
 import sys
-from datetime import datetime, timezone
 from http import HTTPStatus
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-from formslab import config
+from formslab import config, lab
 from formslab.gui import api, auth
 
 STATIC = Path(__file__).parent / "static"
@@ -43,13 +42,8 @@ _LOOPBACK = ("127.0.0.1", "localhost", "::1")
 
 
 def audit(user: str, action: str) -> None:
-    """One line in ``<config>/.run/gui.log`` for each login and (later) action."""
-    stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    try:
-        with (config.run_dir() / "gui.log").open("a", encoding="utf-8") as f:
-            f.write(f"{stamp} {user} {action}\n")
-    except OSError:
-        pass
+    """One line in ``<config>/.run/actions.log`` for each login and action (lab.audit)."""
+    lab.audit(user, action, "gui")
 
 
 def _clean(value):
@@ -133,11 +127,11 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/me":
             return self._json(200, {"user": user, "demo": self.server.demo})
         if path == "/api/end/steps":
-            return self._json(200, {"steps": api.end_steps()})
+            return self._json(200, {"steps": lab.end_steps()})
         if path == "/api/status":
-            return self._json(200, api.status(int(arg("log", 40))))
+            return self._json(200, lab.status(int(arg("log", 40))))
         if path == "/api/plans":
-            return self._json(200, {"plans": api.list_plans()})
+            return self._json(200, {"plans": lab.list_plans()})
         if path.startswith("/api/plans/"):
             name = path[len("/api/plans/"):]
             if not _NAME.match(name):
@@ -146,7 +140,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/rscripts":
             return self._json(200, {"rscripts": api.rscripts_available()})
         if path == "/api/complete":
-            return self._json(200, {"options": api.complete((arg("words") or "").split())})
+            return self._json(200, {"options": lab.complete((arg("words") or "").split())})
         if path == "/api/runs":
             return self._json(200, api.list_runs())
         if path == "/api/hardware":
@@ -206,7 +200,7 @@ class Handler(BaseHTTPRequestHandler):
             self._error(HTTPStatus.INTERNAL_SERVER_ERROR, f"{type(e).__name__}: {e}")
 
     def _control(self, path: str, body: dict, user: str) -> None:
-        """The actions that change something, noted in gui.log, and the editor's
+        """The actions that change something, noted in actions.log, and the editor's
         read-only queries (check, line options), which are POSTs only because they
         carry text."""
         if path == "/api/run":
@@ -215,10 +209,10 @@ class Handler(BaseHTTPRequestHandler):
             audit(user, f"run {name}")
         elif path == "/api/end":
             fast = body.get("fast") is True
-            result = api.end_run(fast)
+            result = lab.end(fast)
             audit(user, "end fast" if fast else "end")
         elif path in ("/api/pause", "/api/resume"):
-            result = api.ctrl(path[len("/api/"):])
+            result = lab.ctrl(path[len("/api/"):])
             audit(user, path[len("/api/"):])
         elif (kind := body.get("kind", "plan")) not in ("plan", "block", "orbit"):
             return self._error(HTTPStatus.BAD_REQUEST, "kind is plan, block or orbit")
@@ -269,7 +263,7 @@ class Handler(BaseHTTPRequestHandler):
             audit(user, f"save {result['kind']} {name}" + (" (new)" if body.get("as_new") else ""))
         elif path == "/api/cast":
             line = str(body.get("line", ""))
-            result = api.send_command(line)
+            result = lab.send_command(line)
             audit(user, f"cast {line.strip()}" + ("" if result["ok"] else f" ({result['text']})"))
         else:
             return self._error(HTTPStatus.NOT_FOUND, "not found")

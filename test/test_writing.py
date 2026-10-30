@@ -53,3 +53,11 @@ def test_inputs_are_named_by_words(usage, summary, details, elements):
 def test_the_load_card_follows_the_same_rules():
     assert len(_LOAD_CARD["help"]) <= 50 and not FORBIDDEN.search(_LOAD_CARD["help"])
     assert _LOAD_CARD["details"].endswith(".")
+
+
+def test_the_labcli_verbs_follow_the_same_rules():
+    from formslab.cli import VERBS
+    for usage, summary in VERBS:
+        assert summary and len(summary) <= 50, usage
+        assert summary[0].isupper() and not summary.endswith("."), usage
+        assert not FORBIDDEN.search(summary), usage
