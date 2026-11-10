@@ -1,6 +1,6 @@
 # formsLabCLI: intent and architecture
 
-Updated 2026-10-05. What the project is for and how it is put together, kept short
+Updated 2026-11-10. What the project is for and how it is put together, kept short
 enough to read before starting any work. The detail is in [architecture](design/architecture.md) (the
 layers), [plans](use/plans.md) (plans), [gevs](use/gevs.md) (the standard test), [gui](use/gui.md) and
 [orbit](use/orbit.md). Progress is in
@@ -11,8 +11,8 @@ layers), [plans](use/plans.md) (plans), [gevs](use/gevs.md) (the standard test),
 formsLabCLI runs the thermal-vacuum bench at the University of Illinois: the LACO
 chamber ([laco-chamber](instruments/laco-chamber.md)) with its HVC-3500 controller, Rigol
 supplies, SMTC08 thermocouple readers, a cryocooler board, a PowerSwitch and the sLTA
-imaging chain. It is used from a terminal console, over SSH (`labcli <command>`) and
-from a web GUI.
+imaging chain. It is used from a terminal, also over SSH (the `labcli` watch screen
+and `labcli <command>`), and from a web GUI (formsLAB).
 
 **Its central job is running test sequences** (plans) against that hardware safely:
 a pumpdown, a soak, a vent, an imaging test in a simulated umbra.
@@ -46,7 +46,9 @@ written for the first of them ([writing](design/writing.md)).
    runs are JSON Lines; state between processes is the shared CAST and ctrl files. There is
    no database.
 6. **Works without the bench.** Simulators, `scripts/gui_demo.py` and the test suite
-   (about 1,200 tests, on Windows and Linux in CI) run with no hardware.
+   (about 2,000 tests, on Windows and Linux in CI) run with no hardware. The
+   simulator is only as true as what is known: it turns a zone on at `!ZSn`, which
+   the real controller does not ([hvc3500](instruments/hvc3500.md)).
 7. **FORMS stays offline.** The astrodynamics engine is never imported
    (`test/test_no_forms_runtime.py`). It computes profiles; formsLabCLI runs them.
    The orbit models it needs at the bench now live in `formslab.orbit`.
@@ -54,7 +56,7 @@ written for the first of them ([writing](design/writing.md)).
 ## Architecture at a glance
 
 ```
- labcli console ─┐                         ┌─ sequence host (one per run) ─┐
+ labcli (watch) ─┐                         ┌─ sequence host (one per run) ─┐
  labcli <cmd>  ──┼── ctrl file ─────────▶  │ plan steps, one per tick      │
  labcli gui    ──┘── CAST file  ◀───────▶  │ rScripts ─▶ devices/ drivers  │──▶ instruments
                      (requests, status)    │ recorder ─▶ outputs/*.jsonl   │

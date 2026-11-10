@@ -5,8 +5,25 @@ when a pull request merges or a decision is made: change *Now*, add a line to
 *Done*, and move settled questions out of *Waiting on a decision*. Intent and
 architecture are in [project](project.md); the GUI's plan is in [gui-design](design/gui-design.md).
 
-## Now (2026-10-05)
+## Now (2026-11-10)
 
+- **The platen does not heat (2026-11-03/04).** `Platon_Test`, `Heater_Check` and
+  `Platen_29C` sent `hvc platen on`; the controller acknowledged it and never held
+  temperature, at 43, 2.5 and 738 Torr. Found: commissioning had already seen this
+  (2026-09-24): `!ZSn` is ignored in Manual mode, only the HMI's Z1 button turns the
+  zone on. The finding never reached this vault, and the simulator was built the
+  other way ([hvc3500](instruments/hvc3500.md), Thermal control in Manual mode).
+  Next at the bench: under vacuum, Z1 on at the HMI with the setpoint above the
+  platen, to see whether it warms and whether `hvc platen off` stops it. Then decide
+  how a plan turns a zone on (Waiting on a decision, 12).
+- **Also found at the bench, 2026-11-03/04:** End ran on the chamber for the first
+  time (after `Heater_Check` failed, sealed at 2.6 Torr; a Fast End on 11-04, sealed
+  at 739 Torr). `shutdown` vented to 739 Torr. The thermocouple readers and the
+  cryocooler board are not on USB: no run since 2026-10-29 has their readings. psu1
+  was not found on 11-03 (`VI_ERROR_RSRC_NFOUND`), yet `shutdown` ended with its line
+  "every pump, zone and supply off": rPSU marks a request to a supply it could not
+  open as taken. A formsLAB server started before the 2026-10-30 module move showed
+  every plan as "cannot run" until restarted ([questions](questions.md)).
 - **The GUI's first tab is Control (2026-10-30):** the chamber drawing, and under it, as
   wide as it, the run and the command box, the host log folded beneath. Status is the
   instruments' tiles alone. Decided so a command is sent with the picture it changes
@@ -209,16 +226,26 @@ From the GUI's open questions ([gui-design](design/gui-design.md)) and recent re
    shroud -180 to 120 °C, the controller's own limits; the chamber is rated -150 to
    150 °C and -150 to 120 °C (LACO p. 18). Narrow the profile to the rating? Until
    then the operator holds it ([safety](rules/safety.md), Heat).
-10. **The vacuum pump's power setting** must be *Always On* with a turbo (HVC p. 16).
-   What is it set to now? To read on the HMI before the first turbo run.
+10. ~~**The vacuum pump's power setting**~~ Settled: *Always On*, as a turbo needs
+   (HVC p. 16; HMI Advanced Vacuum, 2026-09-17).
 11. **Leave the turbo running between tests?** LACO's procedure does (LACO p. 23):
    the gate valve isolates it to vent, the vacuum pump backs it through the foreline,
    and it never spins down. `gevs_unit` stops it (`seal chamber`), as its header
    promises every pump off. If the bench leaves it running, the plan ends with
    `hvc gate close` and `vent`, and End's D6 case becomes the normal one.
+12. **How a plan turns a zone on**, since `hvc platen on` does not
+   ([hvc3500](instruments/hvc3500.md)): the manual's ASCII recipe step (untried; End
+   does not stop a recipe, D9), a question to LACO, or the operator at the HMI. Every
+   thermal plan waits on it. Then: the simulator made to match, `hvc platen on`
+   confirmed by the controller rather than its echo, and `shutdown`'s zone steps.
+13. **A supply that cannot be reached** in a plan: rPSU now takes the request and
+   logs a warning, so `shutdown` goes on and its last line says every supply is off.
+   Stop the plan there (and leave the chamber unvented), or go on and say so?
 
 ## Known gaps
 
+- **No zone can be turned on from formsLAB**, and the simulator turns one on at
+  `!ZSn` (Waiting on a decision, 12).
 - **The turbo path has never been run** on the chamber (crossover, foreline,
   gate valve): [laco-chamber](instruments/laco-chamber.md).
 - **PSU2** is disabled in the shipped hardware map, but rSLTA powers the camera from it;

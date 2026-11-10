@@ -136,9 +136,9 @@ checking what else uses them. ([hvc3500](../instruments/hvc3500.md), Network saf
 | The setpoint limits in `tvac_bench.json` are wider than the chamber's rating | the operator keeps setpoints within the rating; the shipped plans do (`thermal_cycle` -20 to 60 °C) |
 | The turbo path (foreline, turbo, gate) has never been run | run it first on its own, watched at the HMI |
 | `turbo_spindown_s` (30 minutes) is a guess: the parts list names no turbo model | read the model off the pump and set the time from its manual; longer only delays `seal chamber`, shorter can starve the turbo |
-| Whether the controller accepts `hvc platen on` at atmosphere (it limits the heaters above 700 Torr) | if it refuses, `shutdown` run on a chamber already at air stops at that step; then move the zone steps after `vent` |
+| `hvc platen on` and `off` do not switch a zone in Manual mode (2026-09-24; again 2026-11-04), so End's zones off and a rule's `then hvc platen off` are not shown to stop a zone started at the HMI | turn a zone started at the HMI off at the HMI; next at the bench: Z1 on at the HMI, then `hvc platen off` ([hvc3500](../instruments/hvc3500.md), Thermal control in Manual mode) |
 | Cooling has never been run through formsLabCLI | watch the first cold run at the HMI |
-| End has not been run on the real chamber | the bench checklist, [end](../design/end.md) section 9 |
+| End's bench checklist has not been worked through. End has run on the chamber twice: after Heater_Check failed (2026-11-03, left sealed at 2.6 Torr) and as a Fast End (2026-11-04, sealed at 739 Torr) | the bench checklist, [end](../design/end.md) section 9 |
 | `labcli kill` and `labcli supplies off` have not been run on the bench | try `supplies off` on a supply with nothing connected first |
 | Which PowerSwitch outlet feeds which supply is not written down | read it off the switch and record `PS.outlets` in the live map ([powerswitch](../instruments/powerswitch.md)) |
 | End's confirmation times (15 s, 30 s) are estimates | adjust from the bench checklist |

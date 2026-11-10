@@ -85,8 +85,12 @@ for it to spin up or down; it can only wait a fixed time.
   120 °C (LACO p. 18).
 - Heating is electric; cooling is liquid nitrogen. A test that goes cold needs the
   supply on and the exhaust vented outside ([safety](safety.md)).
-- A zone controls only while its thermal control is on (`hvc platen on`). Off, its
-  effective setpoint follows its own temperature.
+- A zone controls only while its thermal control is on. Off, its effective
+  setpoint follows its own temperature.
+- **`hvc platen on` does not turn a zone on.** The controller acknowledges it but
+  ignores it in Manual mode; only the HMI's Z1 and Z2 buttons have. Until that is
+  solved, no plan heats or cools ([hvc3500](../instruments/hvc3500.md), Thermal
+  control in Manual mode).
 - A setpoint is confirmed by the controller's echo, not by reading it back
   ([hvc](hvc.md)).
 - **Rate control** must be set and turned on *before* thermal control: the HMI does

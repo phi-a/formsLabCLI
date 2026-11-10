@@ -80,6 +80,23 @@ While the zone is off, `?Zn` returns the effective setpoint, which follows the
 zone's own sensor. The written one is confirmed by the controller's echo.
 ([hvc](rules/hvc.md))
 
+**Why does the platen not heat after `hvc platen on`?**
+The controller acknowledges `hvc platen on` but ignores it in Manual mode; only the
+HMI's Z1 button turns the zone on. Seen at commissioning (2026-09-24) and in every
+run since. The panel then shows the setpoint following the platen and "Holding
+temperature" off. ([hvc3500](instruments/hvc3500.md), Thermal control in Manual mode)
+
+**Is the platen reading on formsLAB current?**
+Yes, if the chamber's card says *live*: between runs formsLAB reads the controller
+every 5 s, during a run rLACO does. A card that is not live is greyed with its age,
+and the Control drawing fades. The temperature is the controller's own (`?T2`),
+so it agrees with the HMI. ([gui](use/gui.md), Between runs)
+
+**Every plan says "cannot run".**
+A formsLAB server started before an update can keep old code in memory, so it no
+longer knows any routine's words (2026-11-03, after the 2026-10-30 move of
+`formslab.state`). Restart `labcli gui` when no run is going, after every pull.
+
 **Why can `scripts/pumpdown.py` not connect?**
 The controller takes one client. During a run rLACO holds it; between runs the GUI's
 monitor does. Start the GUI with `--no-monitor`. ([hvc](rules/hvc.md))

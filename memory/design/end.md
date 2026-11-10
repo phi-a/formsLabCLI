@@ -397,8 +397,10 @@ read the banner, compare with the HMI's Manual screen.
    reached: check it at the HMI".
 3. **Mid-pumpdown** (`ambient_to_rest`, around 100 Torr). Expect the vacuum valve
    closed, the pump off, sealed near that pressure.
-4. **A zone on** (`tvac`, `hvc platen 40`, `hvc platen on`). Expect the zone off and
-   its setpoint 20 °C on the HMI.
+4. **A zone on** (`tvac`, `hvc platen 40`, then Z1 on at the HMI: `hvc platen on`
+   does not turn it on, [hvc3500](../instruments/hvc3500.md)). Expect the zone off and
+   its setpoint 20 °C on the HMI. If Z1 stays on, End's zones off does not work: turn
+   it off at the HMI.
 5. **The cryocooler running** (`Cryocooler`). Before ending, the psu1 card shows
    CH1's OVP 24.5 V, OCP 1.25 A, protection on, and the log has no "protection
    ... not as set". Expect psu1 CH1 off within a second of confirming, before the

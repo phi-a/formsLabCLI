@@ -1,7 +1,8 @@
 # Cryocooler control
 
-The cryocooler control board carries two I2C devices, documented in
-`docs/Cyrocooler_board_docs.pdf`:
+The cryocooler control board carries two I2C devices, documented in the board's
+own PDF, `Cyrocooler_board_docs.pdf` (once cited at `docs/`; not in this repository
+or in `tvac-uiuc`):
 
 | Address | Part | Role |
 |---|---|---|

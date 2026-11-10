@@ -138,6 +138,10 @@ and are drawn as "n/a" rather than guessed: heater output %, turbo speed %,
 foreline pressure, and each zone's own on/off (the controller reports one
 chamber-wide "holding temperature" state).
 
+A zone's setpoint is the controller's effective one. While the zone is off it
+follows the zone's temperature, so `hvc platen 29` leaves it reading the platen;
+the written 29 is confirmed by the controller's echo ([hvc](../rules/hvc.md)).
+
 **Plans.** A plan editor for people who do not want to remember the words.
 Pick a plan on the left (a green page before its name); a plan you open is shown line by line:
 
