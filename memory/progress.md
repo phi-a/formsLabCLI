@@ -248,7 +248,9 @@ From the GUI's open questions ([gui-design](design/gui-design.md)) and recent re
    `hvc gate close` and `vent`, and End's D6 case becomes the normal one.
 12. **How a plan turns a zone on**, since `hvc platen on` does not
    ([hvc3500](instruments/hvc3500.md)): the manual's ASCII recipe step (untried; End
-   does not stop a recipe, D9), a question to LACO, or the operator at the HMI. Every
+   does not stop a recipe, D9), a question to LACO, or the operator at the HMI.
+   2026-11-12: the recipe path chosen to try first ([recipes](rules/recipes.md), 5);
+   meanwhile Z1 is tapped once a session and left on, and setpoints drive it. Every
    thermal plan waits on it. Then: the simulator made to match, `hvc platen on`
    confirmed by the controller rather than its echo, and `shutdown`'s zone steps.
 13. **A supply that cannot be reached** in a plan: rPSU now takes the request and

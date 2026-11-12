@@ -33,7 +33,12 @@ What the controller offers (HVC p. 31-34):
 4. **After a recipe or cycle command a plan knows nothing.** The plan checker
    treats the valves and pumps as unknown from there on.
 5. *Enable ASCII in Recipe* is off on this chamber. An externally driven recipe
-   (an *ASCII* step with a hold trigger) would need it on, and a decision first.
+   (an *ASCII* step with a hold trigger) needs it on. Decided 2026-11-12: try it,
+   since it is the manual's way to turn a zone on from a computer and Manual mode
+   ignores `hvc platen on` ([hvc3500](../instruments/hvc3500.md)). The test is a
+   local plan, `Recipe_Heat`, run with someone at the HMI: it says the one-time HMI
+   setup, and cannot run until its recipe number is set. Until it passes, rules 1
+   to 4 stand.
 
 **Open:** what the controller reports while a recipe runs (`?TC`, `?MC`, `?RS`).
 Until that is found at the bench, formsLAB cannot tell that one is running. When
