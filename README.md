@@ -220,8 +220,9 @@ labcli supplies off                 # every supply output off, when no run is go
 labcli power 3 cycle                # a PowerSwitch outlet off and on again
 ```
 
-`labcli cast` refuses when no run is going (nothing would apply the command),
-when the instrument is not live, and when the command's prerequisites are not
+With no run going, `labcli cast` (and the GUI's command box) starts `tvac`,
+manual operation, first, and says so; `labcli end` stops it. It refuses when
+the instrument is not live, and when the command's prerequisites are not
 met now (the rough valve open for a vent; see
 [memory/use/plans.md](memory/use/plans.md)). `kill`, `supplies off` and an outlet
 off or cycled ask first; add the word `yes` from a script. The order when

@@ -53,6 +53,12 @@ LAUNCH_WAIT_S = 5.0                # the host writes its lock at start
 END_WAIT_S = END_CAP_S + 30.0
 END_RESEND_S = 3.0
 ACTIONS_LOG = "actions.log"
+# A command with no run going starts manual operation for it, as the HMI acts at
+# once (memory/use/gui.md, Control). Its first step must have begun before the
+# command is written: the host clears CAST as it starts, after the chamber monitor
+# lets go (up to 15 s).
+MANUAL_PLAN = "tvac"
+MANUAL_READY_S = 30.0
 
 
 class LabError(Exception):
@@ -441,9 +447,10 @@ def send_command(line: str, *, take_s: float | None = None) -> dict:
     """Send `hvc platen 20`-style words to the rScript that owns the label
     (cast.send), and say what became of it.
 
-    Refused unless a run is going and the instrument's block is live: a command
-    to a chamber that is not connected, or whose rScript is not loaded, would sit
-    unread, and the page would look as if it had worked."""
+    With no run going, manual operation (`tvac`) is started for it first, and the
+    result says so ("started"). Otherwise refused unless the instrument's block is
+    live: a command to a chamber that is not connected, or whose rScript is not
+    loaded, would sit unread, and the page would look as if it had worked."""
     words = line.split()
     if not words:
         raise LabError(400, "type a command, e.g. hvc vent open")
@@ -454,16 +461,37 @@ def send_command(line: str, *, take_s: float | None = None) -> dict:
             wait = cast.reports_results(label)
         except GrammarError as e:
             raise LabError(400, str(e))
-    running = host()
+    running, started = host(), None
     if running is None:
-        raise LabError(409, "no run is going, so nothing would apply it")
-    blocks = read_blocks() or {}
-    fresh = freshness(label, blocks.get(label) or {}, running, time.time())
-    if not fresh["live"]:
-        raise LabError(409, f"{label} is not live ({fresh['reason']}), so the command would not be taken")
+        running = started = _start_manual()
+    else:
+        blocks = read_blocks() or {}
+        fresh = freshness(label, blocks.get(label) or {}, running, time.time())
+        if not fresh["live"]:
+            raise LabError(409, f"{label} is not live ({fresh['reason']}), so the command would not be taken")
     # Outside the lock: the wait (up to cast.REPLY_S) must not hold up the other pages.
-    return cast.send(label, request, host=running, wait_result=wait,
-                     take_s=CAST_TAKE_S if take_s is None else take_s)
+    out = cast.send(label, request, host=running, wait_result=wait,
+                    take_s=CAST_TAKE_S if take_s is None else take_s)
+    return {**out, "started": started["plan"]} if started else out
+
+
+def _start_manual() -> dict:
+    """Start manual operation for a command sent with no run going, and return
+    its host's lock once the run's first step has begun. Refused while a run is
+    starting or ending, or one stopped without its end (End it first)."""
+    if lost_run() is not None:
+        raise LabError(409, "a run stopped without its end; run its End first, then send the command")
+    if (doing := action()) is not None:
+        raise LabError(409, f"a run is {doing}; send the command once it has")
+    start(MANUAL_PLAN)
+    deadline = time.monotonic() + MANUAL_READY_S
+    while time.monotonic() < deadline:
+        running, state = host(), run_state()
+        if running and state and state.get("step") is not None:
+            return running
+        time.sleep(0.2)
+    raise LabError(503, f"{MANUAL_PLAN} (manual operation) was started for the command, but its "
+                        f"steps had not begun within {MANUAL_READY_S:g} s; nothing sent. See the host log")
 
 
 def kill() -> dict:

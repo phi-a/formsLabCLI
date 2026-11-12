@@ -59,8 +59,9 @@ def COMMANDS():
             (f"{z} <temperature:number {lo:g}..{hi:g} C>", f"""Set the {z} temperature
              The temperature the {z} controls to, from {lo:g} to {hi:g} °C: the limits in
              this bench's tvac_bench.json. A value outside them is refused before it is
-             sent. It takes effect while the {z}'s thermal control is on, and the {z}
-             moves toward it at its ramp rate. The controller reads it back to confirm.
+             sent. It takes effect while the {z}'s thermal control is on (Z{n} at the
+             HMI), and the {z} moves toward it at its ramp rate. The controller reads it
+             back to confirm; the reply says when the {z} is off.
              It ends a hold at a thermocouple. Controller command: !Z{n}.""",
              lambda c, z=z: {z: c}),
             (f"{z} <temperature:number {lo:g}..{hi:g} C> at <sensor:{sensors}>",
@@ -77,7 +78,9 @@ def COMMANDS():
              lambda c, s, z=z: {z: c, f"{z}_at": s}),
             (f"{z} on|off", f"""Turn {z} thermal control on or off
              On, the controller heats or cools the {z} toward its setpoint. Off, it does
-             neither, and the {z}'s effective setpoint follows its own temperature.
+             neither, and the {z}'s effective setpoint follows its own temperature. In the
+             controller's Manual mode `on` is acknowledged but ignored: turn Z{n} on at
+             the HMI. Whether `off` turns off a zone started there is not yet known.
              Controller command: !ZS{n}, !ZO{n}.""",
              lambda s, z=z: {f"{z}_control": s == "on"}),
             (f"{z} rate <rate:number 0.. C/min>", f"""Set the {z} ramp rate

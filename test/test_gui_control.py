@@ -341,12 +341,43 @@ def test_a_bad_command_says_what_would_fit_and_sends_nothing(client, host_up):
     assert not castutils.CommandPending("hvc")
 
 
-def test_nothing_is_sent_when_no_run_is_going(client, monkeypatch):
+def _no_run(monkeypatch, step_after=0):
+    """No host, until `start` is asked for: then the host's lock, and its first step
+    once `run_state` has been read `step_after` times."""
+    started, reads = [], []
+    monkeypatch.setattr(lab, "host", lambda: HOST if started else None)
+    monkeypatch.setattr(lab, "start", lambda name, **kw: started.append(name) or {"state": "started"})
+    monkeypatch.setattr(lab, "run_state", lambda: reads.append(1) or
+                        {"pid": HOST["pid"], "step": 1 if len(reads) > step_after else None})
+    return started
+
+
+def test_a_command_with_no_run_going_starts_manual_operation_first(client, monkeypatch, owner):
     live_hvc()
-    monkeypatch.setattr(lab, "host", lambda: None)
+    started = _no_run(monkeypatch, step_after=3)                  # its steps begin a little later
+    code, body = client.json("POST", "/api/cast", {"line": "hvc platen 25"})
+    assert code == 200 and body["ok"] is True and body["started"] == "tvac"
+    assert started == ["tvac"] and owner == [{"platen": 25.0}]
+    log = (config.run_dir() / "actions.log").read_text(encoding="utf-8")
+    assert "tester gui run tvac (for the command)" in log and "tester gui cast hvc platen 25" in log
+
+
+def test_a_command_is_not_sent_if_manual_operation_does_not_begin(client, monkeypatch):
+    live_hvc()
+    _no_run(monkeypatch, step_after=10 ** 9)
+    monkeypatch.setattr(lab, "MANUAL_READY_S", 0.3)
     code, body = client.json("POST", "/api/cast", {"line": "hvc vent open"})
-    assert code == 409 and "no run is going" in body["error"]
+    assert code == 503 and "nothing sent" in body["error"]
     assert not castutils.CommandPending("hvc")
+
+
+def test_a_command_starts_nothing_while_a_run_is_lost(client, monkeypatch):
+    live_hvc()
+    started = _no_run(monkeypatch)
+    monkeypatch.setattr(lab, "lost_run", lambda: HOST)
+    code, body = client.json("POST", "/api/cast", {"line": "hvc vent open"})
+    assert code == 409 and "run its End first" in body["error"]
+    assert started == [] and not castutils.CommandPending("hvc")
 
 
 def test_nothing_is_sent_to_an_instrument_that_is_not_live(client, host_up):

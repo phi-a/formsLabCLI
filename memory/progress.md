@@ -7,6 +7,15 @@ architecture are in [project](project.md); the GUI's plan is in [gui-design](des
 
 ## Now (2026-11-10)
 
+- **A command with no run going starts manual operation (2026-11-12),** asked for so
+  the command box acts at once, as the HMI does: `lab.send_command` starts `tvac`,
+  waits for its first step (the host clears CAST as it starts), then sends. The same
+  for `labcli cast` and the watch screen. A zone setpoint's reply now says when the
+  zone is off. Found at the bench 2026-11-10: Z1 pressed at the HMI heated the platen
+  from 19.3 to 25.0 °C in 22 minutes, without overshoot, the shroud untouched; and
+  while a warning is up (Control air low) `?TC` shows it instead of "Holding
+  Temperature", so formsLAB read the zone as off ([hvc3500](instruments/hvc3500.md)).
+  Still not known: whether `hvc platen off` stops a zone started at the HMI.
 - **The platen does not heat (2026-11-03/04).** `Platon_Test`, `Heater_Check` and
   `Platen_29C` sent `hvc platen on`; the controller acknowledged it and never held
   temperature, at 43, 2.5 and 738 Torr. Found: commissioning had already seen this

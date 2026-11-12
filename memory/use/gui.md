@@ -85,10 +85,18 @@ data goes), then the controls:
 - The command box takes the same words as `labcli cast` (`hvc platen 20`, `psu1 ch1 on`).
   The buttons under it are what the instruments' own grammar allows next, with
   limits and units; click one or type. A bad command is refused with what would
-  fit and a "did you mean". A command is refused too when no run is going or the
-  instrument is not live, since nothing would take it, or when its prerequisites
-  are not met now (the rough valve open for a vent; [plans](plans.md)). It reports
-  what became of it: taken, done, or refused with the chamber's reason.
+  fit and a "did you mean". **With no run going, a command starts `tvac` (manual
+  operation) first**, as the HMI acts at once; the run records until End, and the
+  result says it was started (asked for 2026-11-12). Not while a run is
+  starting or ending, or one stopped without its end: End that first. A command is
+  refused too when the instrument is not live, since nothing would take it, or
+  when its prerequisites are not met now (the rough valve open for a vent;
+  [plans](plans.md)). It reports what became of it: taken, done, or refused with
+  the chamber's reason.
+- A zone setpoint (`hvc platen 25`) is held only while the zone's thermal control
+  is on, and `hvc platen on` does not turn it on: press Z1 (Z2 for the shroud) at
+  the HMI ([hvc3500](../instruments/hvc3500.md), Thermal control in Manual mode).
+  The reply says when the zone is off.
 - Under the box, a help card for what you are typing: what the command does, what
   each input means, and what it needs first, each marked from the chamber's last
   report (✓ true now, ✗ not, ? not known).
@@ -119,7 +127,7 @@ The chamber stays live with no run going, so it can be watched after End: the
 zones warming or cooling, the vacuum holding. The formsLAB server reads it every
 5 s (`poll_interval_s`) and publishes it as rLACO would (`formslab.host.monitor`);
 the chamber's banner on Control adds "No run is going: formsLAB is only reading it". It sends
-no commands: those still need a run. A labcli watch screen reads it the same way
+no commands: a command starts `tvac` for them (Control, above). A labcli watch screen reads it the same way
 when formsLAB does not: one reader at a time, whichever came first, and what it
 reads is shared through CAST.
 

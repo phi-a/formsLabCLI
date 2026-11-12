@@ -393,6 +393,18 @@ class LACO:
         return done
 
     # -------------------------------------------------------- CAST requests
+    def _idle_note(self, zone: Zone, got: float) -> str:
+        """What a setpoint reply adds while the zone is off: it is held only once
+        thermal control is on, which `!ZSn` does not do in Manual mode, the HMI
+        does (memory/instruments/hvc3500.md). On is "Holding Temperature" or the
+        effective setpoint held at the new one: a warning hides the first."""
+        try:
+            on = self.client.thermal_control_active() or abs(zone.setpoint() - got) < 0.05
+        except (OSError, ProtocolError, ValueError):
+            return ""
+        return "" if on else (f"; the {zone.name} is off, so it holds this only once Z{zone.number} "
+                              "Thermal Control is on at the HMI")
+
     def apply(self, request: dict) -> list[tuple[str, str]]:
         """Apply a request block (the CAST `hvc` grammar) and report what
         happened as (level, message) pairs. A failing item is reported, not
@@ -436,7 +448,7 @@ class LACO:
                     out.append(("WARNING",
                                 f"{zone.name} setpoint {v} clamped to {min(max(v, lo), hi)} C"))
                 attempt(f"{zone.name} setpoint", lambda z=zone, v=v: z.set(v),
-                        lambda got, z=zone: f"{z.name} setpoint -> {got} C")
+                        lambda got, z=zone: f"{z.name} setpoint -> {got} C" + self._idle_note(z, got))
             if (v := number(f"{zone.name}_rate")) is not None:
                 attempt(f"{zone.name} rate", lambda z=zone, v=v: z.set_rate(v),
                         lambda got, z=zone: f"{z.name} rate -> {got} C/min")

@@ -393,9 +393,12 @@
     const line = $("#cmd").value.trim();
     const out = $("#cmd-result");
     if (!line) return;
+    // With no run going the server starts manual operation (tvac) for the command first.
+    say(out, $("#start-box").hidden ? "Sending..." : "No run is going: starting manual operation (tvac) for it...", false);
     try {
       const r = await api("/api/cast", { line });
-      say(out, `${r.label} <- ${JSON.stringify(r.request)}  ${r.text}`, !r.ok);
+      const started = r.started ? `Started ${r.started} (manual operation; End stops it). ` : "";
+      say(out, `${started}${r.label} <- ${JSON.stringify(r.request)}  ${r.text}`, !r.ok);
       if (r.ok) { $("#cmd").value = ""; updateHints(); }
     } catch (e) {
       say(out, e.message, true);

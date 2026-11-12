@@ -234,12 +234,15 @@ def test_the_command_writes_the_request_and_says_what_became_of_it(run_going):
     assert ReadCommand("hvc") == {"vent": "open"}
 
 
-def test_the_command_is_refused_when_no_run_is_going(monkeypatch):
+def test_the_command_starts_manual_operation_when_no_run_is_going(run_going, monkeypatch):
     from formslab import lab
-    monkeypatch.setattr(lab, "host", lambda: None)
+    started = []
+    monkeypatch.setattr(lab, "host", lambda: {"pid": 4321, "plan": "tvac"} if started else None)
+    monkeypatch.setattr(lab, "start", lambda name, **kw: started.append(name))
+    monkeypatch.setattr(lab, "run_state", lambda: {"pid": 4321, "step": 1})
     code, text = _cast("hvc", "vent", "open")
-    assert "nothing sent: no run is going" in text and code == 1
-    assert ReadCommand("hvc") == {}
+    assert started == ["tvac"] and "no run was going: started tvac" in text
+    assert ReadCommand("hvc") == {"vent": "open"}                  # sent, for tvac's rLACO to take
 
 
 def test_the_command_shows_the_owners_refusal(run_going):

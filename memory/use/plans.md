@@ -334,7 +334,7 @@ Shipped plans, the bench's tests, each built from the blocks above:
 
 | plan | does | takes about |
 |---|---|---|
-| `tvac` | manual operation from the watch screen or `labcli cast`, until `end` | until `end` |
+| `tvac` | manual operation from the GUI's command box, the watch screen or `labcli cast`, until `end`; a command sent with no run going starts it | until `end` |
 | `ambient_to_rest` | pumps down from ambient to 3 Torr, seals the chamber and leaves it to rest | 10 minutes |
 | `rest_to_ambient` | lets air into a sealed chamber at a rough rest | 5 minutes |
 | `shutdown` | from any state to at air with everything off: supplies off, zones to 25 °C, `seal chamber`, `vent`, zones off. Run it after any End and at the end of a session | minutes from a rest; up to 4 h from -150 °C |

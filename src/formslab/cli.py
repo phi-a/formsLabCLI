@@ -535,11 +535,11 @@ def _cast(out, args) -> int:
     try:
         r = lab.send_command(" ".join(args))
     except lab.LabError as e:
-        if e.code == 409 and str(e).startswith("no run"):
-            out.print("✗ nothing sent: no run is going (`labcli run tvac` starts manual operation)", markup=False)
-        else:
-            out.print(f"✗ {e}", markup=False)
+        out.print(f"✗ {e}", markup=False)
         return 1
+    if r.get("started"):
+        lab.audit(_who(), f"run {r['started']} (for the command)")
+        out.print(f"🟢 no run was going: started {r['started']} (manual operation; `labcli end` stops it)", markup=False)
     lab.audit(_who(), f"cast {' '.join(args)}" + ("" if r["ok"] else f" ({r['text']})"))
     out.print(f"{'✔' if r['ok'] else '✗'} {r['label']} ← {json.dumps(r['request'])}: {r['text']}", markup=False)
     return 0 if r["ok"] else 1

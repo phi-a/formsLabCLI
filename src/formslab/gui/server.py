@@ -264,6 +264,8 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/cast":
             line = str(body.get("line", ""))
             result = lab.send_command(line)
+            if result.get("started"):
+                audit(user, f"run {result['started']} (for the command)")
             audit(user, f"cast {line.strip()}" + ("" if result["ok"] else f" ({result['text']})"))
         else:
             return self._error(HTTPStatus.NOT_FOUND, "not found")

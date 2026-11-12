@@ -194,6 +194,17 @@ def test_apply_handles_a_whole_cast_request(laco, sim):
     assert any("shroud setpoint 500.0 clamped to 120.0" in m for _, m in events)
 
 
+def test_a_setpoint_reply_says_when_the_zone_is_off(laco, sim):
+    """In Manual mode only the HMI turns a zone on (memory/instruments/hvc3500.md),
+    so a setpoint written to a zone that is off says so."""
+    sim.state.zone_active[1] = False
+    (level, text), = laco.apply({"platen": 25.0})
+    assert level == "INFO" and text.startswith("platen setpoint -> 25.0 C")
+    assert "the platen is off, so it holds this only once Z1 Thermal Control is on at the HMI" in text
+    sim.state.zone_active[1] = True                               # Z1 pressed at the HMI
+    assert laco.apply({"platen": 26.0}) == [("INFO", "platen setpoint -> 26.0 C")]
+
+
 def test_apply_warns_on_booleans_as_setpoints_and_writes_nothing(laco, sim):
     before = dict(sim.state.zone_setpoint)
     assert laco.apply({"platen": True}) == [
