@@ -283,6 +283,18 @@ in the map shows its line for the map ("In the map as"). To find which device is
 which, unplug it and press *Look again*: the page names what went. Nothing here
 opens a device, so it is safe during a run. `labcli hardware` prints the same.
 
+**Manual.** The chamber's parts as buttons, like the HMI's Manual screen (asked for
+2026-11-12, to run the chamber without touching it): each zone with its
+temperature, setpoint, a setpoint and a rate to set, and Z1 or Z2 On and Off; each
+valve Open and Close; each pump On and Off, *Stop roughing* (`hvc stop`), and the
+pressure. Each button is one command, sent as the command box sends it, so the same
+rules check it, and with no run going the first starts `tvac`. One at a time: the
+others wait while one is out. Opening the vent or fill valve and turning the turbo
+on are asked first. **Z On does not turn a zone on**, since the controller ignores
+it in Manual mode ([hvc3500](../instruments/hvc3500.md)): six seconds after it the
+page looks, and says to press the HMI's button when the zone did not come on.
+Supplies and the rest are the command box's.
+
 ## What is not here yet
 
 The rest of the space-environment tool (view factors, environment temperature,

@@ -85,9 +85,10 @@
           renderEnded(s);
           if (view === "control") { renderControl(s); renderTvac(s); }
           if (view === "status") renderStatus(s);
+          if (view === "manual") renderManual(s);
         }
       } catch (e) { /* the login screen takes over on a 401; otherwise try again */ }
-      if (gen === pollGen) state.timer = setTimeout(tick, view === "control" || view === "status" ? 1000 : 2000);
+      if (gen === pollGen) state.timer = setTimeout(tick, ["control", "status", "manual"].includes(view) ? 1000 : 2000);
     })();
   }
 
@@ -106,7 +107,7 @@
     $("#app").hidden = false;
     $("#who").textContent = user;
     const wanted = location.hash.slice(1);
-    show(["status", "plans", "plots", "hardware"].includes(wanted) ? wanted : "control");
+    show(["status", "plans", "plots", "hardware", "manual"].includes(wanted) ? wanted : "control");
   }
 
   $("#login-form").addEventListener("submit", async (ev) => {
@@ -136,6 +137,7 @@
     $("#view-plans").hidden = view !== "plans";
     $("#view-plots").hidden = view !== "plots";
     $("#view-hardware").hidden = view !== "hardware";
+    $("#view-manual").hidden = view !== "manual";
     stopTimers();
     if (view === "control") state.plansLoaded = false;     // plans may have been saved since
     if (view === "plots") loadRuns();
@@ -415,7 +417,7 @@
     banner.className = "banner " + (b.live ? "running" : "stopped");
     banner.textContent = b.live
       ? `Chamber live, updated ${fmtAge(b.age_s)} ago.` + (vm.mode ? ` Mode ${vm.mode}.` : "") + (vm.testStatus ? ` ${vm.testStatus}.` : "")
-        + (b.watched ? " No run is going: formsLAB is only reading it; start a run to send commands." : "")
+        + (b.watched ? " No run is going: formsLAB is only reading it; a command starts manual operation (tvac)." : "")
       : `Not live (${b.reason}). Showing the last values seen, ${fmtAge(b.age_s)} old, not current readings.`;
     $("#tvac-fault").textContent = vm.faults ? `Fault${vm.severity && vm.severity !== "N" ? " (severity " + vm.severity + ")" : ""}: ${vm.faults}` : "";
     $("#tvac-info").textContent = (vm.recipe !== null ? `Recipe ${vm.recipe}${vm.recipeStep ? ", step " + vm.recipeStep : ""}. ` : "")
@@ -435,6 +437,148 @@
 
   $("#tvac-unit").addEventListener("change", poll);
   $("#log-box").addEventListener("toggle", () => { if ($("#log-box").open) poll(); });   // its lines now, not at the next poll
+
+  // --- manual ------------------------------------------------------------------------
+
+  // The chamber's parts as buttons, like the HMI's Manual screen: each button sends one
+  // command through /api/cast, as the command box does, so the same rules check it and
+  // with no run going the server starts manual operation (tvac) for it. Built once, from
+  // the first report; each poll then fills in the states, so a value being typed stays.
+  const ZONE_NUMBER = { platen: 1, shroud: 2 };
+  const VALVE_NAMES = { rough: "Vacuum valve", vent: "Vent valve", fill: "Fill valve", foreline: "Foreline valve", gate: "Gate valve" };
+  const PUMP_NAMES = { pump: "Vacuum pump", turbo: "Turbo pump" };
+  // Asked first: air or gas into the chamber, and a turbo path never yet run on this chamber.
+  const ASK_FIRST = {
+    "hvc vent open": "Open the vent valve? Air comes into the chamber.",
+    "hvc fill open": "Open the fill valve? Process gas comes into the chamber.",
+    "hvc turbo on": "Turn the turbo pump on? The turbo path has never been run on this chamber: watch it at the HMI.",
+  };
+  const man = { built: false, busy: false, cells: {}, buttons: [], lastStatus: null };
+
+  const fmtC = (v) => (typeof v === "number" ? `${v.toFixed(1)} °C` : "-");
+  const onOff = (v, yes, no) => (v === true ? yes : v === false ? no : "?");
+
+  function manCell(key, cls) {
+    const c = el("span", { class: cls || "state" }, "-");
+    man.cells[key] = c;
+    return c;
+  }
+
+  function manButton(label, line, after) {
+    const b = el("button", { type: "button", title: line }, label);
+    b.addEventListener("click", () => manSend(line, after));
+    man.buttons.push(b);
+    return b;
+  }
+
+  // A number typed beside a button: its command is built when the button is pressed.
+  function manInput(placeholder, label) {
+    return el("input", { type: "number", step: "0.1", placeholder, "aria-label": label });
+  }
+
+  function buildManual(st) {
+    const zones = Object.keys(st).filter((k) => / setpoint C$/.test(k)).map((k) => k.replace(/ setpoint C$/, ""));
+    const z = $("#man-zones");
+    z.replaceChildren(...["Zone", "Temperature", "Setpoint", ""].map((h) => el("span", { class: "head" }, h)), el("span", { class: "head" }));
+    for (const name of zones) {
+      const n = ZONE_NUMBER[name];
+      const sp = manInput("°C", `${name} setpoint`), rate = manInput("°C/min", `${name} rate`);
+      const setSp = el("button", { type: "button" }, "Set");
+      setSp.addEventListener("click", () => sp.value !== "" && manSend(`hvc ${name} ${sp.value}`));
+      const setRate = el("button", { type: "button" }, "Set rate");
+      setRate.addEventListener("click", () => rate.value !== "" && manSend(`hvc ${name} rate ${rate.value}`));
+      man.buttons.push(setSp, setRate);
+      const acts = el("span", { class: "acts" });
+      acts.append(sp, setSp, manButton(`Z${n || "?"} On`, `hvc ${name} on`, () => checkZoneOn(name, n)),
+                  manButton(`Z${n || "?"} Off`, `hvc ${name} off`), rate, setRate);
+      z.append(el("span", {}, name[0].toUpperCase() + name.slice(1) + (n ? ` (Z${n})` : "")),
+               manCell(`${name} C`), manCell(`${name} setpoint C`), el("span"), acts);
+    }
+    z.append(el("span", {}, "Holding temperature"), manCell("thermal_control"), el("span"), el("span"), el("span", { class: "note" }, "either zone: the controller reports one flag"));
+
+    const v = $("#man-valves");
+    v.replaceChildren();
+    for (const [key, name] of Object.entries(VALVE_NAMES)) {
+      const acts = el("span", { class: "acts" });
+      acts.append(manButton("Open", `hvc ${key} open`), manButton("Close", `hvc ${key} close`));
+      v.append(el("span", {}, name), manCell(key), acts);
+    }
+
+    const p = $("#man-pumps");
+    p.replaceChildren();
+    for (const [key, name] of Object.entries(PUMP_NAMES)) {
+      const acts = el("span", { class: "acts" });
+      acts.append(manButton("On", `hvc ${key} on`), manButton("Off", `hvc ${key} off`));
+      p.append(el("span", {}, name), manCell(key), acts);
+    }
+    const stop = el("span", { class: "acts" });
+    stop.append(manButton("Stop roughing", "hvc stop"), el("span", { class: "note" }, "vacuum valve closed, then the vacuum pump off"));
+    p.append(el("span", {}, "Turbo pump turning"), manCell("turbo_spinning"), stop);
+    p.append(el("span", {}, "Chamber pressure"), manCell("pressure"), el("span"));
+    man.built = true;
+  }
+
+  function renderManual(s) {
+    man.lastStatus = s;
+    const b = s.blocks.hvc, banner = $("#man-banner");
+    if (!b) { banner.className = "banner stopped"; banner.textContent = "No chamber data yet: the hvc block is missing."; return; }
+    const st = b.status || {};
+    if (!man.built) buildManual(st);
+    banner.className = "banner " + (b.live ? "running" : "stopped");
+    banner.textContent = !b.live ? `Chamber not live (${b.reason}): the buttons wait until it is.`
+      : s.host ? `Plan ${s.host.plan} is running: a button acts at once, beside its steps. End stops it.`
+      : "No run is going: the first button starts manual operation (tvac), which records until End.";
+    for (const [key, cell] of Object.entries(man.cells)) {
+      const v = st[key];
+      let text, on = false;
+      if (key in VALVE_NAMES) { text = onOff(v, "Open", "Closed"); on = v === true; }
+      else if (key in PUMP_NAMES) { text = onOff(v, "On", "Off"); on = v === true; }
+      else if (key === "turbo_spinning") { text = onOff(v, "Yes", "No"); on = v === true; }
+      else if (key === "thermal_control") { text = onOff(v, "On", "Off"); on = v === true; }
+      else if (key === "pressure") text = typeof v === "number" ? `${Number(v.toPrecision(4))} ${st.pressure_unit || "Torr"}` : "-";
+      else text = fmtC(v);
+      cell.textContent = text;
+      cell.className = "state" + (on ? " on" : "");
+    }
+    for (const id of ["#man-zones", "#man-valves", "#man-pumps"]) $(id).className = $(id).className.replace(/ stale/g, "") + (b.live ? "" : " stale");
+    const blocked = man.busy || !b.live || busy(s) || Boolean(s.lost);
+    for (const btn of man.buttons) btn.disabled = blocked;
+  }
+
+  // One command at a time: CAST would merge two sent to the same owner.
+  async function manSend(line, after) {
+    if (man.busy || (ASK_FIRST[line] && !window.confirm(ASK_FIRST[line]))) return;
+    const out = $("#man-result");
+    man.busy = true;
+    for (const btn of man.buttons) btn.disabled = true;
+    const idle = man.lastStatus && !man.lastStatus.host;
+    say(out, idle ? `${line}: no run is going, starting manual operation (tvac) for it...` : `${line}: sending...`, false);
+    try {
+      const r = await api("/api/cast", { line });
+      const started = r.started ? `Started ${r.started} (manual operation; End stops it). ` : "";
+      say(out, `${started}${line}: ${r.text}`, !r.ok);
+      if (r.ok && after) await after();
+    } catch (e) {
+      say(out, `${line}: ${e.message}`, true);
+    } finally {
+      man.busy = false;
+      poll();
+    }
+  }
+
+  // After On: the controller acknowledges it whether or not the zone came on, so look.
+  // On is "Holding Temperature", or the setpoint held off the zone's temperature.
+  async function checkZoneOn(name, n) {
+    const out = $("#man-result");
+    await new Promise((r) => setTimeout(r, 6000));
+    let st = {};
+    try { st = ((await api("/api/status?log=1")).blocks.hvc || {}).status || {}; } catch (e) { return; }
+    const t = st[`${name} C`], sp = st[`${name} setpoint C`];
+    const held = st.thermal_control === true || (typeof t === "number" && typeof sp === "number" && Math.abs(sp - t) > 0.5);
+    say(out, held ? `hvc ${name} on: the controller is holding temperature.`
+      : `hvc ${name} on: acknowledged, but the controller has not turned the ${name} on. In its Manual mode only `
+        + `the HMI does: Manual, then Manual Heat, Z${n} Thermal Control On.`, !held);
+  }
 
   // --- hardware ----------------------------------------------------------------------
 

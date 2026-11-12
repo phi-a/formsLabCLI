@@ -95,7 +95,9 @@ setTimeout(() => {
   console.log(JSON.stringify({
     asked,
     app: !$("#app").hidden, login: $("#login").hidden, view: location.hash,
-    views: Object.fromEntries(["control", "status", "plans", "plots", "hardware"].map((v) => [v, !$("#view-" + v).hidden])),
+    views: Object.fromEntries(["control", "status", "plans", "plots", "hardware", "manual"].map((v) => [v, !$("#view-" + v).hidden])),
+    manual: { banner: $("#man-banner").textContent, zones: $("#man-zones").children.map(text),
+              valves: $("#man-valves").children.map(text), pumps: $("#man-pumps").children.map(text) },
     banner: $("#run-banner").textContent, chamber: $("#tvac-banner").textContent,
     drawn: $("#tvac-svg").children.length, sensors: $("#tvac-sensors").children.length,
     plans: $("#plan").children.map((o) => [o.attrs.value, o.textContent, o.disabled]),
@@ -109,10 +111,10 @@ setTimeout(() => {
 """
 
 
-def load(hash_=""):
+def load(hash_="", status=STATUS):
     """The page opened at #<hash_> (none: the first view), after its first poll."""
     answers = {"/api/info": {"demo": False}, "/api/me": {"user": "tester", "demo": False},
-               "/api/status": STATUS, "/api/plans": {"plans": PLANS}}
+               "/api/status": status, "/api/plans": {"plans": PLANS}}
     script = SCRIPT % ("#" + hash_ if hash_ else "", json.dumps(answers), str(STATIC / "tvac.js"), str(STATIC / "app.js"))
     out = subprocess.run([NODE, "-e", script], capture_output=True, text=True, timeout=60)
     assert out.returncode == 0, out.stderr
@@ -133,7 +135,8 @@ def test_the_page_logs_in_opens_control_and_polls_the_status(page):
     """Control is the first view: the chamber, and under it the run and the command box."""
     assert page["app"] and page["login"]
     assert page["view"] == "control"
-    assert page["views"] == {"control": True, "status": False, "plans": False, "plots": False, "hardware": False}
+    assert page["views"] == {"control": True, "status": False, "plans": False, "plots": False, "hardware": False,
+                             "manual": False}
     assert any(p.startswith("/api/status") for p in page["asked"])
     assert page["banner"].startswith("No run is going. Last run: plan DARKNESS.")
 
@@ -168,6 +171,26 @@ def test_status_is_one_tile_per_instrument(status_page):
     assert hvc.startswith("hvc") and "live" in hvc and "Valves" in hvc and "Closed" in hvc
     assert psu1.startswith("psu1") and "no run is going" in psu1 and "CH1 cooler" in psu1
     assert not status_page["plans"]                                       # the Start list is Control's
+
+
+def test_manual_is_the_chambers_parts_as_buttons_with_their_states():
+    """Like the HMI's Manual screen: each zone, valve and pump with its state and its
+    buttons; with no run going it says the first button starts manual operation."""
+    hvc = {**STATUS["blocks"]["hvc"], "status": {
+        "connected": True, "pressure": 2.83, "pressure_unit": "Torr", "thermal_control": False,
+        "platen C": 24.6, "platen setpoint C": 24.6, "shroud C": 20.2, "shroud setpoint C": 20.2,
+        "rough": False, "vent": False, "fill": False, "foreline": False, "gate": False,
+        "pump": True, "turbo": False, "turbo_spinning": False}}
+    page = load("manual", {**STATUS, "blocks": {"hvc": hvc}})
+    assert page["views"]["manual"] and not page["views"]["control"]
+    m = page["manual"]
+    assert m["banner"].startswith("No run is going: the first button starts manual operation (tvac)")
+    zones = "|".join(m["zones"])                     # ASCII only: Node's output is read in the console's code page
+    assert "Platen (Z1)|24.6 " in zones and "C|24.6 " in zones and "Shroud (Z2)|20.2 " in zones
+    assert "SetZ1 OnZ1 OffSet rate" in zones and "Holding temperature|Off" in zones
+    assert m["valves"][:3] == ["Vacuum valve", "Closed", "OpenClose"] and "Gate valve" in m["valves"]
+    assert m["pumps"][:3] == ["Vacuum pump", "On", "OnOff"] and "Stop roughing" in "".join(m["pumps"])
+    assert "2.83 Torr" in m["pumps"]
 
 
 def test_with_no_run_going_start_is_offered_and_the_run_buttons_are_not(page):

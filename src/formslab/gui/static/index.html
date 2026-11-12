@@ -30,6 +30,7 @@
         <button data-view="plans">Plans</button>
         <button data-view="plots">Plots</button>
         <button data-view="hardware">Hardware</button>
+        <button data-view="manual">Manual</button>
       </nav>
       <span class="spacer"></span>
       <span id="run-box" hidden>
@@ -166,6 +167,27 @@
           so it is safe while a run is going. To map one, put its "In the map as" line in its entry
           in the map file above. A serial number finds a device on any port; a device without one is
           found by its USB path, the place it is plugged in.</p>
+      </section>
+
+      <!-- Manual: the chamber's parts as buttons, like the HMI's Manual screen. Each button
+           is one command, sent as the command box sends it (memory/use/gui.md, Manual). -->
+      <section id="view-manual" hidden>
+        <div id="man-banner" class="banner"></div>
+        <div id="man-result" class="note" role="status"></div>
+        <h2>Zones</h2>
+        <div id="man-zones" class="man man-zones"></div>
+        <p class="note">Setpoints go to the controller at once. It holds one only while that zone's
+          thermal control is on, and in its Manual mode it ignores On from here: press Z1 (platen) or
+          Z2 (shroud) Thermal Control On at the HMI, under Manual, then Manual Heat. Whether Off from
+          here turns off a zone started there is not yet known: check the HMI.</p>
+        <h2>Valves</h2>
+        <div id="man-valves" class="man"></div>
+        <h2>Pumps</h2>
+        <div id="man-pumps" class="man"></div>
+        <p class="note">Each button is one command, checked first against formsLAB's rules and the
+          controller's interlocks; one they forbid now is refused with the reason. With no run going,
+          the first starts manual operation (tvac), which records until End. Supplies and everything
+          else: the command box on Control.</p>
       </section>
     </main>
   </div>

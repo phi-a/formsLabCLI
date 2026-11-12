@@ -16,6 +16,10 @@ architecture are in [project](project.md); the GUI's plan is in [gui-design](des
   while a warning is up (Control air low) `?TC` shows it instead of "Holding
   Temperature", so formsLAB read the zone as off ([hvc3500](instruments/hvc3500.md)).
   Still not known: whether `hvc platen off` stops a zone started at the HMI.
+  Then the **Manual tab**, next to Hardware: the chamber's zones, valves and pumps as
+  buttons, each one command through the same path ([gui](use/gui.md), Manual). Next,
+  to turn a zone on with no touch at the HMI: the manual's ASCII recipe path, tested
+  at the bench (Waiting on a decision, 12).
 - **The platen does not heat (2026-11-03/04).** `Platon_Test`, `Heater_Check` and
   `Platen_29C` sent `hvc platen on`; the controller acknowledged it and never held
   temperature, at 43, 2.5 and 738 Torr. Found: commissioning had already seen this

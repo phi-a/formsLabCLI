@@ -98,6 +98,14 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .control { max-width: 860px; margin: 14px auto 0; }
 #log-box summary { cursor: pointer; margin: 14px 0 6px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
 #log-box summary:hover { color: var(--fg); }
+/* Manual: one row per part, its name, its state, its buttons. */
+.man { display: grid; grid-template-columns: minmax(130px, max-content) minmax(70px, max-content) 1fr; gap: 6px 16px; align-items: center; max-width: 980px; margin-bottom: 8px; }
+.man-zones { grid-template-columns: minmax(70px, max-content) repeat(3, minmax(80px, max-content)) 1fr; }
+.man .head { color: var(--muted); font-size: 12.5px; }
+.man .state.on { color: var(--ok); font-weight: 600; }
+.man .acts { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.man .acts input { width: 6.5em; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); }
+.man.stale { opacity: .55; }
 .sensors { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 4px 14px; font-size: 13px; }
 .sensors div { display: flex; justify-content: space-between; border-bottom: 1px solid var(--grid); padding: 2px 0; }
 .sensors span:first-child { color: var(--muted); }
