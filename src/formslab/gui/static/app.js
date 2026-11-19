@@ -83,6 +83,7 @@
           if (gen !== pollGen) return;                     // retired while it was out
           renderHeader(s);
           renderEnded(s);
+          renderHmiPrompt(s);
           if (view === "control") { renderControl(s); renderTvac(s); }
           if (view === "status") renderStatus(s);
           if (view === "manual") renderManual(s);
@@ -438,6 +439,40 @@
   $("#tvac-unit").addEventListener("change", poll);
   $("#log-box").addEventListener("toggle", () => { if ($("#log-box").open) poll(); });   // its lines now, not at the next poll
 
+  // --- the HMI prompt ----------------------------------------------------------------
+
+  // A zone set to heat with its thermal control off. In Manual mode the controller turns
+  // a zone on only from its touchscreen (memory/instruments/hvc3500.md), so the page says
+  // so, large, on every tab, until it is on. Off, a zone's setpoint follows its temperature;
+  // on, it is held. Heating only: a zone turned on below its temperature would cool.
+  // Closed with its x, it stays closed for that zone and setpoint: a new one brings it back.
+  const ZONE_ROW = { platen: ["Z1", "Cntrl P"], shroud: ["Z2", "Cntrl S"] };
+  const hmi = { shown: null, closed: null };
+
+  function renderHmiPrompt(s) {
+    const box = $("#hmi-prompt"), b = s.blocks && s.blocks.hvc;
+    const st = (b && b.live && b.status) || {};
+    const num = (v) => typeof v === "number";
+    const zone = Object.keys(ZONE_ROW).find((z) => {
+      const sent = st[`${z} target`], t = st[`${z} C`], sp = st[`${z} setpoint C`];
+      return num(sent) && num(t) && num(sp) && sent > t + 1 && Math.abs(sp - t) <= 0.5;
+    });
+    hmi.shown = zone ? `${zone} ${st[`${zone} target`]}` : null;
+    box.hidden = !zone || hmi.shown === hmi.closed;
+    if (box.hidden) return;
+    const [zn, cntrl] = ZONE_ROW[zone], sent = st[`${zone} target`], t = st[`${zone} C`];
+    $("#hmi-title").textContent = `Go to the chamber's touchscreen: turn on ${zn} (${zone}) thermal control`;
+    $("#hmi-why").textContent = `The ${zone} is set to ${sent.toFixed(1)} °C but is at ${t.toFixed(1)} °C and `
+      + "not heating. The controller turns heating on only from its own touchscreen.";
+    $("#hmi-row").textContent = `On the ${zn} row (${cntrl}), tap the red Thermal Control Off so it turns green, `
+      + `Thermal Control On. Its setpoint box should read ${sent.toFixed(1)}.`;
+    $("#hmi-mark").className = "hmi-mark " + zn.toLowerCase();
+    $("#hmi-shot2").textContent = `2. The Temperature Setpoint screen: tap the framed Thermal Control Off on the ${zn} row `
+      + `(${zn === "Z1" ? "the top row" : "the second row"}). It turns green, Thermal Control On.`;
+  }
+
+  $("#hmi-close").addEventListener("click", () => { hmi.closed = hmi.shown; $("#hmi-prompt").hidden = true; });
+
   // --- manual ------------------------------------------------------------------------
 
   // The chamber's parts as buttons, like the HMI's Manual screen: each button sends one
@@ -489,7 +524,7 @@
       setRate.addEventListener("click", () => rate.value !== "" && manSend(`hvc ${name} rate ${rate.value}`));
       man.buttons.push(setSp, setRate);
       const acts = el("span", { class: "acts" });
-      acts.append(sp, setSp, manButton(`Z${n || "?"} On`, `hvc ${name} on`, () => checkZoneOn(name, n)),
+      acts.append(sp, setSp, manButton(`Z${n || "?"} On`, `hvc ${name} on`),
                   manButton(`Z${n || "?"} Off`, `hvc ${name} off`), rate, setRate);
       z.append(el("span", {}, name[0].toUpperCase() + name.slice(1) + (n ? ` (Z${n})` : "")),
                manCell(`${name} C`), manCell(`${name} setpoint C`), el("span"), acts);
@@ -564,20 +599,6 @@
       man.busy = false;
       poll();
     }
-  }
-
-  // After On: the controller acknowledges it whether or not the zone came on, so look.
-  // On is "Holding Temperature", or the setpoint held off the zone's temperature.
-  async function checkZoneOn(name, n) {
-    const out = $("#man-result");
-    await new Promise((r) => setTimeout(r, 6000));
-    let st = {};
-    try { st = ((await api("/api/status?log=1")).blocks.hvc || {}).status || {}; } catch (e) { return; }
-    const t = st[`${name} C`], sp = st[`${name} setpoint C`];
-    const held = st.thermal_control === true || (typeof t === "number" && typeof sp === "number" && Math.abs(sp - t) > 0.5);
-    say(out, held ? `hvc ${name} on: the controller is holding temperature.`
-      : `hvc ${name} on: acknowledged, but the controller has not turned the ${name} on. In its Manual mode only `
-        + `the HMI does: Manual, then Manual Heat, Z${n} Thermal Control On.`, !held);
   }
 
   // --- hardware ----------------------------------------------------------------------

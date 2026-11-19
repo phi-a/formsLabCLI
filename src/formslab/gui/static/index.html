@@ -44,6 +44,26 @@
     </header>
 
     <main>
+      <!-- On every tab: a zone set above its temperature with its thermal control off.
+           Only the chamber's touchscreen turns it on (memory/use/gui.md, The HMI prompt). -->
+      <section id="hmi-prompt" class="hmi-prompt" role="alert" hidden>
+        <button id="hmi-close" type="button" class="hmi-close" title="Close; it comes back for a new setpoint" aria-label="Close">&times;</button>
+        <h2 id="hmi-title"></h2>
+        <p id="hmi-why"></p>
+        <ol>
+          <li>On the chamber's touchscreen, press <strong>Manual</strong> on the home screen, then
+            <strong>Manual Heat</strong>, bottom right.</li>
+          <li id="hmi-row"></li>
+        </ol>
+        <div class="hmi-shots">
+          <figure><img src="/static/hmi-manual.png" alt="The touchscreen's Manual screen; Manual Heat is the button at the bottom right" width="400" height="240">
+            <figcaption>1. The Manual screen: press Manual Heat (bottom right).</figcaption></figure>
+          <figure><div class="hmi-shot"><img src="/static/hmi-manual-heat.png" alt="The Temperature Setpoint screen with every zone's Thermal Control Off in red; the button to tap is framed" width="400" height="240"><span id="hmi-mark" class="hmi-mark"></span></div>
+            <figcaption id="hmi-shot2"></figcaption></figure>
+        </div>
+        <p class="note">This goes away by itself once the controller is heating. To stop, tap the same button again.</p>
+      </section>
+
       <!-- Control: the chamber as its controller draws it, and under it the run and the
            command box, the host log folded beneath them (memory/use/gui.md, Control). -->
       <section id="view-control">

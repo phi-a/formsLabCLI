@@ -146,9 +146,12 @@ def test_end_that_the_host_does_not_take_says_it_is_still_running(capsys, monkey
 
 # --- cast --------------------------------------------------------------------------------
 
-def test_cast_with_no_run_sends_nothing(capsys, no_host):
+def test_cast_with_no_run_sends_nothing_if_manual_operation_does_not_begin(capsys, no_host, monkeypatch):
+    started = []
+    monkeypatch.setattr(lab, "start", lambda name, **kw: started.append(name))
+    monkeypatch.setattr(lab, "MANUAL_READY_S", 0.3)               # the host never shows: no_host
     code, out = run(capsys, "cast", "hvc", "vent", "open")
-    assert code == 1 and "nothing sent" in out
+    assert code == 1 and started == ["tvac"] and "nothing sent" in out
     assert ReadCommand("hvc") == {}
 
 

@@ -96,6 +96,8 @@ setTimeout(() => {
     asked,
     app: !$("#app").hidden, login: $("#login").hidden, view: location.hash,
     views: Object.fromEntries(["control", "status", "plans", "plots", "hardware", "manual"].map((v) => [v, !$("#view-" + v).hidden])),
+    hmi: { hidden: $("#hmi-prompt").hidden, title: $("#hmi-title").textContent, row: $("#hmi-row").textContent,
+           mark: $("#hmi-mark").className, shot: $("#hmi-shot2").textContent },
     manual: { banner: $("#man-banner").textContent, zones: $("#man-zones").children.map(text),
               valves: $("#man-valves").children.map(text), pumps: $("#man-pumps").children.map(text) },
     banner: $("#run-banner").textContent, chamber: $("#tvac-banner").textContent,
@@ -191,6 +193,40 @@ def test_manual_is_the_chambers_parts_as_buttons_with_their_states():
     assert m["valves"][:3] == ["Vacuum valve", "Closed", "OpenClose"] and "Gate valve" in m["valves"]
     assert m["pumps"][:3] == ["Vacuum pump", "On", "OnOff"] and "Stop roughing" in "".join(m["pumps"])
     assert "2.83 Torr" in m["pumps"]
+
+
+def _chamber(**zone):
+    """A run going, the chamber live, the platen as given."""
+    hvc = {**STATUS["blocks"]["hvc"], "watched": False, "status": {
+        "connected": True, "thermal_control": False, "platen C": 18.7, "platen setpoint C": 18.7,
+        "platen target": None, "shroud C": 18.8, "shroud setpoint C": 18.8, "shroud target": None, **zone}}
+    return {**STATUS, "host": {"pid": 1, "plan": "tvac", "started": "2026-11-19T15:00:00+00:00", "output": "/x"},
+            "blocks": {"hvc": hvc}}
+
+
+def test_a_zone_set_to_heat_while_off_sends_the_operator_to_the_touchscreen():
+    """`hvc platen 50` with Z1 off: the prompt, large and on every tab, says where to go."""
+    hmi = load("", _chamber(**{"platen target": 50.0}))["hmi"]
+    assert hmi["hidden"] is False
+    assert hmi["title"] == "Go to the chamber's touchscreen: turn on Z1 (platen) thermal control"
+    assert "Z1 row (Cntrl P)" in hmi["row"] and "should read 50.0" in hmi["row"]
+    assert load("status", _chamber(**{"platen target": 50.0}))["hmi"]["hidden"] is False
+    assert "should read 34.0" in load("", _chamber(**{"platen target": 34.0}))["hmi"]["row"]   # what was sent
+    assert hmi["mark"] == "hmi-mark z1" and "on the Z1 row (the top row)" in hmi["shot"]
+
+
+def test_the_shroud_frames_the_z2_button():
+    hmi = load("", _chamber(**{"shroud target": 55.0}))["hmi"]
+    assert hmi["title"] == "Go to the chamber's touchscreen: turn on Z2 (shroud) thermal control"
+    assert "Z2 row (Cntrl S)" in hmi["row"] and "should read 55.0" in hmi["row"]
+    assert hmi["mark"] == "hmi-mark z2" and "on the Z2 row (the second row)" in hmi["shot"]
+
+
+def test_the_prompt_goes_once_the_zone_is_on_and_never_asks_to_cool():
+    on = _chamber(**{"platen target": 50.0, "platen setpoint C": 50.0, "thermal_control": True})
+    assert load("", on)["hmi"]["hidden"] is True                       # held: Z1 is on
+    assert load("", _chamber(**{"platen target": 15.0}))["hmi"]["hidden"] is True   # below it: no
+    assert load("", _chamber())["hmi"]["hidden"] is True               # nothing sent
 
 
 def test_with_no_run_going_start_is_offered_and_the_run_buttons_are_not(page):

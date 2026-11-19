@@ -229,6 +229,7 @@ def READINGS(label, status):
     zones = []
     for z in load_profile().zones:
         zones += [(f"{z} C", f"{z.capitalize()} (°C)"), (f"{z} setpoint C", f"{z.capitalize()} setpoint (°C)"),
+                  (f"{z} target", f"{z.capitalize()} setpoint sent (°C)"),
                   (f"{z} held at", f"{z.capitalize()} held at")]
     zones.append(("thermal_control", "Holding temperature", ("On", "Off")))
     zoned = {k for k, *_ in zones}

@@ -44,6 +44,24 @@ def _isolated_config_and_output(tmp_path_factory, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_real_host(monkeypatch):
+    """No test starts a sequence host process. One outlives the test (a plan held
+    until `end`), and with the default bench profile its rLACO takes the real
+    controller's one connection: found 2026-11-12, after a command with no run
+    going began starting `tvac`. A test of the launch patches Popen itself."""
+    import subprocess
+    real = subprocess.Popen
+
+    def guarded(cmd, *a, **k):
+        line = cmd if isinstance(cmd, str) else " ".join(map(str, cmd))
+        if "formslab.host.sequence" in line and "--help" not in line:      # --help exits at once
+            raise AssertionError("a test tried to start a real sequence host; patch lab.start or lab.launch")
+        return real(cmd, *a, **k)
+
+    monkeypatch.setattr(subprocess, "Popen", guarded)
+
+
+@pytest.fixture(autouse=True)
 def _fixture_plans(tmp_path_factory, monkeypatch):
     """Stand the test plans in for the shipped ones.
 

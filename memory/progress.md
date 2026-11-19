@@ -16,6 +16,13 @@ architecture are in [project](project.md); the GUI's plan is in [gui-design](des
   while a warning is up (Control air low) `?TC` shows it instead of "Holding
   Temperature", so formsLAB read the zone as off ([hvc3500](instruments/hvc3500.md)).
   Still not known: whether `hvc platen off` stops a zone started at the HMI.
+  **2026-11-17:** zones read back after on and off ([hvc3500](instruments/hvc3500.md),
+  Thermal control in Manual mode): an off that did not take is now an error, an on a
+  warning to press the HMI's button, and "Holding temperature" is read from the held
+  setpoint too, so a warning no longer hides a zone that is on. Tests no longer
+  start a real host (`conftest.py`): one left from a test had held the controller's
+  one connection on 2026-11-12. Found that day: every USB instrument absent in
+  Windows (psu1, both SMTC08s, the cryo board), VISA listing psu1 from its cache.
   Then the **Manual tab**, next to Hardware: the chamber's zones, valves and pumps as
   buttons, each one command through the same path ([gui](use/gui.md), Manual). Next,
   to turn a zone on with no touch at the HMI: the manual's ASCII recipe path, tested

@@ -205,6 +205,53 @@ def test_a_setpoint_reply_says_when_the_zone_is_off(laco, sim):
     assert laco.apply({"platen": 26.0}) == [("INFO", "platen setpoint -> 26.0 C")]
 
 
+def test_the_setpoint_sent_is_published_at_once(laco, sim):
+    """The quick read after a command carries it, so the HMI prompt shows the new value
+    without waiting for the next full read (it once showed the one before for 6 s)."""
+    laco.apply({"platen": 34.0})
+    assert laco.quick_status()["platen target"] == pytest.approx(34.0)
+    assert laco.status().as_cast()["platen target"] == pytest.approx(34.0)
+    assert laco.quick_status()["shroud target"] is None                 # nothing sent to it
+
+
+def test_a_zone_held_off_its_sensor_is_on_whatever_test_status_says(laco, sim):
+    """2026-11-10: with Control air low, ?TC read `...,Low Air Pressure` while Z1 held
+    25 °C; the setpoint held off the sensor still shows the zone on."""
+    sim.state.temps[2] = 20.0
+    sim.state.zone_setpoint[1], sim.state.zone_active[1] = 25.0, True    # Z1 on at the HMI
+    sim.state.test_status = "Recovery/Ready"
+    s = laco.status()
+    assert s.thermal_control is True
+    sim.state.zone_active[1] = False                                      # off: ?Z1 follows T2
+    assert laco.status().thermal_control is False
+
+
+def test_on_that_the_controller_ignores_is_a_warning_with_what_to_do(laco, sim):
+    sim.manual_zones = True                                               # the installed firmware
+    laco.zone_settle_s = 0.0
+    events = laco.apply({"platen_control": True})
+    assert [lvl for lvl, _ in events] == ["INFO", "WARNING"]
+    assert "not turned the platen on" in events[1][1] and "Z1 Thermal Control On" in events[1][1]
+    assert sim.state.zone_active[1] is False
+
+
+def test_off_that_the_controller_ignores_is_an_error_with_what_to_do(laco, sim):
+    sim.manual_zones = True
+    laco.zone_settle_s = 0.0
+    sim.state.temps[2] = 20.0
+    sim.state.zone_setpoint[1], sim.state.zone_active[1] = 30.0, True    # started at the HMI
+    (level, text), = laco.apply({"platen_control": False})
+    assert level == "ERROR" and "platen still on after !ZO1" in text and "Z1 Thermal Control Off" in text
+    sim.state.zone_active[1] = False                                      # off at the HMI
+    assert laco.apply({"platen_control": False}) == [("INFO", "platen thermal control OFF")]
+
+
+def test_on_and_off_that_take_are_confirmed(laco, sim):
+    laco.zone_settle_s = 0.0
+    assert laco.apply({"platen_control": True}) == [("INFO", "platen thermal control ON")]
+    assert laco.apply({"platen_control": False}) == [("INFO", "platen thermal control OFF")]
+
+
 def test_apply_warns_on_booleans_as_setpoints_and_writes_nothing(laco, sim):
     before = dict(sim.state.zone_setpoint)
     assert laco.apply({"platen": True}) == [

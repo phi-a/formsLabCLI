@@ -55,6 +55,15 @@ PART_NAMES = {"rough": "Vacuum valve", "vent": "Vent valve", "fill": "Fill valve
 # Cycle-level vacuum operations (manual appendix 9.1).
 OPERATIONS = {"vent2atm": "VA", "fill2atm": "FA", "purge": "PS", "close_all": "NA"}
 
+# A zone is on when its effective setpoint (?Zn) is held this far from its sensor:
+# while off it follows the sensor (within 0.1 °C on the bench). Read beside ?TC's
+# "Holding Temperature", which a warning replaces (Control air low, 2026-11-10).
+HELD_C = 0.5
+
+
+def _held(setpoint: float | None, temperature: float | None) -> bool:
+    return setpoint is not None and temperature is not None and abs(setpoint - temperature) > HELD_C
+
 
 @dataclass
 class ZoneStatus:
@@ -112,6 +121,9 @@ class LacoStatus:
         for z in self.zones.values():
             d[f"{z.name} C"] = z.temperature_c
             d[f"{z.name} setpoint C"] = z.effective_setpoint_c
+            # what this process last sent, °C (not ending " C": it is no thermocouple).
+            # Beside the effective setpoint it shows a zone set to heat but off.
+            d[f"{z.name} target"] = z.target_c
         d.update(self.devices)
         # the chamber's own thermocouples, by their HMI names
         for name, t in self.sensors.items():
@@ -209,6 +221,7 @@ class LACO:
             self.profile.host, self.profile.port,
             timeout=self.profile.timeout_s, **client_kwargs)
         self.connected = False
+        self.zone_settle_s = 1.0     # after !ZSn/!ZOn, before reading the zone back
         self.zones: dict[str, Zone] = {
             name: Zone(self, name, int(n)) for name, n in self.profile.zones.items()}
         for name, zone in self.zones.items():
@@ -289,7 +302,8 @@ class LACO:
             t=snap.get("t", time.time()),
             mode=snap.get("mode"),
             test_status=snap.get("test_status"),
-            thermal_control="holding temperature" in str(snap.get("test_status") or "").lower(),
+            thermal_control="holding temperature" in str(snap.get("test_status") or "").lower()
+                            or any(_held(z.effective_setpoint_c, z.temperature_c) for z in zones.values()),
             pressure=snap.get("pressure"),
             pressure_unit=self.profile.pressure_unit,
             pressure_rate=snap.get("pressure_rate"),
@@ -317,6 +331,8 @@ class LACO:
              "fault_severity": es.severity, "faults": ", ".join(es.names) or "none"}
         for code, label in DEVICE_LABELS.items():
             d[label] = c.device_state(code)
+        for z in self.zones.values():           # what was just sent, known without a read
+            d[f"{z.name} target"] = z.target_c
         self.connected = True
         return d
 
@@ -405,6 +421,29 @@ class LACO:
         return "" if on else (f"; the {zone.name} is off, so it holds this only once Z{zone.number} "
                               "Thermal Control is on at the HMI")
 
+    def _switch_zone(self, zone: Zone, on: bool) -> list[tuple[str, str]]:
+        """!ZSn or !ZOn, then the zone read back: the controller acknowledges both
+        whatever it does. On that did not take is a warning, not a failure, so a
+        plan such as shutdown goes on (in Manual mode only the HMI turns a zone on,
+        memory/instruments/hvc3500.md). Off that did not take is an error: the zone
+        is still held off its sensor, so End and a plan say so."""
+        n = zone.number
+        try:
+            zone.on() if on else zone.off()
+            time.sleep(self.zone_settle_s)
+            held = _held(zone.setpoint(), zone.temperature())
+            holding = on and not held and self.client.thermal_control_active()
+        except (OSError, ProtocolError, ValueError, KeyError) as e:
+            return [("ERROR", f"{zone.name}_control: {e}")]
+        if on and not (held or holding):
+            return [("INFO", f"{zone.name} thermal control on sent (!ZS{n})"),
+                    ("WARNING", f"the controller has not turned the {zone.name} on: in its Manual mode "
+                                f"only the HMI does (Manual Heat, Z{n} Thermal Control On)")]
+        if not on and held:
+            return [("ERROR", f"{zone.name} still on after !ZO{n}: its setpoint is still held. "
+                              f"Turn Z{n} Thermal Control Off at the HMI")]
+        return [("INFO", f"{zone.name} thermal control {'ON' if on else 'OFF'}")]
+
     def apply(self, request: dict) -> list[tuple[str, str]]:
         """Apply a request block (the CAST `hvc` grammar) and report what
         happened as (level, message) pairs. A failing item is reported, not
@@ -467,8 +506,7 @@ class LACO:
             key = f"{zone.name}_control"
             known.add(key)
             if (v := _flag(request.get(key), ("on", "off"))) is not None:
-                attempt(key, lambda z=zone, v=v: z.on() if v else z.off(),
-                        lambda _, z=zone, v=v: f"{z.name} thermal control {'ON' if v else 'OFF'}")
+                out += self._switch_zone(zone, v)
 
         for name in (*VALVES, *PUMPS):
             known.add(name)

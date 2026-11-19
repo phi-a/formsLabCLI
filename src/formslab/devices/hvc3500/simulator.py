@@ -121,6 +121,10 @@ class Simulator:
         self.one_shot = one_shot
         self.reply_delay_s = reply_delay_s
         self.interlocks = interlocks
+        # The installed firmware in Manual mode acknowledges !ZSn and !ZOn and ignores
+        # them (memory/instruments/hvc3500.md); a test sets this, and plays the HMI's
+        # Z button with state.zone_active. Off, they switch the zone, as the manual says.
+        self.manual_zones = False
         # The real controller takes one client at a time; this one takes any number
         # and keeps the most it had at once, for a test to check that is never two.
         self.clients = self.peak_clients = 0
@@ -308,10 +312,10 @@ class Simulator:
                 s.zone_range[z] = int(val) / 10.0
                 return f"{key}:{_tenths(s.zone_range[z])}"
             if kind == "ZS":
-                s.zone_active[z] = True
+                s.zone_active[z] = s.zone_active[z] or not self.manual_zones
                 return key
             if kind == "ZO":
-                s.zone_active[z] = False
+                s.zone_active[z] = s.zone_active[z] and self.manual_zones
                 return key
         raise ValueError(key)
 

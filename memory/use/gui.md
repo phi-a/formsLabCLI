@@ -291,9 +291,26 @@ pressure. Each button is one command, sent as the command box sends it, so the s
 rules check it, and with no run going the first starts `tvac`. One at a time: the
 others wait while one is out. Opening the vent or fill valve and turning the turbo
 on are asked first. **Z On does not turn a zone on**, since the controller ignores
-it in Manual mode ([hvc3500](../instruments/hvc3500.md)): six seconds after it the
-page looks, and says to press the HMI's button when the zone did not come on.
+it in Manual mode ([hvc3500](../instruments/hvc3500.md)): the chamber reads the
+zone back, and the reply says to press the HMI's button when it did not come on.
+Z Off that did not take is refused the same way, with what to do.
 Supplies and the rest are the command box's.
+
+## The HMI prompt
+
+Until a zone can be turned on from here, the page sends the operator to the
+chamber's touchscreen (asked for 2026-11-19, as a safety check). On every tab, in
+large text, while a run is going: a zone whose setpoint sent (`platen target`, what
+rLACO last wrote) is more than 1 °C above its temperature while its setpoint still
+follows that temperature, so it is off. It names the zone (Z1, platen; Z2, shroud),
+the setpoint and the temperature, the two taps (Manual, then Manual Heat; the zone's
+row, Thermal Control On), with pictures of both screens from commissioning. It goes
+when the zone is on, or with its × until a new setpoint is sent. The setpoint is the
+one formsLAB sent, published with the quick read after each command; one typed on
+the touchscreen is not seen (`?Zn` gives only the effective setpoint while the zone
+is off). Heating only: a zone turned on below its temperature would
+cool. The page cannot bring that screen up on the touchscreen: the controller has
+no command for it and the VNC session is view-only (asked of LACO, 2026-11-19).
 
 ## What is not here yet
 
