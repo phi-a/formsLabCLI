@@ -63,7 +63,7 @@ def test_end_mid_pumpdown_leaves_the_chamber_sealed_off_and_at_20_c(chamber, tmp
     assert not any(s.zone_active.values())
     assert s.zone_setpoint[1] == 20.0 and s.zone_setpoint[2] == 20.0
     assert ended["how"] == "ended" and ended["warnings"] == []
-    assert ended["chamber"].startswith("Chamber left: sealed") and "zones off" in ended["chamber"]
+    assert ended["chamber"].startswith("Chamber left: sealed") and "zones not holding temperature (check Z1 and Z2 at the HMI)" in ended["chamber"]
     out = capsys.readouterr().out
     assert "[end 1/" in out and "Chamber left" in out
 

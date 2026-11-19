@@ -239,15 +239,33 @@ def test_off_that_the_controller_ignores_is_an_error_with_what_to_do(laco, sim):
     sim.manual_zones = True
     laco.zone_settle_s = 0.0
     sim.state.temps[2] = 20.0
-    sim.state.zone_setpoint[1], sim.state.zone_active[1] = 30.0, True    # started at the HMI
+    laco.apply({"platen": 30.0})
+    sim.state.zone_active[1] = True                                       # Z1 on at the HMI
     (level, text), = laco.apply({"platen_control": False})
     assert level == "ERROR" and "platen still on after !ZO1" in text and "Z1 Thermal Control Off" in text
     sim.state.zone_active[1] = False                                      # off at the HMI
     assert laco.apply({"platen_control": False}) == [("INFO", "platen thermal control OFF")]
 
 
+def test_off_at_the_setpoint_is_not_confirmed(laco, sim):
+    """2026-11-19: Z2 on at the HMI, set to 20.0 with the shroud at 20.0, then `hvc
+    shroud off`: ignored, and it read the same as off. Said so, not "OFF"."""
+    sim.manual_zones = True
+    laco.zone_settle_s = 0.0
+    sim.state.temps[3] = 20.0
+    laco.apply({"shroud": 20.0})
+    sim.state.zone_active[2] = True
+    events = laco.apply({"shroud_control": False})
+    assert [lvl for lvl, _ in events] == ["INFO", "WARNING"]
+    assert events[0][1] == "shroud thermal control off sent (!ZO2)"
+    assert "not confirmed" in events[1][1] and "turn it off there" in events[1][1]
+    assert sim.state.zone_active[2] is True                               # still on, as at the bench
+
+
 def test_on_and_off_that_take_are_confirmed(laco, sim):
     laco.zone_settle_s = 0.0
+    sim.state.temps[2] = 20.0
+    laco.apply({"platen": 30.0})
     assert laco.apply({"platen_control": True}) == [("INFO", "platen thermal control ON")]
     assert laco.apply({"platen_control": False}) == [("INFO", "platen thermal control OFF")]
 

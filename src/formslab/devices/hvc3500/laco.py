@@ -59,6 +59,7 @@ OPERATIONS = {"vent2atm": "VA", "fill2atm": "FA", "purge": "PS", "close_all": "N
 # while off it follows the sensor (within 0.1 °C on the bench). Read beside ?TC's
 # "Holding Temperature", which a warning replaces (Control air low, 2026-11-10).
 HELD_C = 0.5
+MOVED_C = 0.3       # a setpoint this far from the one sent has left it: the zone is off
 
 
 def _held(setpoint: float | None, temperature: float | None) -> bool:
@@ -431,7 +432,8 @@ class LACO:
         try:
             zone.on() if on else zone.off()
             time.sleep(self.zone_settle_s)
-            held = _held(zone.setpoint(), zone.temperature())
+            setpoint, temperature = zone.setpoint(), zone.temperature()
+            held = _held(setpoint, temperature)
             holding = on and not held and self.client.thermal_control_active()
         except (OSError, ProtocolError, ValueError, KeyError) as e:
             return [("ERROR", f"{zone.name}_control: {e}")]
@@ -439,10 +441,20 @@ class LACO:
             return [("INFO", f"{zone.name} thermal control on sent (!ZS{n})"),
                     ("WARNING", f"the controller has not turned the {zone.name} on: in its Manual mode "
                                 f"only the HMI does (Manual Heat, Z{n} Thermal Control On)")]
-        if not on and held:
+        if on:
+            return [("INFO", f"{zone.name} thermal control ON")]
+        if held:
             return [("ERROR", f"{zone.name} still on after !ZO{n}: its setpoint is still held. "
                               f"Turn Z{n} Thermal Control Off at the HMI")]
-        return [("INFO", f"{zone.name} thermal control {'ON' if on else 'OFF'}")]
+        # Off is shown only by the setpoint following the sensor away from what was sent.
+        # At its setpoint a zone on and one off read the same, ?TC included (2026-11-19:
+        # Z2 on at 20.0 °C, the shroud at 20.0, ?TC "Ready"), and !ZOn is ignored.
+        if zone.target_c is not None and abs(setpoint - zone.target_c) > MOVED_C:
+            return [("INFO", f"{zone.name} thermal control OFF")]
+        return [("INFO", f"{zone.name} thermal control off sent (!ZO{n})"),
+                ("WARNING", f"not confirmed: the {zone.name} is at its setpoint, where on and off read "
+                            f"the same, and in its Manual mode the controller ignores this. If Z{n} shows "
+                            f"Thermal Control On at the HMI, turn it off there")]
 
     def apply(self, request: dict) -> list[tuple[str, str]]:
         """Apply a request block (the CAST `hvc` grammar) and report what

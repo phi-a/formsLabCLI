@@ -341,7 +341,10 @@ def _chamber_left() -> str | None:
         parts.append(f"{s['pressure']:.3g} {s.get('pressure_unit') or 'Torr'}")
     parts.append("pump " + ("on" if s.get("pump") else "off"))
     parts.append("turbo " + ("on" if s.get("turbo") else "off"))
-    parts.append("zones off" if not s.get("thermal_control") else "a zone still holding temperature")
+    # Not holding is not off: a zone on at its setpoint reads the same, and the controller
+    # ignores formsLAB's zones off in Manual mode (memory/instruments/hvc3500.md).
+    parts.append("zones not holding temperature (check Z1 and Z2 at the HMI)" if not s.get("thermal_control")
+                 else "a zone still holding temperature")
     left = "Chamber left: " + ", ".join(parts)
     # A pump on (the turbo's backing, D6) or a zone holding: the shutdown plan finishes it.
     if s.get("pump") or s.get("turbo") or s.get("thermal_control"):

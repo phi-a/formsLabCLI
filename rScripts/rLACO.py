@@ -80,7 +80,7 @@ def COMMANDS():
              On, the controller heats or cools the {z} toward its setpoint. Off, it does
              neither, and the {z}'s effective setpoint follows its own temperature. In the
              controller's Manual mode `on` is acknowledged but ignored: turn Z{n} on at
-             the HMI. Whether `off` turns off a zone started there is not yet known.
+             the HMI. `off` is ignored too (2026-11-19): turn Z{n} off at the HMI.
              Controller command: !ZS{n}, !ZO{n}.""",
              lambda s, z=z: {f"{z}_control": s == "on"}),
             (f"{z} rate <rate:number 0.. C/min>", f"""Set the {z} ramp rate
